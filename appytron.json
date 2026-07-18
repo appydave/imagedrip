@@ -1,0 +1,6 @@
+{
+  "app": "imagedrip",
+  "core": "file:../appydave-foundation/packages/core",
+  "createAppytron": "0.1.0",
+  "scaffolded": "2026-07-18T17:24:28.949Z"
+}

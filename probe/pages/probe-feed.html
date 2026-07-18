@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Probe feed — paste + submit</title>
+    <style>
+      body { font: 16px system-ui; padding: 24px; }
+      #prompt-textarea { border: 1px solid #999; min-height: 40px; padding: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Probe feed — clipboard paste + Enter into a composer</h1>
+    <!-- id mirrors chatgpt-selectors.promptInput so this exercises the real target -->
+    <div id="prompt-textarea" contenteditable="true"></div>
+    <pre id="out">waiting…</pre>
+
+    <script>
+      window.__probe = { text: '', enterTrusted: null, inputTrusted: null, pasteTrusted: null };
+      const box = document.getElementById('prompt-textarea');
+      const out = document.getElementById('out');
+      const render = () => (out.textContent = JSON.stringify(window.__probe, null, 2));
+
+      box.addEventListener('paste', (e) => {
+        window.__probe.pasteTrusted = e.isTrusted;
+        render();
+      });
+      box.addEventListener('input', (e) => {
+        window.__probe.text = box.textContent;
+        window.__probe.inputTrusted = e.isTrusted;
+        render();
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          window.__probe.enterTrusted = e.isTrusted;
+          render();
+        }
+      });
+      render();
+    </script>
+  </body>
+</html>

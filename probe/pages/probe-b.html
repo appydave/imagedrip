@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Probe B — isTrusted</title>
+    <style>
+      body { font: 16px system-ui; padding: 24px; }
+      #target { padding: 16px 24px; font-size: 18px; }
+      pre { background: #f3f4f6; padding: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>Probe B — does sendInputEvent arrive as isTrusted?</h1>
+    <button id="target">click target</button>
+    <pre id="out">waiting…</pre>
+
+    <script>
+      // The whole approach's premise: synthesized OS input travels the real Chromium
+      // input pipeline, so the page sees event.isTrusted === true. Record it.
+      window.__probe = { click: null, key: null };
+
+      function render() {
+        document.getElementById('out').textContent = JSON.stringify(window.__probe, null, 2);
+      }
+
+      document.getElementById('target').addEventListener('click', (e) => {
+        window.__probe.click = e.isTrusted;
+        render();
+      });
+      window.addEventListener('keydown', (e) => {
+        window.__probe.key = e.isTrusted;
+        window.__probe.keyName = e.key;
+        render();
+      });
+      render();
+    </script>
+  </body>
+</html>

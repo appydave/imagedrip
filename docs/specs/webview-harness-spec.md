@@ -115,8 +115,12 @@ Per prompt:
    user copies mid-batch — §8).
 2. Ask the preload for the input rect (`imagedrip:locate-input`) → synthesize a **real mouse click**
    there via `sendInputEvent` (`mouseDown`+`mouseUp`) to focus the box like a human (not JS `.focus()`).
-3. Synthesize **Cmd+V**: `sendInputEvent({ type:'keyDown', keyCode:'v', modifiers:['cmd'] })` +
-   matching `keyUp`. (Paste is reliable; it triggers Chromium's native clipboard paste.)
+3. Paste. **⚠️ VERIFIED CORRECTION (probe/probe-feed.cjs, 2026-07-19):** a synthesized
+   **Cmd+V** via `sendInputEvent` is a **no-op** into a contenteditable composer — it does
+   NOT paste. Use **`view.webContents.paste()`** (the real Edit>Paste editing command)
+   instead: observed to fire `paste` + `input` events with `isTrusted === true`, so it
+   upholds invariant #1 (trusted input, not JS `.value=`) *and* actually lands the text.
+   (The click in step 2 does focus the composer — `activeElement` confirmed.)
 4. Synthesize **Enter**: `keyDown`/`keyUp` `'Return'`. *(If ChatGPT ever requires Cmd+Enter to send,
    put the submit key in the selector module.)*
 5. Record `feedAt = Date.now()`; the matching `image-done` gives the **measured generation time** the

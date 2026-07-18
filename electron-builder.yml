@@ -1,0 +1,27 @@
+appId: com.appydave.imagedrip
+productName: imagedrip
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!test/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{vitest.config.ts,tailwind.config.js,postcss.config.js}'
+  - '!{.prettierrc,.prettierignore,.editorconfig,.gitignore}'
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.developer-tools
+  # Signing + notarization (macOS-first, docs §10): supply a Developer ID via
+  #   CSC_LINK / CSC_KEY_PASSWORD  and  APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+  # then set: notarize: true
+dmg:
+  artifactName: ${name}-${version}.${ext}
+npmRebuild: false
+publish:
+  provider: github
+  owner: appydave
+  repo: imagedrip
