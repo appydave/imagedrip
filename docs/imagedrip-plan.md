@@ -36,21 +36,38 @@ resume/history).
 **No API credits.** ImageDrip operates the real ChatGPT UI on David's subscription, never an API
 key. Deliberate cost decision — see §9.
 
-## 3. Domain model
+## 3. Domain model — layered composition
 ```
-Project → Theme → Style/Design → Prompt list → Runs (history)
+Brand.md      static, fixed once   e.g. Beauty & Joy, Joy Juice     NEVER edited mid-run
+   └ Project.md   small, mutable    e.g. smoothies, Bing Su, avatars  dialled-in + copied BACK
+        └ Prompt    short, standalone   optionally + a reference image
+
+  interpolate at run time into what the provider sees:
+     primer = Brand.md + Project.md      ← posted ONCE per conversation
+     then    a short Prompt per image    ← style inherited from the primed chat
 ```
-Local-first (`@appydave/core` `Store`, from AppyTron), non-destructive, resumable, per-run
-history. Prompts are **stateless & self-contained** (the full style is baked into each prompt —
-matches the first real batch and avoids conversation-context drift).
+- **Priming, not baking** — set the tone once (brand + project), then feed short standalone
+  prompts. Matches how ChatGPT works; supersedes the earlier "style baked into every prompt" idea.
+- **Sidecar discipline** — the app edits **Project.md** and copies it *back* to the project source;
+  **Brand.md is read-only in practice** (fixed once you have it).
+- **Provider-agnostic** — Brand/Project/Prompt is **driver-independent**. ChatGPT is the first
+  DRIVER (the webview-harness); **DZINE / Higgsfield** are future drivers behind the same domain.
+  ImageDrip is a *sidecar*, not a ChatGPT wrapper.
+- **Chunking + carry-forward** — every ~15–20 images → new conversation, re-post the primer (and
+  carry reference images from the prior chat) to fight drift. The copy-project-back flow is what
+  makes the restart trustworthy.
+- **Deferred, but the model allows them:** per-prompt **reference images**; **prompt intake via
+  API/MCP** (v1 imports/pastes a simple list; the API is a clean bolt-on).
+- Local-first `Store` (AppyTron), non-destructive, resumable, per-run history.
 
 ### Two operating modes (the spine)
-- **Batch Runner** — hands-off: a locked style + prompt list → **open a fresh ChatGPT chat** →
-  drip the full list on human cadence → harvest each result → walk away. **This is v1.**
-- **Style Studio** — interactive: seed a style, test one image, redo/tweak, **lock** it.
-  **Fast-follow (v2).**
-- The handoff (**lock style → new chat → run from scratch**) is the core UX. v1 can skip Studio
-  because the first real batch already ships fully-formed, style-baked prompts.
+- **Dial-in (Style Studio)** — interactive: compose Brand+Project → post primer → test a few
+  prompts → tweak **Project.md** (never Brand) → **copy back** → repeat until the look is locked.
+  Human-driven copy/paste is first-class here.
+- **Automation (Batch Runner)** — hands-off: locked primer → fresh chat → drip short prompts on
+  human cadence → detect done → harvest/name/route → **re-prime every ~15–20** → walk away.
+- The handoff (**lock → new chat → re-prime → run**) is the core UX. See §10 for the v1 slice
+  (both modes, one theme, end to end). Full workflow + UX: `docs/ux-and-workflow.md`.
 
 ---
 
@@ -166,12 +183,19 @@ recur across a catalog's life. ImageDrip does the same batch on an existing Chat
 for **\$0**; the saving compounds across runs. That economic fact is *why* the no-API constraint
 drives the whole architecture.
 
-## 10. Scope
-- **v1 = Batch Runner** — proves the hard/risky parts (webview harness, synthesized input, DOM
-  completion-detect, adaptive cadence, rate-limit guard, harvest→route) against the real 100+ item
-  batch. No Style Studio needed (prompts arrive style-baked).
-- **v2 = Style Studio** — interactive dial-in, redo/tweak, lock-and-handoff.
-- **Later** — additional targets (DZINE / others) via config + provider-specific selector modules.
+## 10. Scope — v1 is ONE vertical slice (both modes, one theme, end to end)
+Not batch-only, not everything. The slice touches every part of the loop once, on real work.
+- **Dial-in loop** — compose Brand+Project, post primer, test prompts (human copy is fine), edit
+  Project.md, copy back. Cheap: UI + clipboard + compose; no risky automation.
+- **One automated theme run (~15–20 images)** — feed → detect (seen-set / newest-unseen) →
+  harvest → name → route to disk → **re-prime per chunk**. Proves the risky chain (already
+  de-risked by the harness/probes) on a real theme.
+- **Provider = ChatGPT only** (the one proven driver).
+
+**Deferred (explicit):** per-prompt reference images (data model allows; upload/carry flow later);
+prompt intake via **API/MCP** (v1 = import/paste a simple list); other **drivers** (DZINE /
+Higgsfield) behind the same domain; full 116-item multi-theme orchestration + provenance/till
+callback — after the slice proves out.
 
 ## 11. Locked decisions
 1. **Name** — ✅ `ImageDrip`.
