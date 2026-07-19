@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageDrip — Index</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300..700&family=Roboto:wght@300;400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--near-white:#faf5ec;--surface:#f0ebe4;--linen:#e8e0d4;--border:#d4cdc4;
+    --brown:#342d2d;--muted:#7a6e5e;--amber:#c8841a;--yellow:#ffde59;--sage:#4a7a54;
+    --f:'Oswald',sans-serif;--b:'Roboto',sans-serif;--m:'Roboto Mono',monospace;}
+  *{box-sizing:border-box} body{margin:0;background:var(--near-white);color:var(--brown);font-family:var(--b);line-height:1.5}
+  .wrap{max-width:900px;margin:0 auto;padding:36px 22px 60px}
+  h1{font-family:var(--f);font-weight:700;letter-spacing:1px;font-size:30px;margin:0}
+  h1 b{color:var(--amber)}
+  .sub{color:var(--muted);font-size:14px;margin:4px 0 6px}
+  .rules{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:8px;padding:12px 16px;margin:18px 0 26px;font-size:13px;color:var(--muted)}
+  .rules b{color:var(--brown)}
+  h2{font-family:var(--f);font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);padding-bottom:6px;margin:30px 0 12px}
+  .row{display:flex;gap:14px;align-items:baseline;padding:11px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;text-decoration:none;color:var(--brown);transition:.12s}
+  .row:hover{border-color:var(--amber);background:var(--linen)}
+  .row .tag{font-family:var(--m);font-size:10px;color:#fff;background:var(--muted);border-radius:4px;padding:2px 6px;flex-shrink:0}
+  .row.star .tag{background:var(--sage)} .row.md .tag{background:var(--amber)}
+  .row .t{font-family:var(--f);font-size:15px;font-weight:600;flex-shrink:0}
+  .row .d{color:var(--muted);font-size:12.5px;margin-left:auto;text-align:right}
+  .star{border-color:var(--sage);border-left:3px solid var(--sage)}
+  .note{font-size:12px;color:var(--muted);font-family:var(--m);margin:6px 2px 0}
+  a.plain{color:var(--amber)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>IMAGE<b>DRIP</b> — Index</h1>
+  <div class="sub">Everything in one place. Click to open. Served over http so every link works.</div>
+
+  <div class="rules">
+    <b>Standing rules</b> (see working-rules.md): refine the chosen thing — never replace · finish one
+    design before moving on · AppyDave is <b>light</b> · the ChatGPT panel is native (we don't design it)
+    · no “Generating” — only <b>Queued</b> &amp; <b>Harvested</b> · confirm before building.
+  </div>
+
+  <h2>★ Current design</h2>
+  <a class="row star" href=".mochaccino/designs-v2/pipeline-light.html">
+    <span class="tag">DESIGN</span><span class="t">Pipeline (light)</span>
+    <span class="d">the chosen one — Queued → Harvested + live ChatGPT. Being finished.</span>
+  </a>
+
+  <h2>Docs</h2>
+  <a class="row md" href="docs/imagedrip-plan.md"><span class="tag">MD</span><span class="t">imagedrip-plan</span><span class="d">requirements · layered model · v1 slice scope</span></a>
+  <a class="row md" href="docs/ux-and-workflow.md"><span class="tag">MD</span><span class="t">ux-and-workflow</span><span class="d">workflow + cockpit + build order</span></a>
+  <a class="row md" href="docs/working-rules.md"><span class="tag">MD</span><span class="t">working-rules</span><span class="d">how to work with David (standing)</span></a>
+
+  <h2>Specs</h2>
+  <a class="row md" href="docs/specs/webview-harness-spec.md"><span class="tag">MD</span><span class="t">webview-harness-spec</span><span class="d">Approach C — the built, probe-verified driver</span></a>
+  <a class="row md" href="docs/specs/installability-spec.md"><span class="tag">MD</span><span class="t">installability-spec</span><span class="d">scaffold gaps G1/G2/G3</span></a>
+  <a class="row md" href="docs/handover-webview-harness-g3.md"><span class="tag">MD</span><span class="t">handover-g3</span><span class="d">the build brief for the harness</span></a>
+
+  <h2>Earlier exploration (archive — superseded by the Pipeline)</h2>
+  <a class="row" href=".mochaccino/designs/index.html"><span class="tag">GALLERY</span><span class="t">5 POV directions</span><span class="d">the original cockpit explorations</span></a>
+  <a class="row" href=".mochaccino/designs-v2/harvest-viz.html"><span class="tag">MOCKS</span><span class="t">3 harvest visualizations</span><span class="d">dark — Filmstrip / Pipeline / Wall (pre-reset)</span></a>
+  <div class="note">Note: markdown links open as plain text in the browser. The design HTML links render fully.</div>
+</div>
+</body>
+</html>
