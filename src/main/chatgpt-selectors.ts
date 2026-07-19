@@ -5,10 +5,10 @@
  * 5-minute edit (then a rebuild), not a code hunt. Imported by BOTH the webview
  * preload (bundled into the ChatGPT view) and the harness (main).
  *
- * ⚠️ UNVERIFIED PLACEHOLDERS. These reflect ChatGPT's DOM as best understood at
- * authoring time (2026-07-19). They are NOT confirmed against a live logged-in
- * session — that is Probe C's job (a human must log in). Treat re-pinning as
- * expected maintenance, not a bug (spec §4/§8).
+ * PARTIALLY VERIFIED via Probe C (2026-07-19, live logged-in session):
+ *   ✅ promptInput, latestAssistantTurn (image container), imageInTurn, isLoaded — confirmed.
+ *   ⚠️ rateLimitBanner / refusal* — still UNVERIFIED (no limit/refusal hit during Probe C).
+ * Treat re-pinning as expected maintenance, not a bug (spec §4/§8).
  */
 
 export interface ChatGPTSelectors {
@@ -39,14 +39,19 @@ export interface ChatGPTSelectors {
 }
 
 export const CHATGPT_SELECTORS: ChatGPTSelectors = {
-  // Composer: current ChatGPT uses a ProseMirror contenteditable with this id.
+  // ✅ Probe C (2026-07-19): confirmed — the composer contenteditable has this id.
   promptInput: '#prompt-textarea',
 
-  // Assistant turns carry a data attribute; the preload takes the LAST match.
-  latestAssistantTurn: '[data-message-author-role="assistant"]',
+  // ✅ Probe C (2026-07-19): generated images are NOT inside a message-author-role
+  // turn (that selector matched 0). They render in a container div#image-<uuid> with
+  // class `group/imagegen-image`. Match it by class substring; preload takes the LAST
+  // (newest). NOTE: used ONLY for image detection here — refusal uses refusalMarker.
+  latestAssistantTurn: '[class*="imagegen-image"]',
 
-  // Generated images render as <img> inside the assistant turn. Exclude tiny
-  // avatar/icon imagery via the isLoaded size gate below.
+  // ✅ Probe C (2026-07-19): the imagegen container holds ~3 layered <img> (blur bg +
+  // main), all sharing the same src; take the first that isLoaded. Final src is
+  // https://chatgpt.com/backend-api/estuary/content?id=file_… — AUTH'D, so harvest must
+  // fetch it in-session (view.webContents.session.fetch). isLoaded's https+decoded gate matches.
   imageInTurn: 'img',
 
   isLoaded(img: HTMLImageElement): boolean {
