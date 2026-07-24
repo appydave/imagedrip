@@ -6,7 +6,10 @@ import {
   type HarnessEvent,
   type ImagedripApi,
   type Rect,
+  type RunConfig,
+  type RunStatus,
 } from '../shared/ipc';
+import type { DomainState } from '../shared/domain';
 
 const api: AppytronApi = {
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(IPC.appInfo),
@@ -20,6 +23,28 @@ const api: AppytronApi = {
 // ImageDrip control surface — a thin, typed door over the WebviewHarness. The
 // renderer drives the batch; main owns the ChatGPT view (never exposed here).
 const imagedrip: ImagedripApi = {
+  domain: {
+    get: (): Promise<DomainState> => ipcRenderer.invoke(IPC.domainGet),
+    importPrompts: (text: string): Promise<DomainState> =>
+      ipcRenderer.invoke(IPC.domainImportPrompts, text),
+    saveProject: (body: string): Promise<DomainState> =>
+      ipcRenderer.invoke(IPC.domainSaveProject, body),
+    composePrimer: (): Promise<string> => ipcRenderer.invoke(IPC.domainComposePrimer),
+    resetRun: (): Promise<DomainState> => ipcRenderer.invoke(IPC.domainResetRun),
+  },
+  run: {
+    start: (config?: RunConfig): Promise<void> => ipcRenderer.invoke(IPC.runStart, config),
+    pause: (): Promise<void> => ipcRenderer.invoke(IPC.runPause),
+    resume: (): Promise<void> => ipcRenderer.invoke(IPC.runResume),
+    stop: (): Promise<void> => ipcRenderer.invoke(IPC.runStop),
+    onStatus: (cb: (s: RunStatus) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, payload: RunStatus): void => cb(payload);
+      ipcRenderer.on(IPC.runStatus, listener);
+      return () => ipcRenderer.removeListener(IPC.runStatus, listener);
+    },
+  },
+  harvestThumb: (relPath: string): Promise<string | null> =>
+    ipcRenderer.invoke(IPC.harvestThumb, relPath),
   attach: (bounds: Rect): Promise<void> => ipcRenderer.invoke(IPC.harnessAttach, bounds),
   setBounds: (bounds: Rect): Promise<void> => ipcRenderer.invoke(IPC.harnessSetBounds, bounds),
   newConversation: (): Promise<void> => ipcRenderer.invoke(IPC.harnessNewConversation),
