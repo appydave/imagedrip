@@ -37,3 +37,8 @@ to repeat one.
 - **Chosen design:** light-theme **Pipeline** — `.mochaccino/designs-v2/pipeline-light.html`.
   Being finished to completion. Do not replace it.
 - **Index:** `overview.html` (repo root) — the clickable index of everything.
+- **v2 (Usability & Project Identity, `docs/requirements-v2-usability.md`):** WP1 built —
+  multi-project store (silent v1 migration), visible per-project output dirs
+  (default `~/Pictures/ImageDrip/<slug>`), per-run `<outputDir>/<run-id>/` folders with
+  `manifest.json` + `provenance.jsonl`, run-history UI + Reveal in Finder, draft-until-Create
+  new-project flow. **Awaiting David's in-app run** (the only "done" that counts). WP2–WP7 next.

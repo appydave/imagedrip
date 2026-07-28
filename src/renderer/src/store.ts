@@ -1,8 +1,14 @@
 import { create } from 'zustand';
 import type { DomainState } from '@shared/domain';
-import type { RunStatus } from '@shared/ipc';
+import type { RunManifest, RunStatus, RunSummary } from '@shared/ipc';
 
 export type Mode = 'dial-in' | 'auto';
+
+/** A previous run opened from history (WP1) — manifest arrives async. */
+export interface RunView {
+  runId: string;
+  manifest: RunManifest | null;
+}
 
 interface AppState {
   domain: DomainState | null;
@@ -11,6 +17,10 @@ interface AppState {
   mode: Mode;
   /** Transient copy-confirmation label ("primer copied" etc.). */
   flash: string | null;
+  /** Run history of the ACTIVE project; null until first load. */
+  runs: RunSummary[] | null;
+  /** When set, the lanes area shows this previous run instead of the live queue. */
+  runView: RunView | null;
 
   init: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -19,6 +29,15 @@ interface AppState {
   copyPrimer: () => Promise<void>;
   copyNextPrompt: () => Promise<void>;
   resetRun: () => Promise<void>;
+
+  createProject: (name: string, outputDir?: string) => Promise<void>;
+  switchProject: (id: string) => Promise<void>;
+  chooseOutputDir: () => Promise<string | null>;
+
+  loadRuns: () => Promise<void>;
+  openRun: (runId: string) => Promise<void>;
+  closeRun: () => void;
+  revealRun: (runId: string) => void;
 
   startRun: () => Promise<void>;
   pauseRun: () => Promise<void>;
@@ -41,9 +60,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   ctxOpen: false,
   mode: 'auto',
   flash: null,
+  runs: null,
+  runView: null,
 
   init: async () => {
     set({ domain: await window.imagedrip.domain.get() });
+    void get().loadRuns();
     if (subscribed) return;
     subscribed = true;
     // Live run status. On each harvest / terminal transition, re-read the domain so
@@ -51,6 +73,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     window.imagedrip.run.onStatus((status) => {
       set({ status });
       if (['harvested', 'done', 'stopped'].includes(status.phase)) void get().refresh();
+      // A finished/stopped run just wrote its manifest — refresh history.
+      if (['done', 'stopped'].includes(status.phase)) void get().loadRuns();
     });
   },
   refresh: async () => {
@@ -75,6 +99,45 @@ export const useAppStore = create<AppState>((set, get) => ({
   resetRun: async () => {
     set({ domain: await window.imagedrip.domain.resetRun(), status: null, flash: 're-queued' });
   },
+
+  // ── project identity (WP1). "New project" is a renderer draft until create. ──
+  createProject: async (name, outputDir) => {
+    set({
+      domain: await window.imagedrip.projects.create({ name, outputDir }),
+      runs: null,
+      runView: null,
+      status: null,
+      flash: `project "${name}" created`,
+    });
+    void get().loadRuns();
+  },
+  switchProject: async (id) => {
+    try {
+      set({
+        domain: await window.imagedrip.projects.switch(id),
+        runs: null,
+        runView: null,
+        status: null,
+      });
+      void get().loadRuns();
+    } catch {
+      set({ flash: 'stop the run before switching projects' });
+    }
+  },
+  chooseOutputDir: () => window.imagedrip.projects.chooseOutputDir(),
+
+  // ── run history (WP1) ──
+  loadRuns: async () => {
+    set({ runs: await window.imagedrip.runs.list() });
+  },
+  openRun: async (runId) => {
+    set({ runView: { runId, manifest: null } });
+    const manifest = await window.imagedrip.runs.manifest(runId);
+    // Only apply if the user hasn't navigated away meanwhile.
+    if (get().runView?.runId === runId) set({ runView: { runId, manifest } });
+  },
+  closeRun: () => set({ runView: null }),
+  revealRun: (runId) => void window.imagedrip.runs.reveal(runId),
 
   startRun: async () => {
     await window.imagedrip.run.start();

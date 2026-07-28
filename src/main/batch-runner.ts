@@ -19,6 +19,20 @@ import type { WebviewHarness } from './webview-harness.js';
  * a `seen` set (never harvest the same src twice) → first UNSEEN src wins. NOT
  * "last container".
  */
+/**
+ * Run-history hooks (WP1). `start` returns the run id, which becomes the
+ * harvest subfolder (`<outputDir>/<run-id>/…`). Every hook is best-effort:
+ * a manifest failure must never wedge or slow the run itself.
+ */
+export interface RunRecorderHooks {
+  start(info: { primer: string; prompts: Prompt[] }): Promise<string>;
+  harvest(promptId: string, file: string, generationMs?: number, imageUrl?: string): Promise<void>;
+  refusal(promptId: string): Promise<void>;
+  reprime(afterHarvested: number): Promise<void>;
+  pause(reason: string): Promise<void>;
+  finish(outcome: 'complete' | 'stopped'): Promise<void>;
+}
+
 export interface BatchRunnerDeps {
   harness: WebviewHarness;
   /** primer = compose(Brand, Project) — posted once per conversation. */
@@ -29,6 +43,8 @@ export interface BatchRunnerDeps {
   markHarvested: (promptId: string, relPath: string) => Promise<void>;
   /** Push a status snapshot to the renderer. */
   emit: (status: RunStatus) => void;
+  /** Optional run-history recorder (WP1) — manifest + per-run subfolder. */
+  recorder?: RunRecorderHooks;
   logger?: Logger;
 }
 
@@ -50,6 +66,9 @@ export class BatchRunner {
   private idx = 0;
   private harvestedCount = 0;
   private readonly seen = new Set<string>();
+  /** Harvest subfolder for this run (the run id) — '' when no recorder. */
+  private runPrefix = '';
+  private recorderActive = false;
 
   private phase: RunStatus['phase'] = 'idle';
   private awaiting = false;
@@ -72,6 +91,7 @@ export class BatchRunner {
       onPause: ({ text, resumeAt }) => {
         this.phase = 'paused';
         this.note = text;
+        this.recordSafe((r) => r.pause(text));
         this.emit(Math.max(0, resumeAt - Date.now()));
       },
       onResume: () => {
@@ -110,7 +130,19 @@ export class BatchRunner {
     this.avgMs = null;
     this.note = undefined;
 
-    this.logger?.info({ total: this.queue.length }, 'batch run started');
+    // Open the run record (WP1) — its id becomes the harvest subfolder.
+    this.runPrefix = '';
+    this.recorderActive = false;
+    if (this.d.recorder) {
+      try {
+        this.runPrefix = await this.d.recorder.start({ primer: this.primer, prompts: this.queue });
+        this.recorderActive = true;
+      } catch (err) {
+        this.logger?.warn({ err: String(err) }, 'run recorder failed to start — running unrecorded');
+      }
+    }
+
+    this.logger?.info({ total: this.queue.length, runId: this.runPrefix }, 'batch run started');
     await this.primeThenContinue(true);
   }
 
@@ -143,6 +175,7 @@ export class BatchRunner {
     this.guard.dispose();
     this.phase = 'stopped';
     this.note = undefined;
+    this.finishRun('stopped');
     this.emit();
     this.logger?.info({ harvested: this.harvestedCount }, 'batch run stopped');
   }
@@ -152,6 +185,7 @@ export class BatchRunner {
   private async primeThenContinue(first: boolean): Promise<void> {
     this.phase = 'priming';
     this.note = first ? 'priming a fresh chat…' : 're-priming a fresh chat…';
+    if (!first) this.recordSafe((r) => r.reprime(this.harvestedCount));
     this.emit();
 
     await this.d.harness.newConversation();
@@ -173,6 +207,7 @@ export class BatchRunner {
     if (this.idx >= this.queue.length) {
       this.phase = 'done';
       this.note = undefined;
+      this.finishRun('complete');
       this.emit();
       this.logger?.info({ harvested: this.harvestedCount }, 'batch run complete');
       return;
@@ -201,11 +236,13 @@ export class BatchRunner {
     if (measured) this.avgMs = this.avgMs == null ? measured : this.avgMs * 0.7 + measured * 0.3;
 
     const prompt = this.queue[this.idx];
-    const relPath = `${slugify(prompt.subject)}.png`;
+    const file = `${slugify(prompt.subject)}.png`;
+    const relPath = this.runPrefix ? `${this.runPrefix}/${file}` : file;
     try {
       const savedPath = await this.d.harness.harvest(url, relPath);
       await this.d.markHarvested(prompt.id, savedPath);
       this.harvestedCount += 1;
+      this.recordSafe((r) => r.harvest(prompt.id, file, measured, url));
       this.logger?.info({ subject: prompt.subject, savedPath, measured }, 'harvested');
     } catch (err) {
       // A harvest failure must not wedge the run — surface + advance past it.
@@ -220,6 +257,7 @@ export class BatchRunner {
 
     if (this.idx >= this.queue.length) {
       this.phase = 'done';
+      this.finishRun('complete');
       this.emit();
       this.logger?.info({ harvested: this.harvestedCount }, 'batch run complete');
       return;
@@ -238,9 +276,11 @@ export class BatchRunner {
     const prompt = this.queue[this.idx];
     this.note = `refused: ${prompt?.subject ?? '?'} — skipped`;
     this.logger?.warn({ subject: prompt?.subject }, 'prompt refused — skipping');
+    if (prompt) this.recordSafe((r) => r.refusal(prompt.id));
     this.idx += 1;
     if (this.idx >= this.queue.length) {
       this.phase = 'done';
+      this.finishRun('complete');
       this.emit();
       return;
     }
@@ -254,8 +294,26 @@ export class BatchRunner {
     this.clearTimers();
     this.phase = 'paused';
     this.note = `stalled — no image in ${Math.round(waitedMs / 1000)}s`;
+    this.recordSafe((r) => r.pause(this.note ?? 'stall'));
     this.emit();
     this.logger?.warn({ waitedMs }, 'stall — pausing');
+  }
+
+  /** Fire a recorder hook without ever letting it wedge or slow the run. */
+  private recordSafe(fn: (r: RunRecorderHooks) => Promise<void>): void {
+    if (!this.recorderActive || !this.d.recorder) return;
+    void fn(this.d.recorder).catch((err) =>
+      this.logger?.warn({ err: String(err) }, 'run recorder hook failed'),
+    );
+  }
+
+  /** Close the run record exactly once per run. */
+  private finishRun(outcome: 'complete' | 'stopped'): void {
+    if (!this.recorderActive || !this.d.recorder) return;
+    this.recorderActive = false;
+    void this.d.recorder
+      .finish(outcome)
+      .catch((err) => this.logger?.warn({ err: String(err) }, 'run recorder finish failed'));
   }
 
   private scheduleNextFeed(): void {

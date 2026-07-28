@@ -7,7 +7,9 @@ import {
   type ImagedripApi,
   type Rect,
   type RunConfig,
+  type RunManifest,
   type RunStatus,
+  type RunSummary,
 } from '../shared/ipc';
 import type { DomainState } from '../shared/domain';
 
@@ -31,6 +33,18 @@ const imagedrip: ImagedripApi = {
       ipcRenderer.invoke(IPC.domainSaveProject, body),
     composePrimer: (): Promise<string> => ipcRenderer.invoke(IPC.domainComposePrimer),
     resetRun: (): Promise<DomainState> => ipcRenderer.invoke(IPC.domainResetRun),
+  },
+  projects: {
+    create: (input: { name: string; outputDir?: string }): Promise<DomainState> =>
+      ipcRenderer.invoke(IPC.projectCreate, input),
+    switch: (id: string): Promise<DomainState> => ipcRenderer.invoke(IPC.projectSwitch, id),
+    chooseOutputDir: (): Promise<string | null> => ipcRenderer.invoke(IPC.projectChooseOutputDir),
+  },
+  runs: {
+    list: (): Promise<RunSummary[]> => ipcRenderer.invoke(IPC.runsList),
+    manifest: (runId: string): Promise<RunManifest | null> =>
+      ipcRenderer.invoke(IPC.runsManifest, runId),
+    reveal: (runId: string): Promise<void> => ipcRenderer.invoke(IPC.runsReveal, runId),
   },
   run: {
     start: (config?: RunConfig): Promise<void> => ipcRenderer.invoke(IPC.runStart, config),

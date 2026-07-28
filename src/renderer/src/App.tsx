@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { Rect } from '@shared/ipc';
+import type { RunManifest, RunSummary, Rect } from '@shared/ipc';
+import type { ProjectSummary } from '@shared/domain';
 import { useAppStore } from './store';
 
 /** Map a DOM element to the webview bounds (CSS px === DIP in Electron's content view). */
@@ -20,12 +21,20 @@ export default function App(): JSX.Element {
     ctxOpen,
     mode,
     flash,
+    runs,
+    runView,
     init,
     importPrompts,
     saveProject,
     copyPrimer,
     copyNextPrompt,
     resetRun,
+    createProject,
+    switchProject,
+    chooseOutputDir,
+    openRun,
+    closeRun,
+    revealRun,
     startRun,
     pauseRun,
     resumeRun,
@@ -206,10 +215,18 @@ export default function App(): JSX.Element {
             brandName={domain?.brand.name ?? '—'}
             projectName={domain?.project.name ?? '—'}
             projectBody={domain?.project.body ?? ''}
+            outputDir={domain?.project.outputDir}
+            projects={domain?.projects ?? []}
+            activeProjectId={domain?.activeProjectId ?? ''}
+            runs={runs}
             onClose={() => setCtx(false)}
             onSaveProject={(b) => void saveProject(b)}
             onCopyPrimer={() => void copyPrimer()}
             onCopyPrompt={() => void copyNextPrompt()}
+            onSwitchProject={(id) => void switchProject(id)}
+            onCreateProject={(name, dir) => void createProject(name, dir)}
+            onChooseDir={chooseOutputDir}
+            onOpenRun={(id) => void openRun(id)}
           />
         ) : (
           <button
@@ -223,13 +240,23 @@ export default function App(): JSX.Element {
           </button>
         )}
 
-        {/* lanes — QUEUED + HARVESTED. NO "generating" lane (working-rules §8). */}
-        <div className="flex min-w-0 flex-1 gap-3.5 p-3.5">
-          <QueuedLane prompts={queued} onImport={(t) => void importPrompts(t)} />
-          <HarvestedLane
-            items={harvested.map((p) => ({ subject: p.subject, savedPath: p.savedPath }))}
+        {/* lanes — QUEUED + HARVESTED. NO "generating" lane (working-rules §8).
+            When a previous run is open (WP1), it replaces the lanes, not the app. */}
+        {runView ? (
+          <RunHistoryView
+            runId={runView.runId}
+            manifest={runView.manifest}
+            onBack={closeRun}
+            onReveal={() => revealRun(runView.runId)}
           />
-        </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 gap-3.5 p-3.5">
+            <QueuedLane prompts={queued} onImport={(t) => void importPrompts(t)} />
+            <HarvestedLane
+              items={harvested.map((p) => ({ subject: p.subject, savedPath: p.savedPath }))}
+            />
+          </div>
+        )}
 
         {/* native ChatGPT — the ONLY place "generating" ever shows. Reserved rect;
             main overlays the live WebContentsView here. */}
@@ -269,21 +296,40 @@ export default function App(): JSX.Element {
   );
 }
 
+/** Compact local timestamp for run rows/headers, e.g. "28 Jul 09:41". */
+function fmtWhen(ts: number): string {
+  return new Date(ts).toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 /* ── CONTEXT panel — the layered model made visible ───────────────── */
 function ContextPanel(props: {
   brandName: string;
   projectName: string;
   projectBody: string;
+  outputDir?: string;
+  projects: ProjectSummary[];
+  activeProjectId: string;
+  runs: RunSummary[] | null;
   onClose: () => void;
   onSaveProject: (body: string) => void;
   onCopyPrimer: () => void;
   onCopyPrompt: () => void;
+  onSwitchProject: (id: string) => void;
+  onCreateProject: (name: string, outputDir?: string) => void;
+  onChooseDir: () => Promise<string | null>;
+  onOpenRun: (runId: string) => void;
 }): JSX.Element {
   const [body, setBody] = useState(props.projectBody);
+  const [creating, setCreating] = useState(false);
   useEffect(() => setBody(props.projectBody), [props.projectBody]);
 
   return (
-    <div className="flex w-[240px] flex-shrink-0 flex-col gap-2.5 border-r border-edge bg-surface p-3.5">
+    <div className="flex w-[240px] flex-shrink-0 flex-col gap-2.5 overflow-y-auto border-r border-edge bg-surface p-3.5">
       <div className="flex items-center justify-between font-display text-[11px] font-semibold tracking-widest text-muted">
         CONTEXT
         <button type="button" onClick={props.onClose} className="text-muted hover:text-brown">
@@ -297,8 +343,38 @@ function ContextPanel(props: {
       </div>
 
       <div className="rounded-lg border border-edge bg-cream p-2.5">
-        <div className="font-display text-sm font-semibold">{props.projectName} ✎</div>
+        <div className="flex items-center justify-between">
+          <div className="font-display text-sm font-semibold">{props.projectName} ✎</div>
+          <button
+            type="button"
+            onClick={() => setCreating((v) => !v)}
+            className="font-display text-[11px] text-muted hover:text-amber"
+          >
+            {creating ? '✕' : '＋ new'}
+          </button>
+        </div>
         <div className="mt-0.5 font-mono text-[11px] text-muted">project · editable</div>
+        {props.projects.length > 1 && (
+          <select
+            value={props.activeProjectId}
+            onChange={(e) => props.onSwitchProject(e.target.value)}
+            className="mt-1.5 w-full rounded-md border border-edge bg-cream px-1.5 py-1 font-display text-xs text-brown outline-none focus:border-amber"
+          >
+            {props.projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {props.outputDir && (
+          <div
+            title={props.outputDir}
+            className="mt-1.5 truncate font-mono text-[10px] text-muted"
+          >
+            → {props.outputDir}
+          </div>
+        )}
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
@@ -307,9 +383,203 @@ function ContextPanel(props: {
         />
       </div>
 
+      {creating && (
+        <NewProjectForm
+          onCreate={(name, dir) => {
+            props.onCreateProject(name, dir);
+            setCreating(false);
+          }}
+          onCancel={() => setCreating(false)}
+          onChooseDir={props.onChooseDir}
+        />
+      )}
+
       <CtxButton onClick={props.onCopyPrimer}>Copy primer</CtxButton>
       <CtxButton onClick={props.onCopyPrompt}>Copy prompt</CtxButton>
       <CtxButton onClick={() => props.onSaveProject(body)}>Save project ↩</CtxButton>
+
+      {/* run history (WP1) — every previous run of THIS project, from its manifest */}
+      <div className="mt-1 flex min-h-0 flex-col">
+        <div className="mb-1.5 flex items-center gap-2 font-display text-[11px] font-semibold tracking-widest text-muted">
+          RUNS
+          <span className="font-mono text-[13px] text-amber">{props.runs?.length ?? '…'}</span>
+        </div>
+        <div className="flex flex-col gap-1.5 overflow-y-auto">
+          {(props.runs ?? []).map((r) => (
+            <button
+              key={r.runId}
+              type="button"
+              onClick={() => props.onOpenRun(r.runId)}
+              className="rounded-md border border-edge bg-cream px-2.5 py-1.5 text-left hover:border-amber"
+            >
+              <div className="font-display text-xs font-semibold text-brown">{r.themeName}</div>
+              <div className="font-mono text-[10px] text-muted">
+                {fmtWhen(r.startedAt)} · {r.harvested}/{r.total}
+                {r.outcome === 'stopped' ? ' · stopped' : ''}
+              </div>
+            </button>
+          ))}
+          {props.runs?.length === 0 && (
+            <p className="font-mono text-[10px] leading-relaxed text-muted opacity-80">
+              no runs yet — each Run theme lands in a dated folder here.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** "New project" draft — nothing persists until Create (WP1 acceptance). */
+function NewProjectForm(props: {
+  onCreate: (name: string, outputDir?: string) => void;
+  onCancel: () => void;
+  onChooseDir: () => Promise<string | null>;
+}): JSX.Element {
+  const [name, setName] = useState('');
+  const [dir, setDir] = useState<string | null>(null);
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-amber bg-cream p-2.5">
+      <div className="font-display text-[11px] font-semibold tracking-widest text-muted">
+        NEW PROJECT
+      </div>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="project name"
+        className="w-full rounded-md border border-edge bg-cream p-2 font-display text-xs text-brown outline-none focus:border-amber"
+      />
+      <button
+        type="button"
+        onClick={() => {
+          void props.onChooseDir().then((d) => {
+            if (d) setDir(d);
+          });
+        }}
+        title={dir ?? undefined}
+        className="w-full truncate rounded-md border border-edge bg-cream px-2.5 py-1.5 text-left font-mono text-[10px] text-muted hover:border-amber"
+      >
+        {dir ?? 'output folder… (default: ~/Pictures/ImageDrip)'}
+      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={!name.trim()}
+          onClick={() => props.onCreate(name.trim(), dir ?? undefined)}
+          className="flex-1 rounded-md bg-yellow px-3 py-1.5 font-display text-xs font-semibold text-brown enabled:hover:brightness-95 disabled:opacity-50"
+        >
+          Create
+        </button>
+        <button
+          type="button"
+          onClick={props.onCancel}
+          className="rounded-md border border-edge bg-cream px-3 py-1.5 font-display text-xs text-muted hover:border-amber"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Run history view (WP1) — a previous run, exactly as it ran ───── */
+function RunHistoryView(props: {
+  runId: string;
+  manifest: RunManifest | null;
+  onBack: () => void;
+  onReveal: () => void;
+}): JSX.Element {
+  const m = props.manifest;
+  const harvested = m?.prompts.filter((p) => p.status === 'harvested' && p.file) ?? [];
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-2.5 p-3.5">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={props.onBack}
+          className="rounded-md border border-edge bg-cream px-3 py-1.5 font-display text-xs font-semibold text-brown hover:border-amber"
+        >
+          ← Back
+        </button>
+        <span className="min-w-0 truncate font-mono text-xs text-muted">{props.runId}</span>
+        {m && (
+          <span className="font-mono text-[11px] text-muted">
+            {fmtWhen(m.startedAt)} · {m.counts.harvested}/{m.counts.total} harvested
+            {m.outcome === 'stopped' ? ' · stopped' : ''}
+          </span>
+        )}
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={props.onReveal}
+          className="rounded-md border border-edge bg-cream px-3 py-1.5 font-display text-xs font-semibold text-brown hover:border-amber"
+        >
+          Reveal in Finder ↗
+        </button>
+      </div>
+
+      {!m ? (
+        <div className="flex flex-1 items-center justify-center font-mono text-[11px] text-muted">
+          loading manifest…
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 gap-3.5">
+          {/* how it ran: the exact primer + every prompt with its outcome */}
+          <div className="flex w-[290px] flex-shrink-0 flex-col gap-2.5 overflow-y-auto rounded-xl border border-edge bg-surface p-3">
+            <div className="font-display text-xs font-semibold tracking-widest text-muted">
+              PRIMER — as posted
+            </div>
+            <pre className="whitespace-pre-wrap rounded-md border border-edge bg-cream p-2 font-mono text-[11px] leading-relaxed text-brown">
+              {m.primer}
+            </pre>
+            <div className="font-display text-xs font-semibold tracking-widest text-muted">
+              PROMPTS
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {m.prompts.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between rounded-md border border-edge bg-cream px-2.5 py-1.5 text-[12px]"
+                  title={p.text}
+                >
+                  <span className="truncate">{p.subject}</span>
+                  <span className="ml-2 flex-shrink-0 font-mono text-[10px] text-muted">
+                    {p.status === 'harvested'
+                      ? `✓${p.generationMs ? ` ${(p.generationMs / 1000).toFixed(0)}s` : ''}`
+                      : p.status === 'refused'
+                        ? 'refused'
+                        : 'queued'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* the run's harvested grid */}
+          <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-edge bg-surface p-3">
+            <h4 className="mb-2.5 flex items-center gap-2 font-display text-xs font-semibold tracking-widest text-muted">
+              HARVESTED <span className="font-mono text-[13px] text-amber">{harvested.length}</span>
+            </h4>
+            {harvested.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center font-mono text-[11px] text-muted opacity-80">
+                nothing was harvested in this run.
+              </div>
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] content-start gap-2.5 overflow-auto">
+                {harvested.map((p) => (
+                  <HarvestThumb
+                    key={p.id}
+                    subject={p.subject}
+                    savedPath={`${m.runId}/${p.file}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

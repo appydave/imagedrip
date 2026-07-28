@@ -38,12 +38,21 @@ export interface Brand {
 
 /** Project.md — the dialled-in layer; edited then copied BACK to its source. */
 export interface Project {
+  /** Stable slug id — unique across the store, survives renames. */
+  id: string;
   name: string;
   /** Project.md content — the only text ImageDrip edits. */
   body: string;
   /** Where to copy Project.md back to (dial-in copy-back; wired later). */
   sourcePath?: string;
   /** Harvest route target — FileAuthor's scoped root for this project (§8). */
+  outputDir?: string;
+}
+
+/** A row in the project switcher — enough to pick, not the whole record. */
+export interface ProjectSummary {
+  id: string;
+  name: string;
   outputDir?: string;
 }
 
@@ -65,11 +74,17 @@ export interface Run {
   harvested: number;
 }
 
-/** The whole persisted domain — one JSON document behind the cockpit. */
+/**
+ * The renderer-facing domain view: the ACTIVE project + its theme, plus the
+ * switcher list. The persisted document holds every project (see
+ * `main/domain-migrate.ts`); this view keeps the UI's shape stable.
+ */
 export interface DomainState {
   brand: Brand;
   project: Project;
   theme: Theme;
+  activeProjectId: string;
+  projects: ProjectSummary[];
 }
 
 /** kebab-case slug for ids + default filenames; never empty. */

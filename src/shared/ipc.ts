@@ -19,6 +19,16 @@ export const IPC = {
   domainComposePrimer: 'imagedrip:domain:compose-primer',
   domainResetRun: 'imagedrip:domain:reset-run',
 
+  // ── ImageDrip: project identity (WP1) — create/switch, output dir picker ──
+  projectCreate: 'imagedrip:project:create',
+  projectSwitch: 'imagedrip:project:switch',
+  projectChooseOutputDir: 'imagedrip:project:choose-output-dir',
+
+  // ── ImageDrip: run history (WP1) — browse previous runs of the active project ──
+  runsList: 'imagedrip:runs:list',
+  runsManifest: 'imagedrip:runs:manifest',
+  runsReveal: 'imagedrip:runs:reveal',
+
   // ── ImageDrip: the Auto run (Batch Runner) ──
   runStart: 'imagedrip:run:start',
   runPause: 'imagedrip:run:pause',
@@ -96,6 +106,51 @@ export interface RunConfig {
   loadSettleMs?: number;
 }
 
+/** One prompt as it ran — recorded in the run manifest (WP1). */
+export interface RunPromptRecord {
+  id: string;
+  subject: string;
+  text: string;
+  status: 'queued' | 'harvested' | 'refused';
+  /** Harvested filename, relative to the run folder (e.g. `kangaroo.png`). */
+  file?: string;
+  /** Feed → image-done, ms. */
+  generationMs?: number;
+}
+
+/**
+ * `<outputDir>/<run-id>/manifest.json` — everything needed to reproduce or
+ * explain a run: the exact primer as posted, every prompt with its outcome,
+ * re-prime boundaries, and any pauses (rate-limit / stall).
+ */
+export interface RunManifest {
+  runId: string;
+  projectName: string;
+  themeName: string;
+  startedAt: number;
+  finishedAt?: number;
+  outcome?: 'complete' | 'stopped';
+  /** The exact composed primer text (brand body + project body as posted). */
+  primer: string;
+  prompts: RunPromptRecord[];
+  counts: { total: number; harvested: number; refused: number };
+  /** Harvested-counts at which a mid-run re-prime happened. */
+  reprimes: number[];
+  /** Rate-limit / stall pauses surfaced during the run. */
+  pauses: { at: number; reason: string }[];
+}
+
+/** One row in the run-history list (derived from each run's manifest). */
+export interface RunSummary {
+  runId: string;
+  themeName: string;
+  startedAt: number;
+  finishedAt?: number;
+  outcome?: 'complete' | 'stopped';
+  harvested: number;
+  total: number;
+}
+
 export type RunPhase =
   | 'idle'
   | 'priming'
@@ -166,6 +221,25 @@ export interface ImagedripApi {
     composePrimer(): Promise<string>;
     /** Re-queue every prompt so the theme can be run again; returns the new state. */
     resetRun(): Promise<DomainState>;
+  };
+  /**
+   * Project identity (WP1). A project is not real until created here — the
+   * renderer keeps "new project" as a draft; nothing persists until Create.
+   */
+  projects: {
+    /** Create + activate a project. `outputDir` defaults to ~/Pictures/ImageDrip/<slug>. */
+    create(input: { name: string; outputDir?: string }): Promise<DomainState>;
+    /** Activate a saved project. Refused while a run is live. */
+    switch(id: string): Promise<DomainState>;
+    /** Native folder picker for a project output dir; null if cancelled. */
+    chooseOutputDir(): Promise<string | null>;
+  };
+  /** Run history (WP1) — previous runs of the ACTIVE project, from their manifests. */
+  runs: {
+    list(): Promise<RunSummary[]>;
+    manifest(runId: string): Promise<RunManifest | null>;
+    /** Reveal the run's folder in Finder. */
+    reveal(runId: string): Promise<void>;
   };
   /**
    * The Auto run (Batch Runner): prime → drip → detect → harvest → route → re-prime.
