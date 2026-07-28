@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { RunManifest, RunSummary, Rect } from '@shared/ipc';
-import type { ProjectSummary } from '@shared/domain';
+import { compose, type DomainState } from '@shared/domain';
 import { useAppStore } from './store';
 
 /** Map a DOM element to the webview bounds (CSS px === DIP in Electron's content view). */
@@ -29,6 +29,10 @@ export default function App(): JSX.Element {
     copyPrimer,
     copyNextPrompt,
     resetRun,
+    saveBrand,
+    createBrand,
+    switchBrand,
+    copyText,
     createProject,
     switchProject,
     chooseOutputDir,
@@ -212,17 +216,17 @@ export default function App(): JSX.Element {
       <div className="flex min-h-0 flex-1">
         {ctxOpen ? (
           <ContextPanel
-            brandName={domain?.brand.name ?? '—'}
-            projectName={domain?.project.name ?? '—'}
-            projectBody={domain?.project.body ?? ''}
-            outputDir={domain?.project.outputDir}
-            projects={domain?.projects ?? []}
-            activeProjectId={domain?.activeProjectId ?? ''}
+            domain={domain}
+            isRunning={isRunning}
             runs={runs}
             onClose={() => setCtx(false)}
-            onSaveProject={(b) => void saveProject(b)}
+            onSaveProject={saveProject}
+            onSaveBrand={saveBrand}
+            onCreateBrand={(name) => void createBrand(name)}
+            onSwitchBrand={(id) => void switchBrand(id)}
             onCopyPrimer={() => void copyPrimer()}
             onCopyPrompt={() => void copyNextPrompt()}
+            onCopyText={(text, label) => void copyText(text, label)}
             onSwitchProject={(id) => void switchProject(id)}
             onCreateProject={(name, dir) => void createProject(name, dir)}
             onChooseDir={chooseOutputDir}
@@ -306,27 +310,93 @@ function fmtWhen(ts: number): string {
   });
 }
 
+/**
+ * useAutosave (WP2) — draft-edit a persisted string with debounce + blur-flush.
+ * The card shows an unmistakable saved/unsaved state; the explicit Save button
+ * remains a shortcut, never the only path.
+ */
+type SaveState = 'saved' | 'dirty' | 'saving';
+function useAutosave(
+  persistedValue: string,
+  save: (v: string) => Promise<boolean>,
+): {
+  value: string;
+  state: SaveState;
+  onChange: (v: string) => void;
+  flush: () => void;
+} {
+  const [value, setValue] = useState(persistedValue);
+  const [state, setState] = useState<SaveState>('saved');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef(persistedValue);
+
+  // Follow external changes (e.g. a reload) only while the draft is clean.
+  useEffect(() => {
+    if (state === 'saved') {
+      setValue(persistedValue);
+      latest.current = persistedValue;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistedValue]);
+
+  const commit = async (v: string): Promise<void> => {
+    setState('saving');
+    const ok = await save(v);
+    // Only report saved if nothing newer was typed while the IPC was in flight.
+    setState(ok && latest.current === v ? 'saved' : ok ? 'dirty' : 'dirty');
+  };
+
+  const onChange = (v: string): void => {
+    setValue(v);
+    latest.current = v;
+    setState('dirty');
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void commit(v), 900);
+  };
+
+  const flush = (): void => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    if (latest.current !== persistedValue) void commit(latest.current);
+  };
+
+  return { value, state, onChange, flush };
+}
+
+/** The saved/unsaved indicator — text + colour, not just a shape (WP2 bug #6). */
+function SaveDot(props: { state: SaveState }): JSX.Element {
+  return props.state === 'saved' ? (
+    <span className="font-mono text-[10px] text-sage">saved ✓</span>
+  ) : props.state === 'saving' ? (
+    <span className="font-mono text-[10px] text-amber">saving…</span>
+  ) : (
+    <span className="font-mono text-[10px] font-bold text-amber">● unsaved</span>
+  );
+}
+
 /* ── CONTEXT panel — the layered model made visible ───────────────── */
 function ContextPanel(props: {
-  brandName: string;
-  projectName: string;
-  projectBody: string;
-  outputDir?: string;
-  projects: ProjectSummary[];
-  activeProjectId: string;
+  domain: DomainState | null;
+  isRunning: boolean;
   runs: RunSummary[] | null;
   onClose: () => void;
-  onSaveProject: (body: string) => void;
+  onSaveProject: (patch: { name?: string; body?: string }) => Promise<boolean>;
+  onSaveBrand: (patch: { name?: string; body?: string }) => Promise<boolean>;
+  onCreateBrand: (name: string) => void;
+  onSwitchBrand: (id: string) => void;
   onCopyPrimer: () => void;
   onCopyPrompt: () => void;
+  onCopyText: (text: string, label: string) => void;
   onSwitchProject: (id: string) => void;
   onCreateProject: (name: string, outputDir?: string) => void;
   onChooseDir: () => Promise<string | null>;
   onOpenRun: (runId: string) => void;
 }): JSX.Element {
-  const [body, setBody] = useState(props.projectBody);
-  const [creating, setCreating] = useState(false);
-  useEffect(() => setBody(props.projectBody), [props.projectBody]);
+  const d = props.domain;
+  const nextQueued = d?.theme.prompts.find((p) => p.status === 'queued');
+  const primerPreview = d ? compose(d.brand, d.project) : '';
 
   return (
     <div className="flex w-[240px] flex-shrink-0 flex-col gap-2.5 overflow-y-auto border-r border-edge bg-surface p-3.5">
@@ -337,66 +407,46 @@ function ContextPanel(props: {
         </button>
       </div>
 
-      <div className="rounded-lg border border-edge bg-cream p-2.5">
-        <div className="font-display text-sm font-semibold">{props.brandName} 🔒</div>
-        <div className="mt-0.5 font-mono text-[11px] text-muted">brand · fixed</div>
-      </div>
-
-      <div className="rounded-lg border border-edge bg-cream p-2.5">
-        <div className="flex items-center justify-between">
-          <div className="font-display text-sm font-semibold">{props.projectName} ✎</div>
-          <button
-            type="button"
-            onClick={() => setCreating((v) => !v)}
-            className="font-display text-[11px] text-muted hover:text-amber"
-          >
-            {creating ? '✕' : '＋ new'}
-          </button>
-        </div>
-        <div className="mt-0.5 font-mono text-[11px] text-muted">project · editable</div>
-        {props.projects.length > 1 && (
-          <select
-            value={props.activeProjectId}
-            onChange={(e) => props.onSwitchProject(e.target.value)}
-            className="mt-1.5 w-full rounded-md border border-edge bg-cream px-1.5 py-1 font-display text-xs text-brown outline-none focus:border-amber"
-          >
-            {props.projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        )}
-        {props.outputDir && (
-          <div
-            title={props.outputDir}
-            className="mt-1.5 truncate font-mono text-[10px] text-muted"
-          >
-            → {props.outputDir}
-          </div>
-        )}
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Project.md — the dialled-in layer…"
-          className="mt-2 h-24 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber"
+      {d && (
+        <BrandCard
+          key={d.activeBrandId}
+          domain={d}
+          locked={props.isRunning}
+          onSave={props.onSaveBrand}
+          onCreate={props.onCreateBrand}
+          onSwitch={props.onSwitchBrand}
         />
-      </div>
+      )}
 
-      {creating && (
-        <NewProjectForm
-          onCreate={(name, dir) => {
-            props.onCreateProject(name, dir);
-            setCreating(false);
-          }}
-          onCancel={() => setCreating(false)}
+      {d && (
+        <ProjectCard
+          key={`p-${d.activeProjectId}`}
+          domain={d}
+          onSave={props.onSaveProject}
+          onSwitch={props.onSwitchProject}
+          onCreate={props.onCreateProject}
           onChooseDir={props.onChooseDir}
         />
       )}
 
-      <CtxButton onClick={props.onCopyPrimer}>Copy primer</CtxButton>
-      <CtxButton onClick={props.onCopyPrompt}>Copy prompt</CtxButton>
-      <CtxButton onClick={() => props.onSaveProject(body)}>Save project ↩</CtxButton>
+      <CopyCard
+        label="Copy primer"
+        description="Brand + Project composed — posted ONCE per chat to set the look."
+        preview={primerPreview}
+        onCopy={props.onCopyPrimer}
+      />
+      <CopyCard
+        label="Copy prompt"
+        description={
+          nextQueued
+            ? `The NEXT queued item ("${nextQueued.subject}") — one short prompt, one image.`
+            : 'The next queued item — queue is empty right now.'
+        }
+        preview={nextQueued?.text ?? '(queue empty — import a prompt list first)'}
+        onCopy={props.onCopyPrompt}
+      />
+
+      <ListPromptCard onCopy={props.onCopyText} />
 
       {/* run history (WP1) — every previous run of THIS project, from its manifest */}
       <div className="mt-1 flex min-h-0 flex-col">

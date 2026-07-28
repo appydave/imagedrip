@@ -25,9 +25,15 @@ interface AppState {
   init: () => Promise<void>;
   refresh: () => Promise<void>;
   importPrompts: (text: string) => Promise<void>;
-  saveProject: (body: string) => Promise<void>;
+  /** Autosave path (WP2) — resolves true on success, false when refused. */
+  saveProject: (patch: { name?: string; body?: string }) => Promise<boolean>;
+  /** Autosave path (WP2) — false when the run-lock refused the edit. */
+  saveBrand: (patch: { name?: string; body?: string }) => Promise<boolean>;
+  createBrand: (name: string) => Promise<void>;
+  switchBrand: (id: string) => Promise<void>;
   copyPrimer: () => Promise<void>;
   copyNextPrompt: () => Promise<void>;
+  copyText: (text: string, label: string) => Promise<void>;
   resetRun: () => Promise<void>;
 
   createProject: (name: string, outputDir?: string) => Promise<void>;
@@ -83,8 +89,39 @@ export const useAppStore = create<AppState>((set, get) => ({
   importPrompts: async (text) => {
     set({ domain: await window.imagedrip.domain.importPrompts(text) });
   },
-  saveProject: async (body) => {
-    set({ domain: await window.imagedrip.domain.saveProject(body), flash: 'project saved' });
+  // Autosave feedback lives in the per-card saved/unsaved indicator, not the
+  // footer flash — a flash every debounce would be noise (WP2).
+  saveProject: async (patch) => {
+    try {
+      set({ domain: await window.imagedrip.domain.saveProject(patch) });
+      return true;
+    } catch {
+      set({ flash: 'project save failed' });
+      return false;
+    }
+  },
+  saveBrand: async (patch) => {
+    try {
+      set({ domain: await window.imagedrip.domain.saveBrand(patch) });
+      return true;
+    } catch {
+      set({ flash: 'brand is locked while a run is live' });
+      return false;
+    }
+  },
+  createBrand: async (name) => {
+    try {
+      set({ domain: await window.imagedrip.brands.create({ name }), flash: `brand "${name}" created` });
+    } catch {
+      set({ flash: 'brand is locked while a run is live' });
+    }
+  },
+  switchBrand: async (id) => {
+    try {
+      set({ domain: await window.imagedrip.brands.switch(id) });
+    } catch {
+      set({ flash: 'brand is locked while a run is live' });
+    }
   },
   copyPrimer: async () => {
     await copy(await window.imagedrip.domain.composePrimer());
@@ -95,6 +132,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!next) return set({ flash: 'queue empty' });
     await copy(next.text);
     set({ flash: `copied "${next.subject}"` });
+  },
+  copyText: async (text, label) => {
+    await copy(text);
+    set({ flash: label });
   },
   resetRun: async () => {
     set({ domain: await window.imagedrip.domain.resetRun(), status: null, flash: 're-queued' });

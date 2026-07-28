@@ -16,8 +16,13 @@ export const IPC = {
   domainGet: 'imagedrip:domain:get',
   domainImportPrompts: 'imagedrip:domain:import-prompts',
   domainSaveProject: 'imagedrip:domain:save-project',
+  domainSaveBrand: 'imagedrip:domain:save-brand',
   domainComposePrimer: 'imagedrip:domain:compose-primer',
   domainResetRun: 'imagedrip:domain:reset-run',
+
+  // ── ImageDrip: brand identity (WP2) — Brand is run-locked, not read-only ──
+  brandCreate: 'imagedrip:brand:create',
+  brandSwitch: 'imagedrip:brand:switch',
 
   // ── ImageDrip: project identity (WP1) — create/switch, output dir picker ──
   projectCreate: 'imagedrip:project:create',
@@ -215,8 +220,10 @@ export interface ImagedripApi {
     get(): Promise<DomainState>;
     /** Replace the theme queue from a pasted prompt list; returns the new state. */
     importPrompts(text: string): Promise<DomainState>;
-    /** Persist an edit to Project.md; returns the new state. */
-    saveProject(body: string): Promise<DomainState>;
+    /** Persist an edit to the active project (body and/or name — WP2 autosave). */
+    saveProject(patch: { name?: string; body?: string }): Promise<DomainState>;
+    /** Persist an edit to the active brand. Refused while a run is live (WP2). */
+    saveBrand(patch: { name?: string; body?: string }): Promise<DomainState>;
     /** primer = compose(Brand, Project) — the text posted once per conversation. */
     composePrimer(): Promise<string>;
     /** Re-queue every prompt so the theme can be run again; returns the new state. */
@@ -233,6 +240,11 @@ export interface ImagedripApi {
     switch(id: string): Promise<DomainState>;
     /** Native folder picker for a project output dir; null if cancelled. */
     chooseOutputDir(): Promise<string | null>;
+  };
+  /** Brand identity (WP2). Brand is LOCKED while a run is live — a run-state lock. */
+  brands: {
+    create(input: { name: string }): Promise<DomainState>;
+    switch(id: string): Promise<DomainState>;
   };
   /** Run history (WP1) — previous runs of the ACTIVE project, from their manifests. */
   runs: {

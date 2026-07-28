@@ -29,11 +29,19 @@ export interface Prompt {
   refImage?: string;
 }
 
-/** Brand.md — the fixed tone. Read-only in practice (§3 sidecar discipline). */
+/** Brand.md — the fixed tone. Locked while a run is live, editable between runs. */
 export interface Brand {
+  /** Stable slug id — unique across the store, survives renames. */
+  id: string;
   name: string;
   /** Brand.md content. */
   body: string;
+}
+
+/** A row in the brand switcher. */
+export interface BrandSummary {
+  id: string;
+  name: string;
 }
 
 /** Project.md — the dialled-in layer; edited then copied BACK to its source. */
@@ -83,6 +91,8 @@ export interface DomainState {
   brand: Brand;
   project: Project;
   theme: Theme;
+  activeBrandId: string;
+  brands: BrandSummary[];
   activeProjectId: string;
   projects: ProjectSummary[];
 }

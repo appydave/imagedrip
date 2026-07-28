@@ -11,7 +11,7 @@ import {
   defaultProjectDir,
   migrateDomain,
   seedDefaults,
-  uniqueProjectId,
+  uniqueSlug,
   type PersistedDomain,
   type ProjectRecord,
 } from './domain-migrate.js';
@@ -54,13 +54,20 @@ function activeRecord(s: PersistedDomain): ProjectRecord {
   return s.projects.find((r) => r.project.id === s.activeProjectId) ?? s.projects[0];
 }
 
-/** The renderer-facing view: active project + theme, plus the switcher list. */
+function activeBrand(s: PersistedDomain): (typeof s.brands)[number] {
+  return s.brands.find((b) => b.id === s.activeBrandId) ?? s.brands[0];
+}
+
+/** The renderer-facing view: active brand + project + theme, plus switcher lists. */
 function view(s: PersistedDomain): DomainState {
   const rec = activeRecord(s);
+  const brand = activeBrand(s);
   return {
-    brand: s.brand,
+    brand,
     project: rec.project,
     theme: rec.theme,
+    activeBrandId: brand.id,
+    brands: s.brands.map((b) => ({ id: b.id, name: b.name })),
     activeProjectId: rec.project.id,
     projects: s.projects.map((r) => ({
       id: r.project.id,
@@ -92,15 +99,65 @@ export async function importPrompts(text: string): Promise<DomainState> {
   return updateActive((rec) => ({ ...rec, theme: { ...rec.theme, prompts } }));
 }
 
-/** Persist an edit to the active Project.md body. */
-export async function saveProject(body: string): Promise<DomainState> {
-  return updateActive((rec) => ({ ...rec, project: { ...rec.project, body } }));
+/** Persist an edit to the active project (body and/or name — WP2 autosave). */
+export async function saveProject(patch: { name?: string; body?: string }): Promise<DomainState> {
+  const name = patch.name?.trim();
+  return updateActive((rec) => ({
+    ...rec,
+    project: {
+      ...rec.project,
+      ...(patch.body !== undefined ? { body: patch.body } : {}),
+      ...(name ? { name } : {}),
+    },
+  }));
 }
 
-/** The primer = compose(Brand, active Project) — posted ONCE per conversation. */
+/** Persist an edit to the ACTIVE brand. Callers must hold the run lock (WP2). */
+export async function saveBrand(patch: { name?: string; body?: string }): Promise<DomainState> {
+  const name = patch.name?.trim();
+  const current = await persisted();
+  const active = current.brands.find((b) => b.id === current.activeBrandId) ?? current.brands[0];
+  const next = await domain().update(() => ({
+    ...current,
+    brands: current.brands.map((b) =>
+      b.id === active.id
+        ? {
+            ...b,
+            ...(patch.body !== undefined ? { body: patch.body } : {}),
+            ...(name ? { name } : {}),
+          }
+        : b,
+    ),
+  }));
+  return view(next);
+}
+
+/** Create + activate a brand. Draft-until-Create, same discipline as projects. */
+export async function createBrand(input: { name: string }): Promise<DomainState> {
+  const name = input.name.trim();
+  if (!name) throw new Error('brand name is required');
+  const current = await persisted();
+  const id = uniqueSlug(name, current.brands.map((b) => b.id));
+  const next = await domain().update(() => ({
+    ...current,
+    brands: [...current.brands, { id, name, body: '' }],
+    activeBrandId: id,
+  }));
+  return view(next);
+}
+
+/** Activate a saved brand by id. Callers must hold the run lock (WP2). */
+export async function switchBrand(id: string): Promise<DomainState> {
+  const current = await persisted();
+  if (!current.brands.some((b) => b.id === id)) throw new Error(`unknown brand: ${id}`);
+  const next = await domain().update(() => ({ ...current, activeBrandId: id }));
+  return view(next);
+}
+
+/** The primer = compose(active Brand, active Project) — posted ONCE per conversation. */
 export async function composePrimer(): Promise<string> {
   const s = await persisted();
-  return compose(s.brand, activeRecord(s).project);
+  return compose(activeBrand(s), activeRecord(s).project);
 }
 
 /** The active theme prompts, in order — the run queue snapshot source. */
@@ -150,7 +207,7 @@ export async function createProject(input: {
   const name = input.name.trim();
   if (!name) throw new Error('project name is required');
   const current = await persisted();
-  const id = uniqueProjectId(name, current.projects.map((r) => r.project.id));
+  const id = uniqueSlug(name, current.projects.map((r) => r.project.id));
   const record: ProjectRecord = {
     project: {
       id,

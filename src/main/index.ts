@@ -15,6 +15,7 @@ import type { DomainState } from '@shared/domain';
 import { createConsole } from './create-console.js';
 import {
   composePrimer,
+  createBrand,
   createProject,
   getActiveOutputDir,
   getDomain,
@@ -22,7 +23,9 @@ import {
   importPrompts,
   markHarvested,
   resetRun,
+  saveBrand,
   saveProject,
+  switchBrand,
   switchProject,
 } from './domain-store.js';
 import { BatchRunner } from './batch-runner.js';
@@ -207,10 +210,35 @@ const desktop = createConsole({
       input: z.string(),
       handle: (text) => importPrompts(text),
     });
-    ipc.register<string, DomainState>({
+    ipc.register<{ name?: string; body?: string }, DomainState>({
       channel: IPC.domainSaveProject,
-      input: z.string(),
-      handle: (body) => saveProject(body),
+      input: z.object({ name: z.string().min(1).optional(), body: z.string().optional() }),
+      handle: (patch) => saveProject(patch),
+    });
+    // Brand never changes mid-run (working-rules) — a RUN-STATE lock, not read-only.
+    ipc.register<{ name?: string; body?: string }, DomainState>({
+      channel: IPC.domainSaveBrand,
+      input: z.object({ name: z.string().min(1).optional(), body: z.string().optional() }),
+      handle: (patch) => {
+        if (runner?.running) throw new Error('brand is locked while a run is live');
+        return saveBrand(patch);
+      },
+    });
+    ipc.register<{ name: string }, DomainState>({
+      channel: IPC.brandCreate,
+      input: z.object({ name: z.string().min(1) }),
+      handle: (input) => {
+        if (runner?.running) throw new Error('brand is locked while a run is live');
+        return createBrand(input);
+      },
+    });
+    ipc.register<string, DomainState>({
+      channel: IPC.brandSwitch,
+      input: z.string().min(1),
+      handle: (id) => {
+        if (runner?.running) throw new Error('brand is locked while a run is live');
+        return switchBrand(id);
+      },
     });
     ipc.register<void, string>({
       channel: IPC.domainComposePrimer,

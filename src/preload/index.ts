@@ -29,8 +29,10 @@ const imagedrip: ImagedripApi = {
     get: (): Promise<DomainState> => ipcRenderer.invoke(IPC.domainGet),
     importPrompts: (text: string): Promise<DomainState> =>
       ipcRenderer.invoke(IPC.domainImportPrompts, text),
-    saveProject: (body: string): Promise<DomainState> =>
-      ipcRenderer.invoke(IPC.domainSaveProject, body),
+    saveProject: (patch: { name?: string; body?: string }): Promise<DomainState> =>
+      ipcRenderer.invoke(IPC.domainSaveProject, patch),
+    saveBrand: (patch: { name?: string; body?: string }): Promise<DomainState> =>
+      ipcRenderer.invoke(IPC.domainSaveBrand, patch),
     composePrimer: (): Promise<string> => ipcRenderer.invoke(IPC.domainComposePrimer),
     resetRun: (): Promise<DomainState> => ipcRenderer.invoke(IPC.domainResetRun),
   },
@@ -39,6 +41,11 @@ const imagedrip: ImagedripApi = {
       ipcRenderer.invoke(IPC.projectCreate, input),
     switch: (id: string): Promise<DomainState> => ipcRenderer.invoke(IPC.projectSwitch, id),
     chooseOutputDir: (): Promise<string | null> => ipcRenderer.invoke(IPC.projectChooseOutputDir),
+  },
+  brands: {
+    create: (input: { name: string }): Promise<DomainState> =>
+      ipcRenderer.invoke(IPC.brandCreate, input),
+    switch: (id: string): Promise<DomainState> => ipcRenderer.invoke(IPC.brandSwitch, id),
   },
   runs: {
     list: (): Promise<RunSummary[]> => ipcRenderer.invoke(IPC.runsList),
