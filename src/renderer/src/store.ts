@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DomainState } from '@shared/domain';
+import type { DomainState, ImportMode } from '@shared/domain';
 import type { RunManifest, RunStatus, RunSummary } from '@shared/ipc';
 
 export type Mode = 'dial-in' | 'auto';
@@ -24,7 +24,7 @@ interface AppState {
 
   init: () => Promise<void>;
   refresh: () => Promise<void>;
-  importPrompts: (text: string) => Promise<void>;
+  importPrompts: (text: string, mode: ImportMode) => Promise<void>;
   /** Autosave path (WP2) — resolves true on success, false when refused. */
   saveProject: (patch: { name?: string; body?: string }) => Promise<boolean>;
   /** Autosave path (WP2) — false when the run-lock refused the edit. */
@@ -86,8 +86,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   refresh: async () => {
     set({ domain: await window.imagedrip.domain.get() });
   },
-  importPrompts: async (text) => {
-    set({ domain: await window.imagedrip.domain.importPrompts(text) });
+  importPrompts: async (text, mode) => {
+    const before = get().domain?.theme.prompts.filter((p) => p.status === 'queued').length ?? 0;
+    const domain = await window.imagedrip.domain.importPrompts({ text, mode });
+    const after = domain.theme.prompts.filter((p) => p.status === 'queued').length;
+    set({
+      domain,
+      flash:
+        mode === 'add'
+          ? `added ${after - before} — ${after} queued`
+          : `replaced ${before} queued with ${after}`,
+    });
   },
   // Autosave feedback lives in the per-card saved/unsaved indicator, not the
   // footer flash — a flash every debounce would be noise (WP2).

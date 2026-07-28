@@ -218,8 +218,9 @@ export interface ImagedripApi {
   domain: {
     /** Read the whole persisted domain document. */
     get(): Promise<DomainState>;
-    /** Replace the theme queue from a pasted prompt list; returns the new state. */
-    importPrompts(text: string): Promise<DomainState>;
+    /** Import a prompt list (WP3): `add` appends after the existing queue;
+     *  `replace` drops queued items — harvested prompts always survive. */
+    importPrompts(input: { text: string; mode: 'replace' | 'add' }): Promise<DomainState>;
     /** Persist an edit to the active project (body and/or name — WP2 autosave). */
     saveProject(patch: { name?: string; body?: string }): Promise<DomainState>;
     /** Persist an edit to the active brand. Refused while a run is live (WP2). */

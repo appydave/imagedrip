@@ -44,4 +44,6 @@ to repeat one.
   new-project flow. WP2: brand editable/selectable/creatable (run-state lock, labelled),
   project rename, autosave on debounce/blur + per-card saved/unsaved indicator, Copy
   Primer/Prompt descriptions + exact previews, listing-prompt helper card.
-  **Awaiting David's in-app run** (the only "done" that counts). WP3–WP7 next.
+  WP3: import is now explicit Add-to-queue (append, ids continue) vs Replace-queue
+  (two-step confirm; harvested prompts always survive).
+  **Awaiting David's in-app run** (the only "done" that counts). WP4–WP7 next.

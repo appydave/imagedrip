@@ -255,7 +255,10 @@ export default function App(): JSX.Element {
           />
         ) : (
           <div className="flex min-w-0 flex-1 gap-3.5 p-3.5">
-            <QueuedLane prompts={queued} onImport={(t) => void importPrompts(t)} />
+            <QueuedLane
+              prompts={queued}
+              onImport={(t, mode) => void importPrompts(t, mode)}
+            />
             <HarvestedLane
               items={harvested.map((p) => ({ subject: p.subject, savedPath: p.savedPath }))}
             />
@@ -935,10 +938,24 @@ function ListPromptCard(props: { onCopy: (text: string, label: string) => void }
 /* ── QUEUED lane — what's still to run this theme ─────────────────── */
 function QueuedLane(props: {
   prompts: { id: string; subject: string }[];
-  onImport: (text: string) => void;
+  onImport: (text: string, mode: 'replace' | 'add') => void;
 }): JSX.Element {
   const [importing, setImporting] = useState(false);
   const [draft, setDraft] = useState('');
+  // Replace discards queued prompts — it warns first (WP3). Two-step inline.
+  const [confirmReplace, setConfirmReplace] = useState(false);
+
+  const incoming = draft
+    .split(/\r?\n/)
+    .filter((l) => l.trim() && !l.trim().startsWith('#')).length;
+  const queuedN = props.prompts.length;
+
+  const doImport = (mode: 'replace' | 'add'): void => {
+    props.onImport(draft, mode);
+    setDraft('');
+    setImporting(false);
+    setConfirmReplace(false);
+  };
 
   return (
     <div className="flex w-[270px] flex-shrink-0 flex-col rounded-xl border border-edge bg-surface p-3">
@@ -948,7 +965,10 @@ function QueuedLane(props: {
         </span>
         <button
           type="button"
-          onClick={() => setImporting((v) => !v)}
+          onClick={() => {
+            setImporting((v) => !v);
+            setConfirmReplace(false);
+          }}
           className="font-display text-[11px] text-muted hover:text-amber"
         >
           {importing ? '✕' : '＋ import'}
@@ -963,18 +983,58 @@ function QueuedLane(props: {
             placeholder={'one prompt per line\nor:  subject | prompt body\n# lines are comments'}
             className="h-28 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] outline-none focus:border-amber"
           />
-          <button
-            type="button"
-            onClick={() => {
-              props.onImport(draft);
-              setDraft('');
-              setImporting(false);
-            }}
-            className="rounded-md bg-yellow px-3 py-1.5 font-display text-xs font-semibold text-brown hover:brightness-95"
-          >
-            Import {draft.split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith('#')).length}{' '}
-            prompts
-          </button>
+          {queuedN === 0 ? (
+            <button
+              type="button"
+              disabled={incoming === 0}
+              onClick={() => doImport('add')}
+              className="rounded-md bg-yellow px-3 py-1.5 font-display text-xs font-semibold text-brown enabled:hover:brightness-95 disabled:opacity-50"
+            >
+              Import {incoming} prompts
+            </button>
+          ) : confirmReplace ? (
+            <div className="flex flex-col gap-1.5 rounded-md border border-amber bg-cream p-2">
+              <span className="font-mono text-[10px] leading-relaxed text-brown">
+                This discards the {queuedN} queued prompt{queuedN === 1 ? '' : 's'}. Harvested
+                tiles are kept.
+              </span>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => doImport('replace')}
+                  className="flex-1 rounded-md bg-amber px-2.5 py-1.5 font-display text-xs font-bold text-cream hover:brightness-105"
+                >
+                  Replace with {incoming}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmReplace(false)}
+                  className="rounded-md border border-edge bg-cream px-2.5 py-1.5 font-display text-xs text-muted hover:border-amber"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={incoming === 0}
+                onClick={() => doImport('add')}
+                className="rounded-md bg-yellow px-3 py-1.5 font-display text-xs font-semibold text-brown enabled:hover:brightness-95 disabled:opacity-50"
+              >
+                Add {incoming} after the {queuedN} queued → {queuedN + incoming}
+              </button>
+              <button
+                type="button"
+                disabled={incoming === 0}
+                onClick={() => setConfirmReplace(true)}
+                className="rounded-md border border-edge bg-cream px-3 py-1.5 font-display text-xs font-semibold text-muted enabled:hover:border-amber disabled:opacity-50"
+              >
+                Replace the {queuedN} queued with {incoming}…
+              </button>
+            </>
+          )}
         </div>
       )}
 

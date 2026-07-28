@@ -125,10 +125,11 @@ export function compose(brand: Brand, project: Project): string {
  *     the subject/label; the rest is the prompt. Without a pipe, the subject is
  *     derived from the first few words.
  * Deterministic ids (no Date/random) so a re-import of the same list is stable.
+ * `startIndex` continues the id suffix after an existing queue (WP3 Add-to-queue).
  */
-export function parsePromptList(text: string): Prompt[] {
+export function parsePromptList(text: string, startIndex = 0): Prompt[] {
   const out: Prompt[] = [];
-  let i = 0;
+  let i = startIndex;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
@@ -146,4 +147,33 @@ export function parsePromptList(text: string): Prompt[] {
     out.push({ id: `${slugify(subject)}-${i}`, subject, text: body, status: 'queued' });
   }
   return out;
+}
+
+export type ImportMode = 'replace' | 'add';
+
+/**
+ * mergePrompts (WP3) — the two explicit import semantics:
+ *   - `add`     append the imported list AFTER the existing queue, in order.
+ *   - `replace` drop the QUEUED items only; harvested prompts always survive —
+ *               they are the run record (and WP1's manifest makes that matter).
+ * Ids stay deterministic: the suffix continues from the kept count, and any
+ * residual collision with a kept id bumps the suffix until free.
+ */
+export function mergePrompts(existing: Prompt[], text: string, mode: ImportMode): Prompt[] {
+  const kept = mode === 'add' ? existing : existing.filter((p) => p.status === 'harvested');
+  const taken = new Set(kept.map((p) => p.id));
+  const incoming = parsePromptList(text, kept.length).map((p) => {
+    let id = p.id;
+    const m = /^(.*)-(\d+)$/.exec(id);
+    if (m) {
+      let n = Number(m[2]);
+      while (taken.has(id)) {
+        n += 1;
+        id = `${m[1]}-${n}`;
+      }
+    }
+    taken.add(id);
+    return id === p.id ? p : { ...p, id };
+  });
+  return [...kept, ...incoming];
 }

@@ -27,8 +27,8 @@ const api: AppytronApi = {
 const imagedrip: ImagedripApi = {
   domain: {
     get: (): Promise<DomainState> => ipcRenderer.invoke(IPC.domainGet),
-    importPrompts: (text: string): Promise<DomainState> =>
-      ipcRenderer.invoke(IPC.domainImportPrompts, text),
+    importPrompts: (input: { text: string; mode: 'replace' | 'add' }): Promise<DomainState> =>
+      ipcRenderer.invoke(IPC.domainImportPrompts, input),
     saveProject: (patch: { name?: string; body?: string }): Promise<DomainState> =>
       ipcRenderer.invoke(IPC.domainSaveProject, patch),
     saveBrand: (patch: { name?: string; body?: string }): Promise<DomainState> =>

@@ -3,8 +3,9 @@ import { app } from 'electron';
 import { createStore, type Store } from '@appydave/core';
 import {
   compose,
-  parsePromptList,
+  mergePrompts,
   type DomainState,
+  type ImportMode,
   type Prompt,
 } from '../shared/domain.js';
 import {
@@ -92,11 +93,13 @@ export async function getDomain(): Promise<DomainState> {
   return view(await persisted());
 }
 
-/** Replace the active theme queue from a pasted/imported prompt list. Harvested
- *  items are dropped — a fresh import defines a fresh run. (WP3 revisits this.) */
-export async function importPrompts(text: string): Promise<DomainState> {
-  const prompts: Prompt[] = parsePromptList(text);
-  return updateActive((rec) => ({ ...rec, theme: { ...rec.theme, prompts } }));
+/** Import a prompt list into the active theme (WP3): `add` appends after the
+ *  existing queue; `replace` drops queued items but ALWAYS keeps harvested. */
+export async function importPrompts(text: string, mode: ImportMode): Promise<DomainState> {
+  return updateActive((rec) => ({
+    ...rec,
+    theme: { ...rec.theme, prompts: mergePrompts(rec.theme.prompts, text, mode) },
+  }));
 }
 
 /** Persist an edit to the active project (body and/or name — WP2 autosave). */

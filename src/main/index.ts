@@ -205,10 +205,10 @@ const desktop = createConsole({
       channel: IPC.domainGet,
       handle: () => getDomain(),
     });
-    ipc.register<string, DomainState>({
+    ipc.register<{ text: string; mode: 'replace' | 'add' }, DomainState>({
       channel: IPC.domainImportPrompts,
-      input: z.string(),
-      handle: (text) => importPrompts(text),
+      input: z.object({ text: z.string(), mode: z.enum(['replace', 'add']) }),
+      handle: ({ text, mode }) => importPrompts(text, mode),
     });
     ipc.register<{ name?: string; body?: string }, DomainState>({
       channel: IPC.domainSaveProject,
