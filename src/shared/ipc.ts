@@ -103,6 +103,15 @@ export type HarnessEvent =
 
 /** Tuning for one Auto run (all optional — the runner has conservative defaults). */
 export interface RunConfig {
+  /**
+   * How the run enters the chat (WP5):
+   *   'continue' — reuse the CURRENT conversation as-is. No new chat, no primer:
+   *                the dialled-in refinements stay in effect. Default coming out
+   *                of Dial-in.
+   *   'fresh'    — new conversation → post primer → feed (v1 behaviour).
+   * Defaults to 'fresh' when omitted.
+   */
+  entry?: 'continue' | 'fresh';
   /** Images per conversation before a re-prime (~15–20). */
   chunkSize?: number;
   /** Base delay between images (ms). */

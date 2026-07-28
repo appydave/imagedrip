@@ -63,6 +63,7 @@ const rectSchema = z.object({
 
 const runConfigSchema = z
   .object({
+    entry: z.enum(['continue', 'fresh']).optional(),
     chunkSize: z.number().int().positive().optional(),
     cadenceBaseMs: z.number().int().nonnegative().optional(),
     cadenceJitterMs: z.number().int().nonnegative().optional(),

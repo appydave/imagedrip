@@ -23,6 +23,7 @@ export default function App(): JSX.Element {
     flash,
     runs,
     runView,
+    dialInTouched,
     init,
     importPrompts,
     saveProject,
@@ -151,6 +152,20 @@ export default function App(): JSX.Element {
           <span>{avgLabel}</span>
         </div>
 
+        {/* run state at a glance (WP5) — a label, not just button shapes */}
+        <span
+          className={
+            'rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold tracking-widest ' +
+            (isRunning
+              ? 'border-sage bg-cream text-sage'
+              : isPaused
+                ? 'border-amber bg-cream text-amber'
+                : 'border-edge bg-cream text-muted')
+          }
+        >
+          {isRunning ? '● LIVE' : isPaused ? '⏸ PAUSED' : '○ IDLE'}
+        </span>
+
         <div className="flex overflow-hidden rounded-md border border-edge font-display text-xs tracking-wide [-webkit-app-region:no-drag]">
           {(['dial-in', 'auto'] as const).map((m) => (
             <button
@@ -168,12 +183,14 @@ export default function App(): JSX.Element {
           ))}
         </div>
 
-        {/* run control — phase-driven primary action */}
+        {/* run control — phase-driven primary action (WP5): one coherent group.
+            STOP exists ONLY when there is something to stop. */}
         <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
           {isRunning ? (
             <button
               type="button"
               onClick={() => void pauseRun()}
+              title="hold the run — Resume continues from the same position"
               className="rounded-md border border-edge bg-cream px-3 py-1.5 font-display text-xs font-semibold text-brown hover:border-amber"
             >
               ⏸ Pause
@@ -182,6 +199,7 @@ export default function App(): JSX.Element {
             <button
               type="button"
               onClick={() => void resumeRun()}
+              title="continue from where the run paused"
               className="rounded-md border border-sage bg-cream px-3 py-1.5 font-display text-xs font-semibold text-sage hover:brightness-95"
             >
               ▶ Resume
@@ -196,13 +214,12 @@ export default function App(): JSX.Element {
               ⚡ Initialise project
             </button>
           ) : queued.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => void startRun()}
-              className="rounded-md bg-amber px-3.5 py-1.5 font-display text-xs font-bold tracking-wide text-cream hover:brightness-105"
-            >
-              ▶ Run theme
-            </button>
+            <RunEntryButton
+              dialInTouched={dialInTouched}
+              chunkSize={18}
+              onRun={(entry) => void startRun(entry)}
+              onOpenProject={() => setCtx(true)}
+            />
           ) : (
             <button
               type="button"
@@ -213,13 +230,16 @@ export default function App(): JSX.Element {
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => void stopRun()}
-            className="rounded-md border border-[#dcaea6] bg-[#f6e4e0] px-3 py-1.5 font-mono text-xs text-[#b5524a] hover:bg-[#f2d7d1]"
-          >
-            ■ STOP
-          </button>
+          {(isRunning || isPaused) && (
+            <button
+              type="button"
+              onClick={() => void stopRun()}
+              title="end the run — the queue keeps its progress; the ChatGPT view and login stay attached"
+              className="rounded-md border border-[#dcaea6] bg-[#f6e4e0] px-3 py-1.5 font-mono text-xs text-[#b5524a] hover:bg-[#f2d7d1]"
+            >
+              ■ STOP
+            </button>
+          )}
         </div>
       </header>
 
@@ -313,6 +333,73 @@ export default function App(): JSX.Element {
           </>
         )}
       </footer>
+    </div>
+  );
+}
+
+/**
+ * Run entry chooser (WP5 — THE fix for bug #12). Running a theme is a visible
+ * choice BEFORE anything is sent: continue in the dialled-in chat (default when
+ * dial-in touched the conversation) or start a fresh primed one.
+ */
+function RunEntryButton(props: {
+  dialInTouched: boolean;
+  chunkSize: number;
+  onRun: (entry: 'continue' | 'fresh') => void;
+  onOpenProject: () => void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const pick = (entry: 'continue' | 'fresh'): void => {
+    setOpen(false);
+    props.onRun(entry);
+  };
+  const optionCls = (primary: boolean): string =>
+    'rounded-md border px-2.5 py-2 text-left ' +
+    (primary ? 'border-amber bg-cream hover:brightness-95' : 'border-edge bg-cream hover:border-amber');
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="rounded-md bg-amber px-3.5 py-1.5 font-display text-xs font-bold tracking-wide text-cream hover:brightness-105"
+      >
+        ▶ Run theme…
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-1.5 flex w-[300px] flex-col gap-1.5 rounded-lg border border-edge bg-surface p-2 shadow-lg">
+          <button type="button" onClick={() => pick('continue')} className={optionCls(props.dialInTouched)}>
+            <div className="font-display text-xs font-bold text-brown">
+              Continue in this chat{props.dialInTouched ? '  ← recommended' : ''}
+            </div>
+            <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted">
+              keeps everything you dialled in — no new conversation, no primer; starts feeding
+              the queue.
+            </div>
+          </button>
+          <button type="button" onClick={() => pick('fresh')} className={optionCls(!props.dialInTouched)}>
+            <div className="font-display text-xs font-bold text-brown">Start a fresh chat</div>
+            <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted">
+              new conversation → primer posted → feed. Dialled-in refinements are NOT carried
+              over.
+            </div>
+          </button>
+          {props.dialInTouched && (
+            <div className="rounded-md border border-amber bg-cream px-2.5 py-2 font-mono text-[10px] leading-relaxed text-brown">
+              ⚠ after ~{props.chunkSize} images the run re-primes a fresh chat from the SAVED
+              Project.md — refinements living only in this conversation are lost then. Fold them
+              into Project first.{' '}
+              <button
+                type="button"
+                onClick={props.onOpenProject}
+                className="font-bold text-amber hover:underline"
+              >
+                Open Project ↗
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -482,6 +569,7 @@ function ContextPanel(props: {
               <div className="font-display text-xs font-semibold text-brown">{r.themeName}</div>
               <div className="font-mono text-[10px] text-muted">
                 {fmtWhen(r.startedAt)} · {r.harvested}/{r.total}
+                {r.mode === 'dial-in' ? ' · dial-in' : ''}
                 {r.outcome === 'stopped' ? ' · stopped' : ''}
               </div>
             </button>

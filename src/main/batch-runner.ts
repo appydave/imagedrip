@@ -51,11 +51,16 @@ export interface BatchRunnerDeps {
 }
 
 const DEFAULTS: Required<RunConfig> = {
+  entry: 'fresh',
   chunkSize: 18, // re-prime a fresh chat every ~15–20 (plan §3)
   cadenceBaseMs: 3500,
   cadenceJitterMs: 3000,
-  primerSettleMs: 6000, // let ChatGPT ingest the primer before the first prompt
-  loadSettleMs: 2500, // let a fresh chat hydrate before feeding
+  // WP5 (B329 #12 symptom): after a forced new chat the prompt pasted but never
+  // sent — Enter lands before the composer is live / while the primer reply is
+  // still streaming. Longer settles are the no-driver-change mitigation; the
+  // live verification is David's WP5 acceptance run.
+  primerSettleMs: 9000, // let ChatGPT ingest the primer before the first prompt
+  loadSettleMs: 4000, // let a fresh chat hydrate before feeding
 };
 
 export class BatchRunner {
@@ -130,7 +135,10 @@ export class BatchRunner {
     this.primer = await this.d.getPrimer();
     this.idx = 0;
     this.harvestedCount = 0;
-    this.seen.clear();
+    // WP5: only a FRESH chat may forget seen srcs. On 'continue' the chat still
+    // holds earlier images (hand-made or prior runs) whose srcs can re-fire —
+    // the seen set (incl. WP4 passive learning) is what stops mis-attribution.
+    if (this.cfg.entry === 'fresh') this.seen.clear();
     this.awaiting = false;
     this.stopped = false;
     this.manualPaused = false;
@@ -153,7 +161,18 @@ export class BatchRunner {
       }
     }
 
-    this.logger?.info({ total: this.queue.length, runId: this.runPrefix }, 'batch run started');
+    this.logger?.info(
+      { total: this.queue.length, runId: this.runPrefix, entry: this.cfg.entry },
+      'batch run started',
+    );
+
+    // WP5 — THE fix for B329 #12: 'continue' reuses the dialled-in conversation
+    // as-is. No newConversation(), no primer — the chat already carries the
+    // refinements. Straight to the queue, same pacing gate.
+    if (this.cfg.entry === 'continue') {
+      await this.feedNext();
+      return;
+    }
     await this.primeThenContinue(true);
   }
 

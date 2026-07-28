@@ -51,4 +51,10 @@ to repeat one.
   ⚡ inject (feeds that one prompt, harvests into a lazily-opened dial-in run record);
   passive seen-learning stops old images being mis-attributed; Auto loop excluded
   while injecting and vice versa.
-  **Awaiting David's in-app run** (the only "done" that counts). WP5–WP7 next.
+  WP5: Run theme is a visible choice — **Continue in this chat** (no new conversation,
+  no primer; recommended once dial-in touched the chat; entry-time warning that mid-run
+  re-primes revert to saved Project.md) vs **Start a fresh chat** (v1 behaviour).
+  STOP renders only when running/paused; LIVE/PAUSED/IDLE state chip; STOP-vs-Pause
+  defined in tooltips. Pacing gate re-verified by unit tests (fake harness), untouched.
+  Settle defaults bumped (load 4s, primer 9s) for the paste-without-enter symptom.
+  **Awaiting David's in-app run** (the only "done" that counts). WP6–WP7 next.
