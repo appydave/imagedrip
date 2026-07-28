@@ -7,3 +7,6 @@ release/
 .turbo/
 probe/*.log
 .mochaccino/
+
+# blackboard — inter-agent scratch channel, machine-local
+.blackboard/
