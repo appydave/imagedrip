@@ -43,6 +43,8 @@ export default function App(): JSX.Element {
     pauseRun,
     resumeRun,
     stopRun,
+    injectPrimer,
+    injectPrompt,
     setCtx,
     setMode,
   } = useAppStore();
@@ -184,6 +186,15 @@ export default function App(): JSX.Element {
             >
               ▶ Resume
             </button>
+          ) : mode === 'dial-in' ? (
+            <button
+              type="button"
+              onClick={() => void injectPrimer()}
+              title="posts the composed primer into the LIVE chat and submits it — no new conversation, no keyboard"
+              className="rounded-md bg-amber px-3.5 py-1.5 font-display text-xs font-bold tracking-wide text-cream hover:brightness-105"
+            >
+              ⚡ Initialise project
+            </button>
           ) : queued.length > 0 ? (
             <button
               type="button"
@@ -257,7 +268,10 @@ export default function App(): JSX.Element {
           <div className="flex min-w-0 flex-1 gap-3.5 p-3.5">
             <QueuedLane
               prompts={queued}
-              onImport={(t, mode) => void importPrompts(t, mode)}
+              dialIn={mode === 'dial-in'}
+              injectBusy={isRunning || isPaused}
+              onInject={(id) => void injectPrompt(id)}
+              onImport={(t, m) => void importPrompts(t, m)}
             />
             <HarvestedLane
               items={harvested.map((p) => ({ subject: p.subject, savedPath: p.savedPath }))}
@@ -938,6 +952,10 @@ function ListPromptCard(props: { onCopy: (text: string, label: string) => void }
 /* ── QUEUED lane — what's still to run this theme ─────────────────── */
 function QueuedLane(props: {
   prompts: { id: string; subject: string }[];
+  /** Dial-in (WP4): rows reveal a manual inject action on hover. */
+  dialIn: boolean;
+  injectBusy: boolean;
+  onInject: (promptId: string) => void;
   onImport: (text: string, mode: 'replace' | 'add') => void;
 }): JSX.Element {
   const [importing, setImporting] = useState(false);
@@ -1042,12 +1060,29 @@ function QueuedLane(props: {
         {props.prompts.map((p, i) => (
           <div
             key={p.id}
-            className="flex items-center justify-between rounded-md border border-edge bg-cream px-2.5 py-2 text-[13px]"
+            className="group flex items-center justify-between rounded-md border border-edge bg-cream px-2.5 py-2 text-[13px]"
           >
-            {p.subject}
-            <span className="font-mono text-[10px] text-gold">
-              {String(i + 1).padStart(2, '0')}
-            </span>
+            <span className="truncate">{p.subject}</span>
+            {props.dialIn ? (
+              <>
+                <span className="font-mono text-[10px] text-gold group-hover:hidden">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <button
+                  type="button"
+                  disabled={props.injectBusy}
+                  onClick={() => props.onInject(p.id)}
+                  title="feed THIS prompt into the live chat and harvest its image"
+                  className="hidden flex-shrink-0 rounded bg-amber px-2 py-0.5 font-display text-[10px] font-bold text-cream hover:brightness-105 disabled:opacity-50 group-hover:inline-block"
+                >
+                  ⚡ inject
+                </button>
+              </>
+            ) : (
+              <span className="font-mono text-[10px] text-gold">
+                {String(i + 1).padStart(2, '0')}
+              </span>
+            )}
           </div>
         ))}
         {props.prompts.length === 0 && (

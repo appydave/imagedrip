@@ -46,4 +46,9 @@ to repeat one.
   Primer/Prompt descriptions + exact previews, listing-prompt helper card.
   WP3: import is now explicit Add-to-queue (append, ids continue) vs Replace-queue
   (two-step confirm; harvested prompts always survive).
-  **Awaiting David's in-app run** (the only "done" that counts). WP4–WP7 next.
+  WP4: Dial-in is real — ⚡ Initialise project (primer into the LIVE chat + submit via
+  the proven feed() path) is the Dial-in primary action; queue rows hover-reveal
+  ⚡ inject (feeds that one prompt, harvests into a lazily-opened dial-in run record);
+  passive seen-learning stops old images being mis-attributed; Auto loop excluded
+  while injecting and vice versa.
+  **Awaiting David's in-app run** (the only "done" that counts). WP5–WP7 next.

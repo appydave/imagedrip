@@ -39,6 +39,10 @@ export const IPC = {
   runPause: 'imagedrip:run:pause',
   runResume: 'imagedrip:run:resume',
   runStop: 'imagedrip:run:stop',
+  /** Dial-in (WP4): post the primer into the LIVE chat and submit. */
+  runInjectPrimer: 'imagedrip:run:inject-primer',
+  /** Dial-in (WP4): feed ONE queued prompt and harvest its image. */
+  runInjectPrompt: 'imagedrip:run:inject-prompt',
   /** main → renderer push of run status snapshots. */
   runStatus: 'imagedrip:run:status',
   /** Read a harvested image (rel to the harvest root) → data URL for the grid. */
@@ -132,6 +136,8 @@ export interface RunManifest {
   runId: string;
   projectName: string;
   themeName: string;
+  /** How the run was driven: the Auto loop, or manual Dial-in injects (WP4). */
+  mode?: 'auto' | 'dial-in';
   startedAt: number;
   finishedAt?: number;
   outcome?: 'complete' | 'stopped';
@@ -149,6 +155,7 @@ export interface RunManifest {
 export interface RunSummary {
   runId: string;
   themeName: string;
+  mode?: 'auto' | 'dial-in';
   startedAt: number;
   finishedAt?: number;
   outcome?: 'complete' | 'stopped';
@@ -263,6 +270,10 @@ export interface ImagedripApi {
     pause(): Promise<void>;
     resume(): Promise<void>;
     stop(): Promise<void>;
+    /** Dial-in (WP4): "Initialise project" — primer into the live chat + submit. */
+    injectPrimer(): Promise<void>;
+    /** Dial-in (WP4): inject one queued prompt; it harvests into the dial-in run. */
+    injectPrompt(promptId: string): Promise<void>;
     /** Subscribe to run status snapshots; returns an unsubscribe fn. */
     onStatus(cb: (s: RunStatus) => void): () => void;
   };

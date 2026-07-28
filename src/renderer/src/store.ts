@@ -49,6 +49,10 @@ interface AppState {
   pauseRun: () => Promise<void>;
   resumeRun: () => Promise<void>;
   stopRun: () => Promise<void>;
+  /** Dial-in (WP4): primer into the live chat + submit — "Initialise project". */
+  injectPrimer: () => Promise<void>;
+  /** Dial-in (WP4): inject one queued prompt; harvests into the dial-in run. */
+  injectPrompt: (promptId: string) => Promise<void>;
 
   setCtx: (open: boolean) => void;
   setMode: (mode: Mode) => void;
@@ -202,6 +206,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   stopRun: async () => {
     await window.imagedrip.run.stop();
     set({ flash: 'stopped' });
+  },
+  injectPrimer: async () => {
+    try {
+      await window.imagedrip.run.injectPrimer();
+      set({ flash: 'primer sent to ChatGPT — project initialised' });
+    } catch (err) {
+      set({ flash: err instanceof Error ? err.message : 'inject failed' });
+    }
+  },
+  injectPrompt: async (promptId) => {
+    try {
+      await window.imagedrip.run.injectPrompt(promptId);
+    } catch (err) {
+      set({ flash: err instanceof Error ? err.message : 'inject failed' });
+    }
   },
 
   setCtx: (open) => set({ ctxOpen: open }),

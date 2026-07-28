@@ -34,6 +34,8 @@ export interface RunStartInfo {
   themeName: string;
   primer: string;
   prompts: Prompt[];
+  /** 'auto' (Batch Runner) or 'dial-in' (manual injects — WP4). */
+  mode?: 'auto' | 'dial-in';
 }
 
 /** Records one run at a time; every mutation rewrites the manifest atomically. */
@@ -58,6 +60,7 @@ export class RunRecorder {
       runId,
       projectName: info.projectName,
       themeName: info.themeName,
+      mode: info.mode ?? 'auto',
       startedAt: Date.now(),
       primer: info.primer,
       prompts: info.prompts.map((p) => ({
@@ -73,6 +76,15 @@ export class RunRecorder {
     await this.flush();
     this.logger?.info({ runId }, 'run manifest opened');
     return runId;
+  }
+
+  /** Register a prompt injected into an open (dial-in) run — idempotent (WP4). */
+  async addPrompt(p: Prompt): Promise<void> {
+    const m = this.manifest;
+    if (!m || m.prompts.some((x) => x.id === p.id)) return;
+    m.prompts.push({ id: p.id, subject: p.subject, text: p.text, status: 'queued' });
+    m.counts.total += 1;
+    await this.flush();
   }
 
   async harvest(
@@ -168,6 +180,7 @@ export async function listRuns(outputDir: string): Promise<RunSummary[]> {
     out.push({
       runId: m.runId,
       themeName: m.themeName,
+      mode: m.mode,
       startedAt: m.startedAt,
       finishedAt: m.finishedAt,
       outcome: m.outcome,

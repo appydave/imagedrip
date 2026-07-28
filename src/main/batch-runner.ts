@@ -25,7 +25,9 @@ import type { WebviewHarness } from './webview-harness.js';
  * a manifest failure must never wedge or slow the run itself.
  */
 export interface RunRecorderHooks {
-  start(info: { primer: string; prompts: Prompt[] }): Promise<string>;
+  start(info: { primer: string; prompts: Prompt[]; mode: 'auto' | 'dial-in' }): Promise<string>;
+  /** Register a prompt injected into an already-open (dial-in) run (WP4). */
+  addPrompt(prompt: Prompt): Promise<void>;
   harvest(promptId: string, file: string, generationMs?: number, imageUrl?: string): Promise<void>;
   refusal(promptId: string): Promise<void>;
   reprime(afterHarvested: number): Promise<void>;
@@ -69,6 +71,10 @@ export class BatchRunner {
   /** Harvest subfolder for this run (the run id) — '' when no recorder. */
   private runPrefix = '';
   private recorderActive = false;
+  /** A single manual (Dial-in) inject is in flight (WP4). */
+  private manual = false;
+  /** The open dial-in run record, if any — stays open across injects (WP4). */
+  private manualRunId = '';
 
   private phase: RunStatus['phase'] = 'idle';
   private awaiting = false;
@@ -113,6 +119,7 @@ export class BatchRunner {
 
   async start(config?: RunConfig): Promise<void> {
     if (!this.stopped) return; // already running
+    this.closeManualRun(); // a live Auto run supersedes any open dial-in record
     this.cfg = { ...DEFAULTS, ...config };
     this.queue = (await this.d.getQueue()).filter((p) => p.status === 'queued');
     if (this.queue.length === 0) {
@@ -135,7 +142,11 @@ export class BatchRunner {
     this.recorderActive = false;
     if (this.d.recorder) {
       try {
-        this.runPrefix = await this.d.recorder.start({ primer: this.primer, prompts: this.queue });
+        this.runPrefix = await this.d.recorder.start({
+          primer: this.primer,
+          prompts: this.queue,
+          mode: 'auto',
+        });
         this.recorderActive = true;
       } catch (err) {
         this.logger?.warn({ err: String(err) }, 'run recorder failed to start — running unrecorded');
@@ -171,6 +182,8 @@ export class BatchRunner {
     if (this.stopped) return;
     this.stopped = true;
     this.awaiting = false;
+    this.manual = false;
+    this.manualRunId = '';
     this.clearTimers();
     this.guard.dispose();
     this.phase = 'stopped';
@@ -178,6 +191,74 @@ export class BatchRunner {
     this.finishRun('stopped');
     this.emit();
     this.logger?.info({ harvested: this.harvestedCount }, 'batch run stopped');
+  }
+
+  // ── manual injection (WP4 — Dial-in is a real mode) ────────────────────────
+
+  /**
+   * "Initialise project" — post the composed primer into the LIVE chat and
+   * submit it. No new conversation, no queue: the dial-in complement of Copy
+   * Primer. Uses the proven feed() path (clipboard → click → paste → Enter).
+   */
+  async injectPrimer(): Promise<void> {
+    if (!this.stopped) throw new Error('a run is in flight — stop it first');
+    const primer = await this.d.getPrimer();
+    if (!primer.trim()) throw new Error('primer is empty — fill Brand/Project first');
+    await this.d.harness.feed(primer);
+    this.logger?.info({ chars: primer.length }, 'dial-in: primer injected');
+  }
+
+  /**
+   * Inject ONE queued prompt into the live chat and harvest its image into the
+   * current dial-in run. Reuses the exact awaiting-gate + seen-set the Auto
+   * loop uses — same de-dupe, same harvest path, no parallel mechanism.
+   */
+  async injectOne(promptId: string): Promise<void> {
+    if (!this.stopped) throw new Error('a run is in flight — stop it first');
+    const prompt = (await this.d.getQueue()).find(
+      (p) => p.id === promptId && p.status === 'queued',
+    );
+    if (!prompt) throw new Error('prompt not found or already harvested');
+
+    // Lazily open ONE dial-in run record; later injects harvest into it too.
+    if (!this.manualRunId && this.d.recorder) {
+      try {
+        const primer = await this.d.getPrimer();
+        this.manualRunId = await this.d.recorder.start({ primer, prompts: [], mode: 'dial-in' });
+        this.recorderActive = true;
+      } catch (err) {
+        this.logger?.warn({ err: String(err) }, 'dial-in run recorder failed — unrecorded');
+      }
+    }
+    this.runPrefix = this.manualRunId;
+    this.recordSafe((r) => r.addPrompt(prompt));
+
+    // Single-item "run" through the normal machinery. seen is NOT cleared —
+    // images already in the chat stay known and can never be mis-attributed.
+    this.queue = [prompt];
+    this.idx = 0;
+    this.manual = true;
+    this.stopped = false;
+    this.manualPaused = false;
+    this.note = undefined;
+
+    this.phase = 'feeding';
+    this.emit();
+    await this.d.harness.feed(prompt.text);
+    if (this.stopped) return;
+    this.awaiting = true;
+    this.feedAt = Date.now();
+    this.phase = 'awaiting';
+    this.emit();
+    this.logger?.info({ subject: prompt.subject }, 'dial-in: prompt injected');
+  }
+
+  /** Close the open dial-in run record (auto-start / project switch / stop). */
+  closeManualRun(): void {
+    if (!this.manualRunId) return;
+    this.manualRunId = '';
+    this.runPrefix = '';
+    this.finishRun('complete');
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
@@ -227,8 +308,16 @@ export class BatchRunner {
   }
 
   private async onImageDone(url: string): Promise<void> {
-    if (this.stopped || !this.awaiting) return;
-    if (!url || this.seen.has(url)) return; // flip-flop / re-fire — first UNSEEN wins
+    if (!url) return;
+    if (this.stopped || !this.awaiting) {
+      // Passive learning (WP4): an image finishing while we are NOT awaiting
+      // (e.g. hand-driven dial-in) is remembered, so a later DOM re-fire of its
+      // src can never be mis-attributed to an injected prompt. This only ADDS
+      // to "first UNSEEN wins" — the gate itself is unchanged.
+      this.seen.add(url);
+      return;
+    }
+    if (this.seen.has(url)) return; // flip-flop / re-fire — first UNSEEN wins
     this.seen.add(url);
     this.awaiting = false;
 
@@ -255,6 +344,15 @@ export class BatchRunner {
     this.phase = 'harvested';
     this.emit();
 
+    // A manual inject is one prompt: return to idle, keep the dial-in run
+    // record OPEN so the next inject harvests into the same folder (WP4).
+    if (this.manual) {
+      this.manual = false;
+      this.stopped = true;
+      this.emit();
+      return;
+    }
+
     if (this.idx >= this.queue.length) {
       this.phase = 'done';
       this.finishRun('complete');
@@ -277,6 +375,12 @@ export class BatchRunner {
     this.note = `refused: ${prompt?.subject ?? '?'} — skipped`;
     this.logger?.warn({ subject: prompt?.subject }, 'prompt refused — skipping');
     if (prompt) this.recordSafe((r) => r.refusal(prompt.id));
+    if (this.manual) {
+      this.manual = false;
+      this.stopped = true;
+      this.emit();
+      return;
+    }
     this.idx += 1;
     if (this.idx >= this.queue.length) {
       this.phase = 'done';

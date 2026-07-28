@@ -128,11 +128,18 @@ function getRunner(): BatchRunner {
     emit: pushRunStatus,
     recorder: {
       // Route the run into the ACTIVE project before anything is written.
-      start: async ({ primer, prompts }) => {
+      start: async ({ primer, prompts, mode }) => {
         await ensureOutputRoot();
         const s = await getDomain();
-        return rec.start({ projectName: s.project.name, themeName: s.theme.name, primer, prompts });
+        return rec.start({
+          projectName: s.project.name,
+          themeName: s.theme.name,
+          primer,
+          prompts,
+          mode,
+        });
       },
+      addPrompt: (p) => rec.addPrompt(p),
       harvest: (id, file, ms, url) => rec.harvest(id, file, ms, url),
       refusal: (id) => rec.refusal(id),
       reprime: (after) => rec.reprime(after),
@@ -265,6 +272,7 @@ const desktop = createConsole({
       handle: async (id) => {
         // Switching repoints the harvest root — never yank it out from under a run.
         if (runner?.running) throw new Error('stop the run before switching projects');
+        runner?.closeManualRun(); // a dial-in run record belongs to ONE project
         const state = await switchProject(id);
         await ensureOutputRoot();
         return state;
@@ -321,6 +329,16 @@ const desktop = createConsole({
     ipc.register<void, void>({
       channel: IPC.runStop,
       handle: () => runner?.stop(),
+    });
+    // ── Dial-in manual injection (WP4) ──
+    ipc.register<void, void>({
+      channel: IPC.runInjectPrimer,
+      handle: () => getRunner().injectPrimer(),
+    });
+    ipc.register<string, void>({
+      channel: IPC.runInjectPrompt,
+      input: z.string().min(1),
+      handle: (promptId) => getRunner().injectOne(promptId),
     });
     ipc.register<string, string | null>({
       channel: IPC.harvestThumb,

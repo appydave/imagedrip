@@ -89,6 +89,28 @@ describe('RunRecorder', () => {
     });
   });
 
+  it('records a dial-in run: starts empty, addPrompt is idempotent, harvests land (WP4)', async () => {
+    const { files, author } = fakeAuthor();
+    const rec = new RunRecorder({ fileAuthor: author });
+    const runId = await rec.start({
+      projectName: 'Smoothies',
+      themeName: 'animals',
+      primer: 'PRIMER',
+      prompts: [],
+      mode: 'dial-in',
+    });
+
+    await rec.addPrompt(PROMPTS[0]);
+    await rec.addPrompt(PROMPTS[0]); // second inject of the same prompt: no dupe
+    await rec.harvest('kangaroo-1', 'kangaroo.png', 30000, 'https://img/k');
+
+    const m = JSON.parse(files.get(`${runId}/manifest.json`)!) as RunManifest;
+    expect(m.mode).toBe('dial-in');
+    expect(m.prompts).toHaveLength(1);
+    expect(m.prompts[0]).toMatchObject({ id: 'kangaroo-1', status: 'harvested' });
+    expect(m.counts).toEqual({ total: 1, harvested: 1, refused: 0 });
+  });
+
   it('gives a second same-minute run of the same theme a distinct id', async () => {
     const { author } = fakeAuthor();
     const rec = new RunRecorder({ fileAuthor: author });
