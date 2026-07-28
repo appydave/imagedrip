@@ -34,7 +34,11 @@ interface Fake {
   imageDone: (url: string) => void;
 }
 
-function makeFake(prompts: Prompt[] = PROMPTS, primer = 'PRIMER'): Fake {
+function makeFake(
+  prompts: Prompt[] = PROMPTS,
+  primer = 'PRIMER',
+  opts: { feedDelayMs?: number } = {},
+): Fake {
   const feeds: string[] = [];
   const harvests: string[] = [];
   let newConv = 0;
@@ -48,6 +52,7 @@ function makeFake(prompts: Prompt[] = PROMPTS, primer = 'PRIMER'): Fake {
     onRefused: () => {},
     onStall: () => {},
     feed: async (text: string) => {
+      if (opts.feedDelayMs) await new Promise((r) => setTimeout(r, opts.feedDelayMs));
       feeds.push(text);
     },
     newConversation: async () => {
@@ -178,5 +183,87 @@ describe('BatchRunner pacing gate (WP5 problem C — re-verified, not rebuilt)',
     f.imageDone('https://img/old');
     await settle();
     expect(f.harvests).toEqual(['kangaroo.png']);
+  });
+
+  it('re-primes a fresh chat at the chunk boundary — first-ever execution of this path', async () => {
+    const f = makeFake();
+    await f.runner.start({ ...FAST, entry: 'continue', chunkSize: 2 });
+    await settle();
+    f.imageDone('https://img/1');
+    await settle();
+    f.imageDone('https://img/2');
+    await settle(); // chunk boundary after 2 harvests → re-prime, then prompt 3
+    expect(f.newConversations()).toBe(1);
+    expect(f.feeds).toEqual(['a kangaroo', 'a koala', 'PRIMER', 'an emu']);
+    f.imageDone('https://img/3');
+    await settle();
+    expect(f.harvests).toEqual(['kangaroo.png', 'koala.png', 'emu.png']);
+  });
+
+  it('does NOT bank an image-done that fires while a feed is in flight (advisory-1 #6)', async () => {
+    const f = makeFake(PROMPTS, 'PRIMER', { feedDelayMs: 50 });
+    const p = f.runner.start({ ...FAST, entry: 'continue' });
+    // The feed await is live — our image's src arriving now must not be banked.
+    await new Promise((r) => setTimeout(r, 10));
+    f.imageDone('https://img/ours');
+    await p;
+    await settle();
+    // Not awaiting when it fired, so it wasn't harvested — but because it was
+    // NOT banked, its re-fire after awaiting=true still counts as first UNSEEN.
+    f.imageDone('https://img/ours');
+    await settle();
+    expect(f.harvests).toEqual(['kangaroo.png']);
+  });
+});
+
+describe('BatchRunner entry latch (advisory-1 #1 — account safety)', () => {
+  it('rejects a second inject while one is still in flight', async () => {
+    const f = makeFake(PROMPTS, 'PRIMER', { feedDelayMs: 50 });
+    const p1 = f.runner.injectOne('kangaroo-1');
+    await expect(f.runner.injectOne('koala-2')).rejects.toThrow(/already in flight/);
+    await p1;
+    expect(f.feeds).toEqual(['a kangaroo']); // exactly ONE prompt reached the chat
+  });
+
+  it('rejects concurrent Initialise-project clicks — only one primer is fed', async () => {
+    const f = makeFake(PROMPTS, 'PRIMER', { feedDelayMs: 50 });
+    const p1 = f.runner.injectPrimer();
+    await expect(f.runner.injectPrimer()).rejects.toThrow(/already in flight/);
+    await p1;
+    expect(f.feeds).toEqual(['PRIMER']);
+  });
+
+  it('rejects an inject racing runStart through its async setup gap', async () => {
+    const f = makeFake(PROMPTS, 'PRIMER', { feedDelayMs: 50 });
+    const p = f.runner.start({ ...FAST, entry: 'continue' });
+    await expect(f.runner.injectOne('koala-2')).rejects.toThrow(/already in flight/);
+    await p;
+    await settle();
+    expect(f.feeds).toEqual(['a kangaroo']);
+  });
+
+  it('rejects an inject while an auto run is awaiting an image', async () => {
+    const f = makeFake();
+    await f.runner.start({ ...FAST, entry: 'continue' });
+    await settle();
+    await expect(f.runner.injectOne('koala-2')).rejects.toThrow(/already in flight/);
+    expect(f.feeds).toEqual(['a kangaroo']);
+  });
+});
+
+describe('BatchRunner chat-primed state (advisory-1 #8)', () => {
+  it('reports primed after injectPrimer, and after a fresh run posts the primer', async () => {
+    const f = makeFake();
+    expect(f.runner.chatIsPrimed).toBe(false);
+    await f.runner.injectPrimer();
+    expect(f.runner.chatIsPrimed).toBe(true);
+  });
+
+  it("a fresh run's newConversation resets primed until the primer lands", async () => {
+    const f = makeFake();
+    await f.runner.injectPrimer();
+    await f.runner.start({ ...FAST, entry: 'fresh' });
+    await settle();
+    expect(f.runner.chatIsPrimed).toBe(true); // primer re-posted in the new chat
   });
 });

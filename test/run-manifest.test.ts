@@ -120,6 +120,21 @@ describe('RunRecorder', () => {
     const second = await rec.start(info);
     expect(second).not.toBe(first);
   });
+
+  it('seeds used ids from the folders on disk — no collision across an app restart (advisory-1 #5)', async () => {
+    const info = { projectName: 'P', themeName: 't', primer: '', prompts: PROMPTS };
+    // "First app session" writes a run.
+    const s1 = fakeAuthor();
+    const first = await new RunRecorder({ fileAuthor: s1.author }).start(info);
+    // "Second app session" (fresh in-memory usedIds) sees that folder on disk.
+    const s2 = fakeAuthor();
+    const rec2 = new RunRecorder({
+      fileAuthor: s2.author,
+      listExistingRunIds: async () => [first],
+    });
+    const second = await rec2.start(info);
+    expect(second).not.toBe(first);
+  });
 });
 
 describe('listRuns / readRunManifest', () => {

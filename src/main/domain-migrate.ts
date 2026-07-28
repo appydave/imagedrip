@@ -176,8 +176,12 @@ function v1ToV2(raw: V1Shape, outputRoot: string): V2Shape {
 
 /**
  * Normalize whatever is on disk to v3. `migrated` signals the caller to write
- * the upgraded document back. Unrecognizable input falls back to seed defaults
- * (should not happen — createStore supplies defaults for a missing file).
+ * the upgraded document back.
+ *
+ * Advisory-1 #3: a document that PARSED but matches no known shape is NEVER
+ * seed-overwritten — that would replace David's real brand/project/queue with
+ * the demo. It throws instead; the .bak next to domain.json is the restore
+ * point. Only a truly absent document (null/undefined) seeds.
  */
 export function migrateDomain(
   raw: unknown,
@@ -206,5 +210,10 @@ export function migrateDomain(
     return { state: v2ToV3(v1ToV2(raw, outputRoot)), migrated: true };
   }
 
-  return { state: seedDefaults(outputRoot), migrated: true };
+  if (raw == null) return { state: seedDefaults(outputRoot), migrated: true };
+
+  throw new Error(
+    'domain.json is unrecognizable (not v1/v2/v3) — refusing to overwrite it with seed data. ' +
+      'Restore from the .bak file next to it.',
+  );
 }

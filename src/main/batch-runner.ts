@@ -80,6 +80,18 @@ export class BatchRunner {
   private manual = false;
   /** The open dial-in run record, if any — stays open across injects (WP4). */
   private manualRunId = '';
+  /**
+   * Synchronous entry latch (advisory-1 #1). `stopped` only flips AFTER the
+   * async setup awaits in start()/injectOne(), so two rapid entries could both
+   * pass the `!stopped` guard and BOTH reach harness.feed() — two prompts into
+   * one chat with no image between, the exact North-Star violation. This latch
+   * is set before ANY await and closes that window.
+   */
+  private busy = false;
+  /** A harness.feed() await is in flight (advisory-1 #6) — see onImageDone. */
+  private feedInFlight = false;
+  /** The current conversation carries a primer / dial-in touch (advisory-1 #8). */
+  private chatPrimed = false;
 
   private phase: RunStatus['phase'] = 'idle';
   private awaiting = false;
@@ -122,8 +134,23 @@ export class BatchRunner {
     return !this.stopped;
   }
 
+  /** Whether the LIVE conversation is primed/touched — main-process truth for
+   *  the renderer's run-entry default (advisory-1 #8). */
+  get chatIsPrimed(): boolean {
+    return this.chatPrimed;
+  }
+
   async start(config?: RunConfig): Promise<void> {
-    if (!this.stopped) return; // already running
+    if (!this.stopped || this.busy) return; // already running / entry in flight
+    this.busy = true; // sync latch BEFORE any await (advisory-1 #1)
+    try {
+      await this.startInner(config);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async startInner(config?: RunConfig): Promise<void> {
     this.closeManualRun(); // a live Auto run supersedes any open dial-in record
     this.cfg = { ...DEFAULTS, ...config };
     this.queue = (await this.d.getQueue()).filter((p) => p.status === 'queued');
@@ -148,6 +175,8 @@ export class BatchRunner {
     // Open the run record (WP1) — its id becomes the harvest subfolder.
     this.runPrefix = '';
     this.recorderActive = false;
+    // Fail LOUD if the run record cannot open (advisory-1 #7): an unrecorded
+    // run would silently drop harvests into the output ROOT with no manifest.
     if (this.d.recorder) {
       try {
         this.runPrefix = await this.d.recorder.start({
@@ -157,7 +186,10 @@ export class BatchRunner {
         });
         this.recorderActive = true;
       } catch (err) {
-        this.logger?.warn({ err: String(err) }, 'run recorder failed to start — running unrecorded');
+        this.stopped = true;
+        this.phase = 'idle';
+        this.emit();
+        throw new Error(`cannot open the run record: ${String(err)}`);
       }
     }
 
@@ -220,11 +252,17 @@ export class BatchRunner {
    * Primer. Uses the proven feed() path (clipboard → click → paste → Enter).
    */
   async injectPrimer(): Promise<void> {
-    if (!this.stopped) throw new Error('a run is in flight — stop it first');
-    const primer = await this.d.getPrimer();
-    if (!primer.trim()) throw new Error('primer is empty — fill Brand/Project first');
-    await this.d.harness.feed(primer);
-    this.logger?.info({ chars: primer.length }, 'dial-in: primer injected');
+    if (!this.stopped || this.busy) throw new Error('an injection or run is already in flight');
+    this.busy = true; // sync latch BEFORE any await (advisory-1 #1)
+    try {
+      const primer = await this.d.getPrimer();
+      if (!primer.trim()) throw new Error('primer is empty — fill Brand/Project first');
+      await this.feedGuarded(primer);
+      this.chatPrimed = true; // the conversation now carries the primer (#8)
+      this.logger?.info({ chars: primer.length }, 'dial-in: primer injected');
+    } finally {
+      this.busy = false;
+    }
   }
 
   /**
@@ -233,43 +271,60 @@ export class BatchRunner {
    * loop uses — same de-dupe, same harvest path, no parallel mechanism.
    */
   async injectOne(promptId: string): Promise<void> {
-    if (!this.stopped) throw new Error('a run is in flight — stop it first');
-    const prompt = (await this.d.getQueue()).find(
-      (p) => p.id === promptId && p.status === 'queued',
-    );
-    if (!prompt) throw new Error('prompt not found or already harvested');
+    if (!this.stopped || this.busy) throw new Error('an injection or run is already in flight');
+    this.busy = true; // sync latch BEFORE any await (advisory-1 #1)
+    try {
+      const prompt = (await this.d.getQueue()).find(
+        (p) => p.id === promptId && p.status === 'queued',
+      );
+      if (!prompt) throw new Error('prompt not found or already harvested');
 
-    // Lazily open ONE dial-in run record; later injects harvest into it too.
-    if (!this.manualRunId && this.d.recorder) {
-      try {
+      // Lazily open ONE dial-in run record; later injects harvest into it too.
+      // Fail LOUD if it cannot open (advisory-1 #7) — otherwise the harvest
+      // would silently land in the output ROOT instead of a run folder.
+      if (!this.manualRunId && this.d.recorder) {
         const primer = await this.d.getPrimer();
-        this.manualRunId = await this.d.recorder.start({ primer, prompts: [], mode: 'dial-in' });
-        this.recorderActive = true;
-      } catch (err) {
-        this.logger?.warn({ err: String(err) }, 'dial-in run recorder failed — unrecorded');
+        try {
+          this.manualRunId = await this.d.recorder.start({ primer, prompts: [], mode: 'dial-in' });
+          this.recorderActive = true;
+        } catch (err) {
+          throw new Error(`cannot open the dial-in run record: ${String(err)}`);
+        }
       }
+      this.runPrefix = this.manualRunId;
+      this.recordSafe((r) => r.addPrompt(prompt));
+
+      // Single-item "run" through the normal machinery. seen is NOT cleared —
+      // images already in the chat stay known and can never be mis-attributed.
+      this.queue = [prompt];
+      this.idx = 0;
+      this.manual = true;
+      this.stopped = false;
+      this.manualPaused = false;
+      this.note = undefined;
+
+      this.phase = 'feeding';
+      this.emit();
+      try {
+        await this.feedGuarded(prompt.text);
+      } catch (err) {
+        // The feed never reached the chat — roll back to idle, don't wedge.
+        this.stopped = true;
+        this.manual = false;
+        this.phase = 'idle';
+        this.emit();
+        throw err;
+      }
+      if (this.stopped) return;
+      this.chatPrimed = true; // dial-in touched the conversation (#8)
+      this.awaiting = true;
+      this.feedAt = Date.now();
+      this.phase = 'awaiting';
+      this.emit();
+      this.logger?.info({ subject: prompt.subject }, 'dial-in: prompt injected');
+    } finally {
+      this.busy = false;
     }
-    this.runPrefix = this.manualRunId;
-    this.recordSafe((r) => r.addPrompt(prompt));
-
-    // Single-item "run" through the normal machinery. seen is NOT cleared —
-    // images already in the chat stay known and can never be mis-attributed.
-    this.queue = [prompt];
-    this.idx = 0;
-    this.manual = true;
-    this.stopped = false;
-    this.manualPaused = false;
-    this.note = undefined;
-
-    this.phase = 'feeding';
-    this.emit();
-    await this.d.harness.feed(prompt.text);
-    if (this.stopped) return;
-    this.awaiting = true;
-    this.feedAt = Date.now();
-    this.phase = 'awaiting';
-    this.emit();
-    this.logger?.info({ subject: prompt.subject }, 'dial-in: prompt injected');
   }
 
   /** Close the open dial-in run record (auto-start / project switch / stop). */
@@ -288,18 +343,34 @@ export class BatchRunner {
     if (!first) this.recordSafe((r) => r.reprime(this.harvestedCount));
     this.emit();
 
+    this.chatPrimed = false; // fresh conversation — nothing dialled in yet (#8)
     await this.d.harness.newConversation();
     if (this.stopped) return;
     await this.sleep(this.cfg.loadSettleMs);
     if (this.stopped) return;
 
     if (this.primer.trim()) {
-      await this.d.harness.feed(this.primer);
+      await this.feedGuarded(this.primer);
       if (this.stopped) return;
+      this.chatPrimed = true; // primer posted — the chat is primed again (#8)
       await this.sleep(this.cfg.primerSettleMs);
       if (this.stopped) return;
     }
     await this.feedNext();
+  }
+
+  /**
+   * feed() with the in-flight window marked (advisory-1 #6): passive
+   * seen-banking is suppressed while a feed await is live, so an image-done
+   * landing in that gap cannot bank OUR image's src and silently stall the run.
+   */
+  private async feedGuarded(text: string): Promise<void> {
+    this.feedInFlight = true;
+    try {
+      await this.d.harness.feed(text);
+    } finally {
+      this.feedInFlight = false;
+    }
   }
 
   private async feedNext(): Promise<void> {
@@ -317,7 +388,7 @@ export class BatchRunner {
     this.note = undefined;
     this.emit();
 
-    await this.d.harness.feed(prompt.text);
+    await this.feedGuarded(prompt.text);
     if (this.stopped) return;
 
     this.awaiting = true;
@@ -333,7 +404,9 @@ export class BatchRunner {
       // (e.g. hand-driven dial-in) is remembered, so a later DOM re-fire of its
       // src can never be mis-attributed to an injected prompt. This only ADDS
       // to "first UNSEEN wins" — the gate itself is unchanged.
-      this.seen.add(url);
+      // Advisory-1 #6: never bank while a feed await is in flight — that could
+      // be OUR image's src, and banking it would make it unharvestable.
+      if (!this.feedInFlight) this.seen.add(url);
       return;
     }
     if (this.seen.has(url)) return; // flip-flop / re-fire — first UNSEEN wins

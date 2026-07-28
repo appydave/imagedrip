@@ -1,3 +1,4 @@
+import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
 import { createStore, type Store } from '@appydave/core';
@@ -35,20 +36,51 @@ export function outputRoot(): string {
   return join(app.getPath('pictures'), 'ImageDrip');
 }
 
+function domainPath(): string {
+  return join(app.getPath('userData'), 'domain.json');
+}
+
 function domain(): Store<PersistedDomain> {
   store ??= createStore<PersistedDomain>({
-    path: join(app.getPath('userData'), 'domain.json'),
+    path: domainPath(),
     defaults: seedDefaults(outputRoot()),
   });
   return store;
 }
 
-/** Read the persisted document, upgrading a v1 file in place on first touch. */
+/** Normalize whatever shape is on disk to v3 (idempotent, pure). */
+function normalize(raw: unknown): PersistedDomain {
+  return migrateDomain(raw, outputRoot()).state;
+}
+
+/**
+ * Read the persisted document, upgrading an old file in place on first touch.
+ * Advisory-1 #3: a timestamped .bak is taken BEFORE any migrating write, so
+ * David's real data always has a restore point next to it.
+ */
 async function persisted(): Promise<PersistedDomain> {
   const raw = (await domain().read()) as unknown;
   const { state, migrated } = migrateDomain(raw, outputRoot());
-  if (migrated) await domain().update(() => state);
-  return state;
+  if (!migrated) return state;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  try {
+    await fs.copyFile(domainPath(), `${domainPath()}.${stamp}.bak`);
+  } catch {
+    // no file yet (fresh install) — nothing to back up
+  }
+  return domain().update((s) => normalize(s));
+}
+
+/**
+ * Every mutation derives its result from the update() CLOSURE ARGUMENT — never
+ * from a pre-read snapshot (advisory-1 #2). Two concurrent autosaves (Brand +
+ * Project debounce both firing) must both survive; a stale-snapshot spread
+ * would silently discard whichever landed first.
+ */
+async function updateDoc(fn: (s: PersistedDomain) => PersistedDomain): Promise<DomainState> {
+  await persisted(); // migration (with backup) happens before structural edits
+  const next = await domain().update((s) => fn(normalize(s)));
+  return view(next);
 }
 
 function activeRecord(s: PersistedDomain): ProjectRecord {
@@ -80,12 +112,10 @@ function view(s: PersistedDomain): DomainState {
 
 /** Update the ACTIVE project record; returns the new renderer view. */
 async function updateActive(fn: (rec: ProjectRecord) => ProjectRecord): Promise<DomainState> {
-  const current = await persisted();
-  const next = await domain().update(() => ({
-    ...current,
-    projects: current.projects.map((r) => (r.project.id === current.activeProjectId ? fn(r) : r)),
-  }));
-  return view(next);
+  return updateDoc((s) => {
+    const activeId = activeRecord(s).project.id;
+    return { ...s, projects: s.projects.map((r) => (r.project.id === activeId ? fn(r) : r)) };
+  });
 }
 
 /** Read the whole domain document (renderer view). */
@@ -118,43 +148,39 @@ export async function saveProject(patch: { name?: string; body?: string }): Prom
 /** Persist an edit to the ACTIVE brand. Callers must hold the run lock (WP2). */
 export async function saveBrand(patch: { name?: string; body?: string }): Promise<DomainState> {
   const name = patch.name?.trim();
-  const current = await persisted();
-  const active = current.brands.find((b) => b.id === current.activeBrandId) ?? current.brands[0];
-  const next = await domain().update(() => ({
-    ...current,
-    brands: current.brands.map((b) =>
-      b.id === active.id
-        ? {
-            ...b,
-            ...(patch.body !== undefined ? { body: patch.body } : {}),
-            ...(name ? { name } : {}),
-          }
-        : b,
-    ),
-  }));
-  return view(next);
+  return updateDoc((s) => {
+    const activeId = activeBrand(s).id;
+    return {
+      ...s,
+      brands: s.brands.map((b) =>
+        b.id === activeId
+          ? {
+              ...b,
+              ...(patch.body !== undefined ? { body: patch.body } : {}),
+              ...(name ? { name } : {}),
+            }
+          : b,
+      ),
+    };
+  });
 }
 
 /** Create + activate a brand. Draft-until-Create, same discipline as projects. */
 export async function createBrand(input: { name: string }): Promise<DomainState> {
   const name = input.name.trim();
   if (!name) throw new Error('brand name is required');
-  const current = await persisted();
-  const id = uniqueSlug(name, current.brands.map((b) => b.id));
-  const next = await domain().update(() => ({
-    ...current,
-    brands: [...current.brands, { id, name, body: '' }],
-    activeBrandId: id,
-  }));
-  return view(next);
+  return updateDoc((s) => {
+    const id = uniqueSlug(name, s.brands.map((b) => b.id));
+    return { ...s, brands: [...s.brands, { id, name, body: '' }], activeBrandId: id };
+  });
 }
 
 /** Activate a saved brand by id. Callers must hold the run lock (WP2). */
 export async function switchBrand(id: string): Promise<DomainState> {
   const current = await persisted();
   if (!current.brands.some((b) => b.id === id)) throw new Error(`unknown brand: ${id}`);
-  const next = await domain().update(() => ({ ...current, activeBrandId: id }));
-  return view(next);
+  // Re-check inside the closure — the validated read above may be stale.
+  return updateDoc((s) => (s.brands.some((b) => b.id === id) ? { ...s, activeBrandId: id } : s));
 }
 
 /** The primer = compose(active Brand, active Project) — posted ONCE per conversation. */
@@ -209,23 +235,19 @@ export async function createProject(input: {
 }): Promise<DomainState> {
   const name = input.name.trim();
   if (!name) throw new Error('project name is required');
-  const current = await persisted();
-  const id = uniqueSlug(name, current.projects.map((r) => r.project.id));
-  const record: ProjectRecord = {
-    project: {
-      id,
-      name,
-      body: '',
-      outputDir: input.outputDir?.trim() || defaultProjectDir(outputRoot(), name),
-    },
-    theme: { name: id, prompts: [] },
-  };
-  const next = await domain().update(() => ({
-    ...current,
-    projects: [...current.projects, record],
-    activeProjectId: id,
-  }));
-  return view(next);
+  return updateDoc((s) => {
+    const id = uniqueSlug(name, s.projects.map((r) => r.project.id));
+    const record: ProjectRecord = {
+      project: {
+        id,
+        name,
+        body: '',
+        outputDir: input.outputDir?.trim() || defaultProjectDir(outputRoot(), name),
+      },
+      theme: { name: id, prompts: [] },
+    };
+    return { ...s, projects: [...s.projects, record], activeProjectId: id };
+  });
 }
 
 /** Activate a saved project by id. */
@@ -234,6 +256,8 @@ export async function switchProject(id: string): Promise<DomainState> {
   if (!current.projects.some((r) => r.project.id === id)) {
     throw new Error(`unknown project: ${id}`);
   }
-  const next = await domain().update(() => ({ ...current, activeProjectId: id }));
-  return view(next);
+  // Re-check inside the closure — the validated read above may be stale.
+  return updateDoc((s) =>
+    s.projects.some((r) => r.project.id === id) ? { ...s, activeProjectId: id } : s,
+  );
 }

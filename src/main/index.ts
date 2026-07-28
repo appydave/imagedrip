@@ -1,4 +1,6 @@
 import { promises as fs } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { app, dialog, globalShortcut, shell, type BrowserWindow } from 'electron';
 import { z, createStore, type Logger, type Store } from '@appydave/core';
@@ -30,7 +32,7 @@ import {
 } from './domain-store.js';
 import { BatchRunner } from './batch-runner.js';
 import { SwappableFileAuthor } from './output-router.js';
-import { RunRecorder, listRuns, readRunManifest } from './run-manifest.js';
+import { RunRecorder, listRunDirNames, listRuns, readRunManifest } from './run-manifest.js';
 import { WebviewHarness } from './webview-harness.js';
 import { CHATGPT_SELECTORS } from './chatgpt-selectors.js';
 
@@ -89,10 +91,25 @@ function getOutputAuthor(): SwappableFileAuthor {
   return outputAuthor;
 }
 
-/** Point the author at the active project's output dir (creating it), return it. */
+const exec = promisify(execFile);
+
+/** Point the author at the active project's output dir (creating it), return it.
+ *  The dir is git-initialised (advisory-1 #4) — FileAuthor's per-write commit
+ *  silently no-ops outside a repo, which made WP1's committed-harvest guarantee
+ *  a fiction until now. */
 async function ensureOutputRoot(): Promise<string> {
   const dir = await getActiveOutputDir();
   await fs.mkdir(dir, { recursive: true });
+  try {
+    await fs.access(join(dir, '.git'));
+  } catch {
+    try {
+      await exec('git', ['init', '--quiet'], { cwd: dir });
+      logger?.info({ dir }, 'output dir git-initialised');
+    } catch (err) {
+      logger?.warn({ dir, err: String(err) }, 'git init failed — harvests will be uncommitted');
+    }
+  }
   getOutputAuthor().setRoot(dir);
   return dir;
 }
@@ -117,7 +134,13 @@ function getHarness(): WebviewHarness {
 // feed and turns each done-image into a harvest (mechanism split, spec §API).
 function getRunner(): BatchRunner {
   if (runner) return runner;
-  recorder ??= new RunRecorder({ fileAuthor: getOutputAuthor(), logger: logger ?? undefined });
+  recorder ??= new RunRecorder({
+    fileAuthor: getOutputAuthor(),
+    // Advisory-1 #5: run-id collisions across app restarts are prevented by
+    // seeding from the folders actually on disk (with or without a manifest).
+    listExistingRunIds: () => listRunDirNames(getOutputAuthor().activeRoot),
+    logger: logger ?? undefined,
+  });
   const rec = recorder;
   runner = new BatchRunner({
     harness: getHarness(),
@@ -330,6 +353,12 @@ const desktop = createConsole({
     ipc.register<void, void>({
       channel: IPC.runStop,
       handle: () => runner?.stop(),
+    });
+    // Main-process truth for the run-entry default (advisory-1 #8): the
+    // renderer must not guess from its own memory whether the chat is primed.
+    ipc.register<void, { primed: boolean }>({
+      channel: IPC.runChatState,
+      handle: () => ({ primed: runner?.chatIsPrimed ?? false }),
     });
     // ── Dial-in manual injection (WP4) ──
     ipc.register<void, void>({

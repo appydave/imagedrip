@@ -23,7 +23,7 @@ export default function App(): JSX.Element {
     flash,
     runs,
     runView,
-    dialInTouched,
+    fetchChatPrimed,
     init,
     importPrompts,
     saveProject,
@@ -215,7 +215,7 @@ export default function App(): JSX.Element {
             </button>
           ) : queued.length > 0 ? (
             <RunEntryButton
-              dialInTouched={dialInTouched}
+              fetchPrimed={fetchChatPrimed}
               chunkSize={18}
               onRun={(entry) => void startRun(entry)}
               onOpenProject={() => setCtx(true)}
@@ -339,52 +339,85 @@ export default function App(): JSX.Element {
 
 /**
  * Run entry chooser (WP5 — THE fix for bug #12). Running a theme is a visible
- * choice BEFORE anything is sent: continue in the dialled-in chat (default when
- * dial-in touched the conversation) or start a fresh primed one.
+ * choice BEFORE anything is sent. Whether the chat is primed comes from the
+ * MAIN process at open time (advisory-1 #8) — never from renderer memory —
+ * and a primed chat puts "Continue in this chat" first, as the default.
  */
 function RunEntryButton(props: {
-  dialInTouched: boolean;
+  fetchPrimed: () => Promise<boolean>;
   chunkSize: number;
   onRun: (entry: 'continue' | 'fresh') => void;
   onOpenProject: () => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const [primed, setPrimed] = useState(false);
+
+  const toggle = (): void => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    void props.fetchPrimed().then((p) => {
+      setPrimed(p);
+      setOpen(true);
+    });
+  };
   const pick = (entry: 'continue' | 'fresh'): void => {
     setOpen(false);
     props.onRun(entry);
   };
-  const optionCls = (primary: boolean): string =>
-    'rounded-md border px-2.5 py-2 text-left ' +
-    (primary ? 'border-amber bg-cream hover:brightness-95' : 'border-edge bg-cream hover:border-amber');
+
+  const continueBtn = (
+    <button
+      key="continue"
+      type="button"
+      onClick={() => pick('continue')}
+      className={
+        'rounded-md border px-2.5 py-2 text-left ' +
+        (primed ? 'border-amber bg-cream hover:brightness-95' : 'border-edge bg-cream hover:border-amber')
+      }
+    >
+      <div className="font-display text-xs font-bold text-brown">
+        Continue in this chat{primed ? '  ← default (chat is primed)' : ''}
+      </div>
+      <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted">
+        keeps everything you dialled in — no new conversation, no primer; starts feeding the
+        queue.
+      </div>
+    </button>
+  );
+  const freshBtn = (
+    <button
+      key="fresh"
+      type="button"
+      onClick={() => pick('fresh')}
+      className={
+        'rounded-md border px-2.5 py-2 text-left ' +
+        (!primed ? 'border-amber bg-cream hover:brightness-95' : 'border-edge bg-cream hover:border-amber')
+      }
+    >
+      <div className="font-display text-xs font-bold text-brown">
+        Start a fresh chat{!primed ? '  ← default' : ''}
+      </div>
+      <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted">
+        new conversation → primer posted → feed. Dialled-in refinements are NOT carried over.
+      </div>
+    </button>
+  );
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="rounded-md bg-amber px-3.5 py-1.5 font-display text-xs font-bold tracking-wide text-cream hover:brightness-105"
       >
         ▶ Run theme…
       </button>
       {open && (
         <div className="absolute right-0 top-full z-50 mt-1.5 flex w-[300px] flex-col gap-1.5 rounded-lg border border-edge bg-surface p-2 shadow-lg">
-          <button type="button" onClick={() => pick('continue')} className={optionCls(props.dialInTouched)}>
-            <div className="font-display text-xs font-bold text-brown">
-              Continue in this chat{props.dialInTouched ? '  ← recommended' : ''}
-            </div>
-            <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted">
-              keeps everything you dialled in — no new conversation, no primer; starts feeding
-              the queue.
-            </div>
-          </button>
-          <button type="button" onClick={() => pick('fresh')} className={optionCls(!props.dialInTouched)}>
-            <div className="font-display text-xs font-bold text-brown">Start a fresh chat</div>
-            <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted">
-              new conversation → primer posted → feed. Dialled-in refinements are NOT carried
-              over.
-            </div>
-          </button>
-          {props.dialInTouched && (
+          {primed ? [continueBtn, freshBtn] : [freshBtn, continueBtn]}
+          {primed && (
             <div className="rounded-md border border-amber bg-cream px-2.5 py-2 font-mono text-[10px] leading-relaxed text-brown">
               ⚠ after ~{props.chunkSize} images the run re-primes a fresh chat from the SAVED
               Project.md — refinements living only in this conversation are lost then. Fold them

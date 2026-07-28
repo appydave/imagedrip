@@ -58,6 +58,7 @@ const imagedrip: ImagedripApi = {
     pause: (): Promise<void> => ipcRenderer.invoke(IPC.runPause),
     resume: (): Promise<void> => ipcRenderer.invoke(IPC.runResume),
     stop: (): Promise<void> => ipcRenderer.invoke(IPC.runStop),
+    chatState: (): Promise<{ primed: boolean }> => ipcRenderer.invoke(IPC.runChatState),
     injectPrimer: (): Promise<void> => ipcRenderer.invoke(IPC.runInjectPrimer),
     injectPrompt: (promptId: string): Promise<void> =>
       ipcRenderer.invoke(IPC.runInjectPrompt, promptId),

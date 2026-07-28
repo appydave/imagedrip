@@ -39,6 +39,8 @@ export const IPC = {
   runPause: 'imagedrip:run:pause',
   runResume: 'imagedrip:run:resume',
   runStop: 'imagedrip:run:stop',
+  /** Main-process truth: is the LIVE conversation primed/touched? (WP5 #8) */
+  runChatState: 'imagedrip:run:chat-state',
   /** Dial-in (WP4): post the primer into the LIVE chat and submit. */
   runInjectPrimer: 'imagedrip:run:inject-primer',
   /** Dial-in (WP4): feed ONE queued prompt and harvest its image. */
@@ -279,6 +281,8 @@ export interface ImagedripApi {
     pause(): Promise<void>;
     resume(): Promise<void>;
     stop(): Promise<void>;
+    /** Main-process truth for the run-entry default: chat primed/touched? */
+    chatState(): Promise<{ primed: boolean }>;
     /** Dial-in (WP4): "Initialise project" — primer into the live chat + submit. */
     injectPrimer(): Promise<void>;
     /** Dial-in (WP4): inject one queued prompt; it harvests into the dial-in run. */

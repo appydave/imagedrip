@@ -72,7 +72,7 @@ Every row is a verbatim finding from B329, with the code that causes it.
 | 10 | Clicking a queued prompt does nothing; wants manual inject-this-one | `App.tsx:376-386` — queue rows are non-interactive `div`s | WP4 |
 | 11 | Run/Pause/Stop state incoherent; STOP shown when nothing is running | `App.tsx:157-199` — STOP always rendered regardless of phase | WP5 |
 | 12 | **Run theme opened a NEW conversation and destroyed all dial-in** | `batch-runner.ts:157` — `start()` → `primeThenContinue(true)` → `harness.newConversation()`, unconditionally | WP5 |
-| 13 | North Star: never fire the next step until the previous finishes | Already honoured (`batch-runner.ts:194-233` awaiting-gate + seen-set) — **re-verify, don't rebuild** | WP5 |
+| 13 | North Star: never fire the next step until the previous finishes | Awaiting-gate + seen-set (`batch-runner.ts:194-233`). *Correction (advisory-1):* the per-prompt gate is honoured, but the **chunk-boundary re-prime path has NEVER executed** (chunkSize 18 > the only real run's 8 prompts) — **untested, verify for the first time**, incl. a chunk-boundary test | WP5 |
 | 14 | Stuck on a free plan; login auto-picks the wrong Google account; can't fix it in the narrow pane | `webview-harness.ts:43` — one hard-coded partition `persist:imagedrip-chatgpt`; no account surface | WP6 |
 | 15 | Wants a canned "listing prompt" that formats correctly (code block + a limit) | No such helper exists | WP2 |
 | 16 | Get the impeccable / front-end design skill onto these screens | — | WP7 |
@@ -229,9 +229,12 @@ was live.
   ChatGPT view and login stay attached — `batch-runner.ts:138-148`); Pause holds and can resume from
   the same position. David asked this directly: *"what is stop meant to do?"*
 
-**Problem C — pacing (#13).** Already correct: the awaiting-gate + seen-set (`batch-runner.ts:194`)
-means no prompt fires before the previous image lands. **Re-verify under the new Continue-in-chat
-path; do not rebuild.** The North Star is unchanged: never burn the account by going too fast.
+**Problem C — pacing (#13).** The awaiting-gate + seen-set (`batch-runner.ts:194`) means no prompt
+fires before the previous image lands — verify under the new Continue-in-chat path; do not rebuild.
+*Correction (advisory-1):* the **chunked re-prime path is UNTESTED, not "working"** — chunkSize is
+18 and the only real run was 8 prompts, so it has never executed. Verify it for the first time and
+add a chunk-boundary unit test. The North Star is unchanged: never burn the account by going too
+fast.
 
 **Acceptance.** Dial in a look (change the background colour), switch to Auto, press Run → **the
 conversation is the same one**, the refinement is still in effect, and the first image reflects it.
@@ -273,6 +276,9 @@ looking at these screens and figuring out what's going on."*
 Constraints (non-negotiable, `working-rules.md` §6–8):
 - **AppyDave light theme always** — warm cream `#faf5ec`, brown text, amber/yellow accents. Never a
   dark console.
+- **The design font stack** (advisory-1 — v1 skipped this and it was a real conformance miss):
+  **Oswald** (display) / **Roboto** (body) / **Roboto Mono** (mono), self-hosted woff2, CSP-safe —
+  no CDN fonts.
 - **The ChatGPT panel is native — we do not design it.** Design only the frame.
 - **No "Generating" state in our UI.** Queued and Harvested only.
 - Refine the existing light Pipeline design; do not produce fresh alternatives.
@@ -296,7 +302,10 @@ Constraints (non-negotiable, `working-rules.md` §6–8):
 - **Paste:** `webContents.paste()`. Synthesized Cmd+V is a no-op in ChatGPT's contenteditable.
 - **Preload path is `.mjs`** — wrong path and `window.imagedrip` is undefined.
 - **FileAuthor scoped root** refuses any path escaping it; WP1's per-run subfolders must live *inside*
-  the root, and each write is git-committed.
+  the root. *Correction (advisory-1):* a write is git-committed **only if the root is a git repo** —
+  `FileAuthor.commit()` silently returns `committed:false` otherwise, so per-project output dirs must
+  be git-inited on creation (now done by `ensureOutputRoot`), and WP1 acceptance includes a harvested
+  file being provably committed there.
 - **Selectors churn** — they live only in `chatgpt-selectors.ts`; re-pin with
   `npx electron probe/probe-c.cjs`.
 

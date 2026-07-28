@@ -42,17 +42,33 @@ export interface RunStartInfo {
 export class RunRecorder {
   private readonly author: FileAuthor;
   private readonly logger?: Logger;
+  /** On-disk run folders (advisory-1 #5) — collision source across restarts. */
+  private readonly listExistingRunIds?: () => Promise<string[]>;
   private manifest: RunManifest | null = null;
   private provenance = '';
   private readonly usedIds = new Set<string>();
 
-  constructor(deps: { fileAuthor: FileAuthor; logger?: Logger }) {
+  constructor(deps: {
+    fileAuthor: FileAuthor;
+    listExistingRunIds?: () => Promise<string[]>;
+    logger?: Logger;
+  }) {
     this.author = deps.fileAuthor;
+    this.listExistingRunIds = deps.listExistingRunIds;
     this.logger = deps.logger;
   }
 
   /** Open a run: create its manifest and return the run id (= folder name). */
   async start(info: RunStartInfo): Promise<string> {
+    // Seed from disk so a same-minute same-theme run after an app restart can
+    // never write into an existing run folder (advisory-1 #5).
+    if (this.listExistingRunIds) {
+      try {
+        for (const id of await this.listExistingRunIds()) this.usedIds.add(id);
+      } catch (err) {
+        this.logger?.warn({ err: String(err) }, 'could not list existing run ids');
+      }
+    }
     const runId = makeRunId(new Date(), info.themeName, this.usedIds);
     this.usedIds.add(runId);
     this.provenance = '';
@@ -162,6 +178,17 @@ function safeRunDir(outputDir: string, runId: string): string | null {
   const rel = relative(resolve(outputDir), abs);
   if (rel === '' || rel.startsWith('..') || isAbsolute(rel) || rel.includes('/')) return null;
   return abs;
+}
+
+/** Every subdirectory name in the output dir — run folders with OR without a
+ *  manifest (a crashed run's folder must still block id reuse, advisory-1 #5). */
+export async function listRunDirNames(outputDir: string): Promise<string[]> {
+  try {
+    const entries = await fs.readdir(outputDir, { withFileTypes: true });
+    return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch {
+    return [];
+  }
 }
 
 /** Scan the project's output dir for run folders (any dir with a manifest). */

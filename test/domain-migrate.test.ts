@@ -102,11 +102,22 @@ describe('migrateDomain', () => {
     expect(state.projects[0].project.outputDir).toBe(defaultProjectDir(ROOT, 'Smoothies'));
   });
 
-  it('falls back to seed defaults on unrecognizable input', () => {
+  it('seeds defaults ONLY for a truly absent document', () => {
     const { state, migrated } = migrateDomain(null, ROOT);
     expect(migrated).toBe(true);
     expect(state.version).toBe(3);
     expect(state.brands.length).toBeGreaterThan(0);
     expect(state.projects.length).toBeGreaterThan(0);
+  });
+
+  it('REFUSES to seed-overwrite a parsed-but-unrecognizable document (advisory-1 #3)', () => {
+    // A v1-shaped doc carrying a stray version key fails all three guards —
+    // previously it was silently replaced with the demo seed.
+    const v1WithVersion = { ...v1, version: 9 };
+    expect(() => migrateDomain(v1WithVersion, ROOT)).toThrow(/refusing to overwrite/);
+    // A v2 doc with a null activeProjectId must also fail loud, not wipe.
+    const v2Broken = { version: 2, brand: v1.brand, projects: [], activeProjectId: null };
+    expect(() => migrateDomain(v2Broken, ROOT)).toThrow(/refusing to overwrite/);
+    expect(() => migrateDomain({ garbage: true }, ROOT)).toThrow(/refusing to overwrite/);
   });
 });

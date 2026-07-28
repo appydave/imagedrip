@@ -19,9 +19,9 @@ interface AppState {
   flash: string | null;
   /** Run history of the ACTIVE project; null until first load. */
   runs: RunSummary[] | null;
-  /** True once a dial-in action touched the chat (WP5) — makes 'Continue in
-   *  this chat' the recommended run entry. Cleared by a fresh-chat run. */
-  dialInTouched: boolean;
+  /** Main-process truth (advisory-1 #8): is the live chat primed/touched?
+   *  Queried at decision time — never guessed from renderer memory. */
+  fetchChatPrimed: () => Promise<boolean>;
   /** When set, the lanes area shows this previous run instead of the live queue. */
   runView: RunView | null;
 
@@ -76,7 +76,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   flash: null,
   runs: null,
   runView: null,
-  dialInTouched: false,
+
+  fetchChatPrimed: async () => {
+    try {
+      return (await window.imagedrip.run.chatState()).primed;
+    } catch {
+      return false;
+    }
+  },
 
   init: async () => {
     set({ domain: await window.imagedrip.domain.get() });
@@ -199,10 +206,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   revealRun: (runId) => void window.imagedrip.runs.reveal(runId),
 
   startRun: async (entry) => {
-    // A fresh chat drops the dialled-in conversation — Continue stops being
-    // the recommended entry until dial-in touches the chat again.
-    if (entry === 'fresh') set({ dialInTouched: false });
-    await window.imagedrip.run.start({ entry });
+    try {
+      await window.imagedrip.run.start({ entry });
+    } catch (err) {
+      set({ flash: err instanceof Error ? err.message : 'run failed to start' });
+    }
   },
   pauseRun: async () => {
     await window.imagedrip.run.pause();
@@ -218,7 +226,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   injectPrimer: async () => {
     try {
       await window.imagedrip.run.injectPrimer();
-      set({ flash: 'primer sent to ChatGPT — project initialised', dialInTouched: true });
+      set({ flash: 'primer sent to ChatGPT — project initialised' });
     } catch (err) {
       set({ flash: err instanceof Error ? err.message : 'inject failed' });
     }
@@ -226,7 +234,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   injectPrompt: async (promptId) => {
     try {
       await window.imagedrip.run.injectPrompt(promptId);
-      set({ dialInTouched: true });
     } catch (err) {
       set({ flash: err instanceof Error ? err.message : 'inject failed' });
     }

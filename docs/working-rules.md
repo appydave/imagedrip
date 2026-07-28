@@ -57,4 +57,10 @@ to repeat one.
   STOP renders only when running/paused; LIVE/PAUSED/IDLE state chip; STOP-vs-Pause
   defined in tooltips. Pacing gate re-verified by unit tests (fake harness), untouched.
   Settle defaults bumped (load 4s, primer 9s) for the paste-without-enter symptom.
-  **Awaiting David's in-app run** (the only "done" that counts). WP6–WP7 next.
+  **Chaperone advisory-1 applied (all 8 items + 3 spec corrections):** sync entry latch on
+  start/injects; closure-derived store updates; .bak before migrating writes + fail-loud on
+  unrecognizable docs; git-inited output dirs; run-id seeding from disk; feed-in-flight guard
+  on passive seen-banking; fail-loud run records; chat-primed truth in main + Continue as the
+  real default. Requirements doc corrected (chunk path untested / git-commit gotcha / WP7 fonts).
+  **STOPPED before WP6 per ruling — awaiting David's in-app acceptance of WP1–WP5**, especially
+  the WP5 dial-in→Continue scenario and the real domain.json migration.
