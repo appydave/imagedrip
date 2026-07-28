@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImageDrip — Pipeline (AppyDave light)</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300..700&family=Roboto:wght@300;400;500&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --near-white:#faf5ec; --surface:#f0ebe4; --linen:#e8e0d4; --border:#d4cdc4;
+    --brown:#342d2d; --muted:#7a6e5e; --gold:#ccba9d; --yellow:#ffde59; --amber:#c8841a;
+    --sage:#4a7a54; --chrome:#1a1515; --gpt:#0d0d0d;
+    --f:'Oswald',system-ui,sans-serif; --b:'Roboto',system-ui,sans-serif; --m:'Roboto Mono',monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0;height:100%}
+  body{background:#e3dccf;color:var(--brown);font-family:var(--b);height:100vh;display:flex;flex-direction:column;padding:20px}
+  .win{max-width:1360px;width:100%;margin:auto;background:var(--near-white);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 18px 50px rgba(52,45,45,.18);display:flex;flex-direction:column;height:100%}
+  /* titlebar */
+  .titlebar{display:flex;align-items:center;gap:12px;padding:11px 15px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .dots{display:flex;gap:6px} .dots i{width:11px;height:11px;border-radius:50%;display:block}
+  .dots i:nth-child(1){background:#e0655c}.dots i:nth-child(2){background:#e0b34a}.dots i:nth-child(3){background:#6fae5f}
+  .logo{font-family:var(--f);font-weight:700;letter-spacing:1.5px;font-size:18px;margin-left:4px}
+  .logo b{color:var(--amber)}
+  .pill{border:1px solid var(--border);border-radius:20px;padding:3px 11px;font-size:11px;color:var(--muted);font-family:var(--f);letter-spacing:.5px;display:flex;gap:6px;align-items:center;background:var(--near-white)}
+  .pill .d{width:7px;height:7px;border-radius:50%;background:var(--sage)}
+  .grow{flex:1}
+  .prog{display:flex;gap:18px;align-items:center;font-family:var(--m);font-size:11px;color:var(--muted)}
+  .prog b{color:var(--brown);font-size:16px;font-family:var(--f)}
+  .prog .amb{color:var(--amber)}
+  .modes{display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-family:var(--f);font-size:12px;letter-spacing:.5px}
+  .modes span{padding:5px 13px;color:var(--muted)} .modes .on{background:var(--yellow);color:var(--brown);font-weight:600}
+  .stop{background:#f6e4e0;border:1px solid #dcaea6;color:#b5524a;border-radius:7px;padding:5px 13px;font-size:12px;font-family:var(--m)}
+  /* body */
+  .body{flex:1;display:flex;min-height:0}
+  .ctxrail{width:46px;border-right:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+  .ctxrail:hover{background:var(--linen)}
+  .ctxrail span{writing-mode:vertical-rl;transform:rotate(180deg);font-family:var(--m);font-size:11px;letter-spacing:1.5px;color:var(--muted)}
+  .ctxpanel{width:220px;border-right:1px solid var(--border);background:var(--surface);padding:14px;flex-shrink:0;display:none;flex-direction:column;gap:10px}
+  .ctxpanel.open{display:flex}
+  .ctxpanel .hd{display:flex;justify-content:space-between;align-items:center;font-family:var(--f);font-size:11px;letter-spacing:1.5px;color:var(--muted);font-weight:600}
+  .ctxpanel .hd .x{cursor:pointer}
+  .ctxcard{background:var(--near-white);border:1px solid var(--border);border-radius:8px;padding:10px}
+  .ctxcard .t{font-family:var(--f);font-size:14px;font-weight:600}
+  .ctxcard .m{font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--m)}
+  .cbtn{display:block;width:100%;text-align:left;background:var(--near-white);border:1px solid var(--border);color:var(--brown);border-radius:7px;padding:8px 10px;font-size:12px;font-family:var(--f);cursor:pointer;margin-top:2px}
+  .cbtn:hover{border-color:var(--amber)}
+  .lanes{flex:1;display:flex;gap:14px;padding:14px;min-width:0}
+  .lane{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;flex-direction:column;min-width:0}
+  .lane.q{width:270px;flex-shrink:0} .lane.h{flex:1}
+  .lane h4{margin:0 0 10px;font-family:var(--f);font-size:12px;letter-spacing:1.5px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;font-weight:600}
+  .lane h4 .c{font-family:var(--m);color:var(--amber);font-size:13px}
+  .items{display:flex;flex-direction:column;gap:8px;overflow:auto}
+  .lane.h .items{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;align-content:start}
+  .qrow{background:var(--near-white);border:1px solid var(--border);border-radius:7px;padding:9px 11px;font-size:13px;color:var(--brown);display:flex;justify-content:space-between;align-items:center}
+  .qrow .n{font-family:var(--m);font-size:10px;color:var(--gold)}
+  .qhint{font-family:var(--m);font-size:10px;color:var(--muted);margin-top:8px;text-align:center;opacity:.8}
+  .thumb{aspect-ratio:1;border-radius:9px;position:relative;overflow:hidden;border:1px solid var(--border)}
+  .thumb .cap{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.55));padding:14px 8px 6px;font-family:var(--m);font-size:10px;color:#fff;display:flex;justify-content:space-between;align-items:center}
+  .thumb .ok{color:#a7e6b6}
+  /* native chatgpt inspector — the ONLY place "generating" ever shows */
+  .gpt{width:330px;flex-shrink:0;background:var(--gpt);display:flex;flex-direction:column;position:relative;border-left:1px solid var(--border)}
+  .gpt .tag{position:absolute;top:9px;right:12px;font-family:var(--m);font-size:9px;color:#6a6a6a;border:1px dashed #333;border-radius:20px;padding:2px 8px}
+  .gpt .top{display:flex;align-items:center;gap:8px;padding:11px 13px;color:#cfcfcf;font-size:13px;font-family:var(--b);border-bottom:1px solid #1c1c1c}
+  .gpt .top .ham{color:#7a7a7a}
+  .gpt .thread{flex:1;padding:16px;display:flex;flex-direction:column;gap:12px;justify-content:center;align-items:center}
+  .gpt .lbl{font-family:var(--m);font-size:10px;color:#7a7a7a}
+  .genimg{width:210px;height:210px;border-radius:14px;background:linear-gradient(135deg,#3a3a3a,#242424);display:flex;align-items:center;justify-content:center;position:relative}
+  .genimg .glow{position:absolute;inset:0;border-radius:14px;background:linear-gradient(135deg,rgba(200,132,26,.25),transparent)}
+  .spin{width:26px;height:26px;border:3px solid rgba(255,255,255,.15);border-top-color:#e0b34a;border-radius:50%;animation:sp 1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .composer{margin:12px;background:#1e1e1e;border-radius:16px;padding:11px 14px;color:#8a8a8a;font-size:12px;font-family:var(--b)}
+  /* footer */
+  .foot{padding:9px 15px;background:var(--surface);border-top:1px solid var(--border);font-size:12px;color:var(--muted);text-align:center;font-family:var(--b)}
+  .foot b{color:var(--amber)}
+</style>
+</head>
+<body>
+  <div class="win">
+    <div class="titlebar">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span class="logo">IMAGE<b>DRIP</b></span>
+      <span class="pill"><span class="d"></span>ChatGPT</span>
+      <span class="grow"></span>
+      <span class="prog"><span><b>12</b>/18 harvested</span><span>re-prime in <b class="amb">6</b></span><span>~4s/img</span></span>
+      <span class="modes"><span>Dial-in</span><span class="on">Auto</span></span>
+      <span class="stop">■ STOP</span>
+    </div>
+    <div class="body">
+      <div class="ctxrail" id="ctxrail" onclick="ctx(true)"><span>CONTEXT ▸</span></div>
+      <div class="ctxpanel" id="ctxpanel">
+        <div class="hd">CONTEXT <span class="x" onclick="ctx(false)">✕</span></div>
+        <div class="ctxcard"><div class="t">Beauty &amp; Joy 🔒</div><div class="m">brand · fixed</div></div>
+        <div class="ctxcard"><div class="t">Smoothies ✎</div><div class="m">project · editable</div></div>
+        <button class="cbtn">Copy primer</button>
+        <button class="cbtn">Copy prompt</button>
+        <button class="cbtn">Save project ↩</button>
+      </div>
+      <div class="lanes">
+        <div class="lane q">
+          <h4>QUEUED <span class="c">6</span></h4>
+          <div class="items" id="q"></div>
+          <div class="qhint">what's still to run this theme</div>
+        </div>
+        <div class="lane h">
+          <h4>HARVESTED <span class="c">11</span></h4>
+          <div class="items" id="h"></div>
+        </div>
+      </div>
+      <div class="gpt">
+        <span class="tag">native ChatGPT — the only “generating” view</span>
+        <div class="top"><span class="ham">☰</span> Chat ▾</div>
+        <div class="thread">
+          <div class="lbl">now generating — strawberry</div>
+          <div class="genimg"><div class="glow"></div><div class="spin"></div></div>
+          <div class="lbl">watching the DOM… auto-harvests when done</div>
+        </div>
+        <div class="composer">Ask ChatGPT</div>
+      </div>
+    </div>
+    <div class="foot">Each finished image is <b>auto-harvested</b> from ChatGPT → named → routed to <b>joy-media/brand-art/</b>. We only track <b>Queued</b> and <b>Harvested</b> — generating lives in ChatGPT.</div>
+  </div>
+<script>
+  const F=[['avocado','#7fae5a','#4a7a54'],['banana','#e8d15a','#c9a12e'],['mango','#f0a84a','#d17a1e'],
+  ['lime','#a8d84a','#6ba62e'],['blueberry','#6a8ae0','#3d54b5'],['coconut','#efe6d0','#c9b98f'],
+  ['pineapple','#f0d24a','#c9a01e'],['dragonfruit','#e06ab0','#b53d84'],['watermelon','#e0736a','#7aae5a'],
+  ['grape','#9a6ae0','#5d3db5'],['peachy','#f0b08a','#d1855a']];
+  const Q=[['kiwi',12],['orange',13],['peach',14],['raspberry',15],['papaya',16],['guava',17]];
+  document.getElementById('q').innerHTML=Q.map(q=>`<div class="qrow">${q[0]}<span class="n">${String(q[1]).padStart(2,'0')}</span></div>`).join('');
+  document.getElementById('h').innerHTML=F.map(f=>`<div class="thumb" style="background:linear-gradient(135deg,${f[1]},${f[2]})"><span class="cap">${f[0]}.png <span class="ok">✓</span></span></div>`).join('');
+  function ctx(open){document.getElementById('ctxpanel').classList.toggle('open',open);document.getElementById('ctxrail').style.display=open?'none':'flex';}
+</script>
+</body>
+</html>
