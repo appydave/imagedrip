@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RunManifest, RunSummary, Rect } from '@shared/ipc';
 import { compose, type DomainState } from '@shared/domain';
 import { useAppStore } from './store';
@@ -342,8 +342,8 @@ function useAutosave(
   const commit = async (v: string): Promise<void> => {
     setState('saving');
     const ok = await save(v);
-    // Only report saved if nothing newer was typed while the IPC was in flight.
-    setState(ok && latest.current === v ? 'saved' : ok ? 'dirty' : 'dirty');
+    // Only report saved if it worked AND nothing newer was typed mid-flight.
+    setState(ok && latest.current === v ? 'saved' : 'dirty');
   };
 
   const onChange = (v: string): void => {
@@ -634,15 +634,301 @@ function RunHistoryView(props: {
   );
 }
 
-function CtxButton(props: { onClick: () => void; children: ReactNode }): JSX.Element {
+/* ── BRAND card (WP2) — editable + selectable; LOCKED only while a run is live ── */
+function BrandCard(props: {
+  domain: DomainState;
+  locked: boolean;
+  onSave: (patch: { name?: string; body?: string }) => Promise<boolean>;
+  onCreate: (name: string) => void;
+  onSwitch: (id: string) => void;
+}): JSX.Element {
+  const { brand, brands, activeBrandId } = props.domain;
+  const name = useAutosave(brand.name, (v) => props.onSave({ name: v }));
+  const body = useAutosave(brand.body, (v) => props.onSave({ body: v }));
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const dirty = name.state !== 'saved' || body.state !== 'saved';
+
   return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      className="w-full rounded-md border border-edge bg-cream px-2.5 py-2 text-left font-display text-xs text-brown hover:border-amber"
-    >
-      {props.children}
-    </button>
+    <div className="rounded-lg border border-edge bg-cream p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        {props.locked ? (
+          <div className="font-display text-sm font-semibold">{brand.name} 🔒</div>
+        ) : (
+          <input
+            value={name.value}
+            onChange={(e) => name.onChange(e.target.value)}
+            onBlur={name.flush}
+            className="w-full rounded-md border border-transparent bg-transparent font-display text-sm font-semibold text-brown outline-none hover:border-edge focus:border-amber"
+          />
+        )}
+        {!props.locked && (
+          <button
+            type="button"
+            onClick={() => setCreating((v) => !v)}
+            className="flex-shrink-0 font-display text-[11px] text-muted hover:text-amber"
+          >
+            {creating ? '✕' : '＋ new'}
+          </button>
+        )}
+      </div>
+      <div className="mt-0.5 flex items-center justify-between font-mono text-[11px] text-muted">
+        {props.locked ? (
+          <span className="text-amber">brand 🔒 locked while a run is live</span>
+        ) : (
+          <span>brand · editable (locks during runs)</span>
+        )}
+        {!props.locked && <SaveDot state={dirty ? (name.state === 'saving' || body.state === 'saving' ? 'saving' : 'dirty') : 'saved'} />}
+      </div>
+      {brands.length > 1 && (
+        <select
+          value={activeBrandId}
+          disabled={props.locked}
+          onChange={(e) => props.onSwitch(e.target.value)}
+          className="mt-1.5 w-full rounded-md border border-edge bg-cream px-1.5 py-1 font-display text-xs text-brown outline-none focus:border-amber disabled:opacity-60"
+        >
+          {brands.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+      )}
+      {creating && !props.locked && (
+        <div className="mt-1.5 flex gap-1.5">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="brand name"
+            className="min-w-0 flex-1 rounded-md border border-edge bg-cream p-1.5 font-display text-xs text-brown outline-none focus:border-amber"
+          />
+          <button
+            type="button"
+            disabled={!newName.trim()}
+            onClick={() => {
+              props.onCreate(newName.trim());
+              setNewName('');
+              setCreating(false);
+            }}
+            className="rounded-md bg-yellow px-2.5 py-1 font-display text-xs font-semibold text-brown enabled:hover:brightness-95 disabled:opacity-50"
+          >
+            Create
+          </button>
+        </div>
+      )}
+      <textarea
+        value={body.value}
+        onChange={(e) => body.onChange(e.target.value)}
+        onBlur={body.flush}
+        disabled={props.locked}
+        placeholder="Brand.md — the fixed tone…"
+        className="mt-2 h-20 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber disabled:opacity-60"
+      />
+    </div>
+  );
+}
+
+/* ── PROJECT card (WP2) — name + body autosave; switch / new project (WP1) ── */
+function ProjectCard(props: {
+  domain: DomainState;
+  onSave: (patch: { name?: string; body?: string }) => Promise<boolean>;
+  onSwitch: (id: string) => void;
+  onCreate: (name: string, outputDir?: string) => void;
+  onChooseDir: () => Promise<string | null>;
+}): JSX.Element {
+  const { project, projects, activeProjectId } = props.domain;
+  const name = useAutosave(project.name, (v) => props.onSave({ name: v }));
+  const body = useAutosave(project.body, (v) => props.onSave({ body: v }));
+  const [creating, setCreating] = useState(false);
+  const dirty = name.state !== 'saved' || body.state !== 'saved';
+
+  return (
+    <>
+      <div className="rounded-lg border border-edge bg-cream p-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <input
+            value={name.value}
+            onChange={(e) => name.onChange(e.target.value)}
+            onBlur={name.flush}
+            className="w-full rounded-md border border-transparent bg-transparent font-display text-sm font-semibold text-brown outline-none hover:border-edge focus:border-amber"
+          />
+          <button
+            type="button"
+            onClick={() => setCreating((v) => !v)}
+            className="flex-shrink-0 font-display text-[11px] text-muted hover:text-amber"
+          >
+            {creating ? '✕' : '＋ new'}
+          </button>
+        </div>
+        <div className="mt-0.5 flex items-center justify-between font-mono text-[11px] text-muted">
+          <span>project ✎ editable — autosaves</span>
+          <SaveDot state={dirty ? (name.state === 'saving' || body.state === 'saving' ? 'saving' : 'dirty') : 'saved'} />
+        </div>
+        {projects.length > 1 && (
+          <select
+            value={activeProjectId}
+            onChange={(e) => props.onSwitch(e.target.value)}
+            className="mt-1.5 w-full rounded-md border border-edge bg-cream px-1.5 py-1 font-display text-xs text-brown outline-none focus:border-amber"
+          >
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {project.outputDir && (
+          <div title={project.outputDir} className="mt-1.5 truncate font-mono text-[10px] text-muted">
+            → {project.outputDir}
+          </div>
+        )}
+        <textarea
+          value={body.value}
+          onChange={(e) => body.onChange(e.target.value)}
+          onBlur={body.flush}
+          placeholder="Project.md — the dialled-in layer…"
+          className="mt-2 h-24 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            name.flush();
+            body.flush();
+          }}
+          className="mt-1.5 w-full rounded-md border border-edge bg-cream px-2.5 py-1.5 text-left font-display text-xs text-brown hover:border-amber"
+        >
+          Save now ↩ <span className="font-mono text-[10px] text-muted">(autosave has you anyway)</span>
+        </button>
+      </div>
+
+      {creating && (
+        <NewProjectForm
+          onCreate={(n, dir) => {
+            props.onCreate(n, dir);
+            setCreating(false);
+          }}
+          onCancel={() => setCreating(false)}
+          onChooseDir={props.onChooseDir}
+        />
+      )}
+    </>
+  );
+}
+
+/* ── Copy buttons (WP2) — say what they copy, and show EXACTLY what ── */
+function CopyCard(props: {
+  label: string;
+  description: string;
+  preview: string;
+  onCopy: () => void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-edge bg-cream">
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          onClick={props.onCopy}
+          className="flex-1 px-2.5 py-2 text-left font-display text-xs text-brown hover:text-amber"
+        >
+          {props.label}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          title="preview exactly what will be copied"
+          className="px-2.5 font-mono text-[11px] text-muted hover:text-amber"
+        >
+          {open ? '▾' : '▸'}
+        </button>
+      </div>
+      <div className="px-2.5 pb-2 font-mono text-[10px] leading-relaxed text-muted">
+        {props.description}
+      </div>
+      {open && (
+        <pre className="mx-2.5 mb-2.5 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border border-edge bg-linen p-2 font-mono text-[10px] leading-relaxed text-brown">
+          {props.preview}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/* ── Listing-prompt helper (WP2 bug #15) — the canned import-list ask ── */
+function listPromptText(count: number, subject: string): string {
+  return `Give me a list of ${count} ${subject}. Names only, one per line, in a code block, no commentary.`;
+}
+
+function ListPromptCard(props: { onCopy: (text: string, label: string) => void }): JSX.Element {
+  const [count, setCount] = useState(12);
+  const [subject, setSubject] = useState('Australian animals');
+  const [text, setText] = useState(() => listPromptText(12, 'Australian animals'));
+  const edited = useRef(false);
+
+  const regen = (n: number, s: string): void => {
+    if (!edited.current) setText(listPromptText(n, s));
+  };
+
+  return (
+    <div className="rounded-lg border border-edge bg-cream p-2.5">
+      <div className="font-display text-[11px] font-semibold tracking-widest text-muted">
+        LIST PROMPT
+      </div>
+      <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted">
+        ask ChatGPT for an import list — code block, N items, no chatter
+      </div>
+      <div className="mt-1.5 flex gap-1.5">
+        <input
+          type="number"
+          min={1}
+          value={count}
+          onChange={(e) => {
+            const n = Math.max(1, Number(e.target.value) || 1);
+            setCount(n);
+            regen(n, subject);
+          }}
+          className="w-14 rounded-md border border-edge bg-cream p-1.5 font-mono text-[11px] text-brown outline-none focus:border-amber"
+        />
+        <input
+          value={subject}
+          onChange={(e) => {
+            setSubject(e.target.value);
+            regen(count, e.target.value);
+          }}
+          placeholder="subject, e.g. Australian animals"
+          className="min-w-0 flex-1 rounded-md border border-edge bg-cream p-1.5 font-mono text-[11px] text-brown outline-none focus:border-amber"
+        />
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => {
+          edited.current = true;
+          setText(e.target.value);
+        }}
+        className="mt-1.5 h-16 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[10px] leading-relaxed text-brown outline-none focus:border-amber"
+      />
+      <div className="mt-1.5 flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => props.onCopy(text, 'list prompt copied')}
+          className="flex-1 rounded-md bg-yellow px-2.5 py-1.5 font-display text-xs font-semibold text-brown hover:brightness-95"
+        >
+          Copy list prompt
+        </button>
+        {edited.current && (
+          <button
+            type="button"
+            onClick={() => {
+              edited.current = false;
+              setText(listPromptText(count, subject));
+            }}
+            className="rounded-md border border-edge bg-cream px-2 py-1.5 font-mono text-[10px] text-muted hover:border-amber"
+          >
+            reset
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

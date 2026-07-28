@@ -4,19 +4,17 @@ import {
   defaultProjectDir,
   migrateDomain,
   seedDefaults,
-  uniqueProjectId,
+  uniqueSlug,
   type PersistedDomain,
 } from '../src/main/domain-migrate';
 
 const ROOT = '/tmp/pictures/ImageDrip';
 
-describe('uniqueProjectId', () => {
+describe('uniqueSlug', () => {
   it('slugifies and avoids collisions with -2, -3…', () => {
-    expect(uniqueProjectId('Winter Theme', [])).toBe('winter-theme');
-    expect(uniqueProjectId('Winter Theme', ['winter-theme'])).toBe('winter-theme-2');
-    expect(uniqueProjectId('Winter Theme', ['winter-theme', 'winter-theme-2'])).toBe(
-      'winter-theme-3',
-    );
+    expect(uniqueSlug('Winter Theme', [])).toBe('winter-theme');
+    expect(uniqueSlug('Winter Theme', ['winter-theme'])).toBe('winter-theme-2');
+    expect(uniqueSlug('Winter Theme', ['winter-theme', 'winter-theme-2'])).toBe('winter-theme-3');
   });
 });
 
@@ -33,20 +31,43 @@ describe('migrateDomain', () => {
     },
   };
 
-  it('upgrades a v1 document losslessly', () => {
+  it('upgrades a v1 document losslessly to v3', () => {
     const { state, migrated } = migrateDomain(v1, ROOT);
     expect(migrated).toBe(true);
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
+    // The single brand becomes the first (active) brand record.
+    expect(state.brands).toHaveLength(1);
+    expect(state.brands[0]).toEqual({ id: 'beauty-joy', name: 'Beauty & Joy', body: 'brand body' });
+    expect(state.activeBrandId).toBe('beauty-joy');
+    // The single project becomes the first (active) project record.
     expect(state.projects).toHaveLength(1);
     const rec = state.projects[0];
     expect(rec.project.id).toBe('smoothies');
-    expect(rec.project.name).toBe('Smoothies');
     expect(rec.project.body).toBe('project body');
     expect(rec.project.outputDir).toBe(join(ROOT, 'smoothies'));
     // The existing queue — including harvested state — survives untouched.
     expect(rec.theme).toEqual(v1.theme);
     expect(state.activeProjectId).toBe('smoothies');
-    expect(state.brand).toEqual(v1.brand);
+  });
+
+  it('upgrades a v2 document (WP1 shape) to v3, lifting the brand', () => {
+    const v2 = {
+      version: 2 as const,
+      brand: { name: 'Beauty & Joy', body: 'brand body' },
+      projects: [
+        {
+          project: { id: 'smoothies', name: 'Smoothies', body: 'b', outputDir: '/custom' },
+          theme: { name: 'smoothies', prompts: [] },
+        },
+      ],
+      activeProjectId: 'smoothies',
+    };
+    const { state, migrated } = migrateDomain(v2, ROOT);
+    expect(migrated).toBe(true);
+    expect(state.version).toBe(3);
+    expect(state.brands[0].id).toBe('beauty-joy');
+    expect(state.activeBrandId).toBe('beauty-joy');
+    expect(state.projects[0].project.outputDir).toBe('/custom');
   });
 
   it('keeps an explicit v1 outputDir instead of the default', () => {
@@ -55,26 +76,28 @@ describe('migrateDomain', () => {
     expect(state.projects[0].project.outputDir).toBe('/custom/place');
   });
 
-  it('passes a v2 document through unchanged', () => {
-    const v2 = seedDefaults(ROOT);
-    const { state, migrated } = migrateDomain(v2, ROOT);
+  it('passes a v3 document through unchanged', () => {
+    const v3 = seedDefaults(ROOT);
+    const { state, migrated } = migrateDomain(v3, ROOT);
     expect(migrated).toBe(false);
-    expect(state).toEqual(v2);
+    expect(state).toEqual(v3);
   });
 
-  it('backfills a v2 record missing id/outputDir', () => {
-    const v2 = seedDefaults(ROOT);
+  it('backfills a v3 record missing project id/outputDir or brand id', () => {
+    const v3 = seedDefaults(ROOT);
     const broken: PersistedDomain = {
-      ...v2,
+      ...v3,
+      brands: [{ ...v3.brands[0], id: '' }],
       projects: [
         {
-          ...v2.projects[0],
-          project: { ...v2.projects[0].project, id: '', outputDir: undefined },
+          ...v3.projects[0],
+          project: { ...v3.projects[0].project, id: '', outputDir: undefined },
         },
       ],
     };
     const { state, migrated } = migrateDomain(broken, ROOT);
     expect(migrated).toBe(true);
+    expect(state.brands[0].id).toBe('beauty-joy');
     expect(state.projects[0].project.id).toBe('smoothies');
     expect(state.projects[0].project.outputDir).toBe(defaultProjectDir(ROOT, 'Smoothies'));
   });
@@ -82,7 +105,8 @@ describe('migrateDomain', () => {
   it('falls back to seed defaults on unrecognizable input', () => {
     const { state, migrated } = migrateDomain(null, ROOT);
     expect(migrated).toBe(true);
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
+    expect(state.brands.length).toBeGreaterThan(0);
     expect(state.projects.length).toBeGreaterThan(0);
   });
 });
