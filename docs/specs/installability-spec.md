@@ -2,7 +2,7 @@
 spec: imagedrip-installability
 project: imagedrip
 depends_on: appytron   # most changes land in ~/dev/ad/apps/appytron/create-appytron + template
-status: proposed
+status: partly resolved — the interim path (§ Interim path) was used to scaffold this repo; C1/C2/C4 still open in appytron
 created: 2026-07-19
 goal: scaffold + run ImageDrip as a starter app from the AppyTron boilerplate
 ---

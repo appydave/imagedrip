@@ -1,7 +1,7 @@
 {
   "name": "imagedrip",
   "version": "0.1.0",
-  "description": "An AppyTron desktop app (scaffold template).",
+  "description": "Generate image batches by driving your own logged-in ChatGPT session — no paid image API.",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",

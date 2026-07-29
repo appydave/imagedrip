@@ -3,9 +3,9 @@ project: imagedrip
 repo: appydave/imagedrip          # public; own repo, scaffolded from AppyTron
 built_on: appytron                # ~/dev/ad/apps/appytron (the boilerplate — not part of this repo)
 kind: requirements + architecture + build plan
-status: named + approach locked — not yet scaffolded
+status: canonical — scaffolded, driver live-verified, v1 Batch Runner built (not yet proven on a full theme)
 created: 2026-07-18
-last_updated: 2026-07-19
+last_updated: 2026-07-29
 approach: C — embedded webview host + synthesized input + DOM-read (§4)
 security: lethal-trifecta (embedded remote origin + file writes) — see brains/personal-security
 ---
@@ -204,9 +204,12 @@ callback — after the slice proves out.
 4. **v1 scope** — ✅ Batch Runner first; Style Studio v2.
 
 ## 12. Open / next
-- **Scaffold** — `npx create-appytron imagedrip` once AppyTron's `webview-harness` + `image-harvest`
-  recipes exist (or scaffold now and hand-write those two as the pilot that then donates them back).
-- **GitHub remote** — repo not yet created (`gh repo create appydave/imagedrip --public`); awaiting go.
-- **Selector module** — pin ChatGPT's current image-message + limit-state DOM selectors (expect churn).
+- ~~**Scaffold**~~ — ✅ done via the interim path (`specs/installability-spec.md § Interim path`).
+- ~~**GitHub remote**~~ — ✅ `git@github.com:appydave/imagedrip.git`.
+- ~~**Selector module**~~ — ✅ pinned + live-verified for the image path (`src/main/chatgpt-selectors.ts`);
+  ⚠️ the rate-limit + refusal selectors remain **unverified** (no limit was hit during Probe C).
+- **Proving run** — the v1 acceptance test: one real theme (~15–20 images) end to end. Not yet done.
+- **Output routing** — harvest currently lands in the app's own folder; per-project `outputDir` is in
+  the domain model but not wired. Full gap list: `user-guide.md § Known limits`.
 - **Provenance callback contract** — how the consuming project records harvested image refs (kept
   generic here; concrete binding lives in that project).

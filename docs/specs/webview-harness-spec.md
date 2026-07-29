@@ -2,7 +2,7 @@
 spec: webview-harness
 project: imagedrip
 donates_to: appytron   # recipe contributed back to template/.claude/skills/recipe/references/
-status: proposed
+status: implemented — driver live-verified via Probe C (2026-07-19); rate-limit/refusal paths still unverified
 created: 2026-07-19
 electron: "^34.2.0"    # from appytron/template — dictates WebContentsView (not BrowserView)
 implements: imagedrip-plan §4 Approach C

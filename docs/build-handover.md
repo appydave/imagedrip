@@ -1,8 +1,9 @@
 ---
 doc: build-handover
 project: imagedrip
-status: ready to build v1 (Batch Runner)
+status: largely delivered — v1 Batch Runner + cockpit are built; remaining work is the proving run + the gaps listed in user-guide.md
 created: 2026-07-19
+last_updated: 2026-07-29
 audience: a FRESH Claude Code session cd'd into ~/dev/ad/apps/imagedrip
 ---
 

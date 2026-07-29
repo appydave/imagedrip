@@ -1,9 +1,10 @@
 ---
 doc: ux-and-workflow
 project: imagedrip
-status: draft — build spec for the v1 vertical slice
+status: design intent — Automation half is built; the Dial-in half is NOT (see user-guide.md § Known limits)
 created: 2026-07-19
-pairs_with: imagedrip-plan.md (§3 domain, §10 scope), specs/webview-harness-spec.md (the driver)
+last_updated: 2026-07-29
+pairs_with: imagedrip-plan.md (§3 domain, §10 scope), specs/webview-harness-spec.md (the driver), user-guide.md (what actually ships)
 ---
 
 # ImageDrip — Workflow & UX (v1 slice build spec)
