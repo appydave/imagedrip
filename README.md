@@ -7,13 +7,13 @@ your prompts in one at a time at a human-like pace, watches the page for each fi
 image, then downloads, renames and files it for you.
 
 ```
-┌─ IMAGEDRIP  ●ChatGPT ──── 4/18 harvested · re-prime in 14 · ~22s ─ [Dial-in|Auto] [▶ Run theme] [■ STOP] ┐
+┌─ IMAGEDRIP ●ChatGPT ─ ● LIVE ─ 4/18 harvested · re-prime in 14 · ~22s ─ [Dial-in|Auto] [▶ Run theme…] [■ STOP] ┐
 ├──────────┬─────────────────┬──────────────────────┬─────────────────────────┤
 │ CONTEXT  │   QUEUED        │   HARVESTED          │   native ChatGPT — live │
-│ Brand 🔒 │  avocado        │  [img] [img] [img]   │   (your real session;    │
+│ Brand ✎  │  avocado    ⚡  │  [img] [img] [img]   │   (your real session;    │
 │ Project✎ │  banana         │  [img]               │    the only place you   │
-│ [Save ↩] │  mango …        │                      │    ever see it          │
-│ [Copy…]  │  [+ import]     │                      │    generating)          │
+│ → ~/Pic… │  mango …        │                      │    ever see it          │
+│ Runs (3) │  [+ import]     │                      │    generating)          │
 └──────────┴─────────────────┴──────────────────────┴─────────────────────────┘
 ```
 
@@ -33,11 +33,17 @@ That single constraint — **no API credits** — is what drives the entire arch
 
 ## Status
 
-**v1 Batch Runner — built, not yet proven on a full real batch.**
+**The pipeline works.** A real theme has been run end to end against a live ChatGPT
+session — primer posted, prompts dripped, images harvested and filed, no account
+trouble.
 
-The hard part underneath (the ChatGPT driver: embed, type, detect, harvest) is
-**live-verified** against a real session. The run loop on top of it is written but has
-not yet been signed off end to end on a real ~15–20 image theme. Watch your first run.
+Current work (**v2 — Usability & Project Identity**) is not new capability; it's making
+the cockpit comfortable to sit in for an hour. Projects with real output folders, run
+history, a genuine dial-in mode, and a run-entry choice that stops Auto from destroying
+your dial-in are built and awaiting an in-app acceptance pass. A wider/resizable ChatGPT
+panel, an account switcher and a design polish pass are next.
+See [`docs/requirements-v2-usability.md`](docs/requirements-v2-usability.md) and the
+[Known limits](docs/user-guide.md#known-limits).
 
 Actively developed. Personal project — not accepting external contributions.
 
@@ -59,6 +65,10 @@ Brand.md      the fixed look — never edited mid-run     "Beauty & Joy"
    feed ──► ChatGPT generates ──► detect finished image ──► download ──► name ──► file
    every ~18 images: fresh conversation, re-post the primer (fights style drift)
 ```
+
+Every run lands in its own dated folder alongside a `manifest.json` recording the exact
+primer as posted, every prompt and its outcome, and the timings — so a folder of images
+months later still explains itself.
 
 The mechanism that makes this safe-ish and reliable:
 
@@ -99,7 +109,7 @@ An ImageDrip window opens. The right-hand column is live ChatGPT — **sign in o
 hand**. That session persists across restarts.
 
 Then: paste your prompt list into the QUEUED lane, edit **Project** to describe the look
-you want, and press **▶ Run theme**.
+you want, test a couple of images in **Dial-in** mode, and press **▶ Run theme…**.
 
 Step-by-step, including the prompt format and what to do when things go wrong:
 **[docs/user-guide.md](docs/user-guide.md)**.
@@ -136,6 +146,7 @@ to do.
 |---|---|
 | [User guide](docs/user-guide.md) | Install, run a batch, troubleshoot. The only doc an operator needs. |
 | [Plan & requirements](docs/imagedrip-plan.md) | The Northstar — why this exists, the domain model, the locked architecture, scope, risk. |
+| [v2 requirements](docs/requirements-v2-usability.md) | Usability & Project Identity — what's being built now and the live-UAT findings that drove it. |
 | [Workflow & UX](docs/ux-and-workflow.md) | The intended end-to-end flow and cockpit design. |
 | [Driver spec](docs/specs/webview-harness-spec.md) | How the ChatGPT integration works, and how to re-pin it when it breaks. |
 | [Build handover](docs/build-handover.md) | For a developer picking up the build. |

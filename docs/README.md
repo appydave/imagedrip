@@ -13,8 +13,10 @@ logged-in ChatGPT session instead of a paid image API. It feeds prompts in at a
 human-like pace, watches for each finished image, and downloads, names and files it
 automatically.
 
-**Status:** v1 Batch Runner — the ChatGPT driver is live-verified; the run loop on top
-of it is built but not yet signed off on a full real batch.
+**Status:** the pipeline is proven — a real theme has been run end to end against a live
+ChatGPT session. Current work is **v2 (Usability & Project Identity)**: WP1–WP5 built and
+awaiting an in-app acceptance pass; WP6 (wider panel, account switcher) and WP7 (design
+polish) not started.
 
 ---
 
@@ -24,7 +26,8 @@ of it is built but not yet signed off on a full real batch.
 |---|---|---|
 | **Using the app** | **[user-guide.md](user-guide.md)** | Nothing else. It's self-contained. |
 | **New to the project and want to understand it** | [../README.md](../README.md) → [imagedrip-plan.md](imagedrip-plan.md) | [ux-and-workflow.md](ux-and-workflow.md) |
-| **Building or extending it** | [build-handover.md](build-handover.md) + [working-rules.md](working-rules.md) | [specs/](#specifications) |
+| **Picking up the build right now** | **[requirements-v2-usability.md](requirements-v2-usability.md)** + [working-rules.md](working-rules.md) | The "Current state" block at the end of working-rules is the live progress marker. |
+| **Understanding how v1 was built** | [build-handover.md](build-handover.md) | [specs/](#specifications) |
 | **Fixing a broken ChatGPT integration** | [specs/webview-harness-spec.md](specs/webview-harness-spec.md) §4 | [../probe/README.md](../probe/README.md) |
 | **Reviewing the risk / cost case** | [imagedrip-plan.md](imagedrip-plan.md) §7 and §9 | — |
 
@@ -44,6 +47,7 @@ of it is built but not yet signed off on a full real batch.
 | Document | What it covers |
 |---|---|
 | [imagedrip-plan.md](imagedrip-plan.md) | **The Northstar.** Origin, the no-API constraint, the layered Brand/Project/Prompt model, the locked architecture (Approach C), security and ToS risk, cost rationale, v1 scope, locked decisions, open questions. |
+| [requirements-v2-usability.md](requirements-v2-usability.md) | **The current build.** v2 Usability & Project Identity — every finding from a live UAT pass traced to the code that caused it, split into seven work packages with acceptance criteria. |
 | [ux-and-workflow.md](ux-and-workflow.md) | The intended end-to-end workflow (setup → dial-in → lock → automation), the cockpit layout, and the v1 build order. |
 
 ### Specifications
@@ -57,7 +61,7 @@ of it is built but not yet signed off on a full real batch.
 
 | Document | What it covers |
 |---|---|
-| [build-handover.md](build-handover.md) | Self-contained brief for a fresh session picking up the v1 build: what's already done, what to build, the gotchas that bite. |
+| [build-handover.md](build-handover.md) | The v1 build brief. **Historical** — v1 shipped — but its "critical gotchas" section is still the best list of the traps in this codebase. |
 | [working-rules.md](working-rules.md) | Standing rules for how work is done on this project (light theme, no "generating" state, refine-don't-replace, confirm before building). |
 | [handover-webview-harness-g3.md](handover-webview-harness-g3.md) | The earlier brief that produced the ChatGPT driver. Historical. |
 | [../probe/README.md](../probe/README.md) | The three probes that de-risked the approach, and how to re-run them to re-pin ChatGPT's selectors. |
@@ -85,6 +89,9 @@ Brand.md      the fixed look — never edited mid-run
    feed prompt ──► ChatGPT generates ──► detect finished image
                                           ──► download ──► name ──► file
    every ~18 images: fresh conversation, re-post the primer (fights drift)
+
+   each run ──► <project output dir>/<YYYY-MM-DD-HHmm-theme>/
+                  images + manifest.json (the exact primer + every prompt) + provenance.jsonl
 ```
 
 ---

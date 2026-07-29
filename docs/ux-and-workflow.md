@@ -1,7 +1,7 @@
 ---
 doc: ux-and-workflow
 project: imagedrip
-status: design intent — Automation half is built; the Dial-in half is NOT (see user-guide.md § Known limits)
+status: design intent — both halves now built (Automation in v1; Dial-in in v2 WP4). Shipped behaviour: user-guide.md
 created: 2026-07-19
 last_updated: 2026-07-29
 pairs_with: imagedrip-plan.md (§3 domain, §10 scope), specs/webview-harness-spec.md (the driver), user-guide.md (what actually ships)

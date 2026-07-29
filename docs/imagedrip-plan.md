@@ -3,7 +3,7 @@ project: imagedrip
 repo: appydave/imagedrip          # public; own repo, scaffolded from AppyTron
 built_on: appytron                # ~/dev/ad/apps/appytron (the boilerplate — not part of this repo)
 kind: requirements + architecture + build plan
-status: canonical — scaffolded, driver live-verified, v1 Batch Runner built (not yet proven on a full theme)
+status: canonical — v1 shipped + proven end to end on a real theme (2026-07-28); v2 usability slice in build
 created: 2026-07-18
 last_updated: 2026-07-29
 approach: C — embedded webview host + synthesized input + DOM-read (§4)
@@ -208,8 +208,12 @@ callback — after the slice proves out.
 - ~~**GitHub remote**~~ — ✅ `git@github.com:appydave/imagedrip.git`.
 - ~~**Selector module**~~ — ✅ pinned + live-verified for the image path (`src/main/chatgpt-selectors.ts`);
   ⚠️ the rate-limit + refusal selectors remain **unverified** (no limit was hit during Probe C).
-- **Proving run** — the v1 acceptance test: one real theme (~15–20 images) end to end. Not yet done.
-- **Output routing** — harvest currently lands in the app's own folder; per-project `outputDir` is in
-  the domain model but not wired. Full gap list: `user-guide.md § Known limits`.
-- **Provenance callback contract** — how the consuming project records harvested image refs (kept
-  generic here; concrete binding lives in that project).
+- ~~**Proving run**~~ — ✅ a real theme ran end to end on 2026-07-28 (primer → drip → harvest, no
+  account trouble). The findings from that pass became `requirements-v2-usability.md`.
+- ~~**Output routing**~~ — ✅ per-project `outputDir` (default `~/Pictures/ImageDrip/<project>`) with
+  per-run `<outputDir>/<run-id>/` folders (v2 WP1).
+- ~~**Provenance callback contract**~~ — ✅ each run writes `manifest.json` (the exact primer + every
+  prompt + outcomes) and `provenance.jsonl` beside its images. A consuming project reads those.
+- **Still open** — the chunk-boundary re-prime has never fired live; rate-limit/refusal selectors are
+  unverified; v2 WP6 (wider panel, account switcher) + WP7 (design polish) unbuilt.
+  Full gap list: `user-guide.md § Known limits`.

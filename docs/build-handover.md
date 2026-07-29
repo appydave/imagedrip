@@ -1,7 +1,7 @@
 ---
 doc: build-handover
 project: imagedrip
-status: largely delivered — v1 Batch Runner + cockpit are built; remaining work is the proving run + the gaps listed in user-guide.md
+status: DELIVERED — v1 shipped and was proven end to end on a real theme (2026-07-28). Historical. Current build is docs/requirements-v2-usability.md
 created: 2026-07-19
 last_updated: 2026-07-29
 audience: a FRESH Claude Code session cd'd into ~/dev/ad/apps/imagedrip
