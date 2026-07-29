@@ -180,4 +180,4 @@ the live page. That's expected upkeep, not a defect. See
 
 ## License
 
-MIT.
+MIT — see [LICENSE](LICENSE).
