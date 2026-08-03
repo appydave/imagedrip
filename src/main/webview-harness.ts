@@ -99,6 +99,23 @@ export class WebviewHarness {
     this.view?.setBounds(bounds);
   }
 
+  /**
+   * Show/hide the ChatGPT view without detaching it.
+   *
+   * A `WebContentsView` is a NATIVE view composited over the window — it paints
+   * above every HTML element regardless of z-index, so any renderer popover that
+   * overlaps this rect is simply invisible. That silently swallowed the WP5 run-
+   * entry chooser (live UAT, 2026-08-03: "something dropping down and showing
+   * underneath ChatGPT").
+   *
+   * The renderer hides the view while a popover is open and restores it after.
+   * Hiding is NOT detaching: the page keeps running, the session and any
+   * in-flight generation are untouched, and a run can continue behind it.
+   */
+  setVisible(visible: boolean): void {
+    this.view?.setVisible(visible);
+  }
+
   async newConversation(): Promise<void> {
     if (!this.view) throw new Error('WebviewHarness: attach() before newConversation()');
     this.lastImageUrl = null;

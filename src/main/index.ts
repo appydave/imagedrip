@@ -489,6 +489,13 @@ const desktop = createConsole({
       input: rectSchema,
       handle: (bounds) => getHarness().setBounds(bounds),
     });
+    // Popovers can't be seen over the native ChatGPT view (it composites above
+    // all HTML) — the renderer hides it for the life of a popover.
+    ipc.register<boolean, void>({
+      channel: IPC.harnessSetVisible,
+      input: z.boolean(),
+      handle: (visible) => harness?.setVisible(visible),
+    });
     ipc.register<void, void>({
       channel: IPC.harnessNewConversation,
       handle: () => getHarness().newConversation(),

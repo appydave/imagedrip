@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Verdict } from '@shared/live-uat';
 import { useAppStore } from './store';
+import { Popover } from './Popover';
 
 /**
  * The Live UAT capture control (`docs/live-uat.md`).
@@ -22,8 +23,16 @@ const VERDICTS: { key: Verdict; glyph: string; label: string; hint: string }[] =
   { key: 'idea', glyph: '💡', label: 'idea', hint: 'a wish, not a defect' },
 ];
 
-/** Verdict picker + note. Shared by both anchors so the two feel identical. */
+/**
+ * Verdict picker + note. Shared by both anchors so the two feel identical.
+ *
+ * Floats through `Popover`, which portals out of the CONTEXT rail's scroll box
+ * and hides the native ChatGPT view — without both, this composer is either
+ * clipped or painted over (live UAT 2026-08-03: "a little flag where the
+ * ChatGPT panel is, but I can't see anything").
+ */
 function Composer(props: {
+  anchor: RefObject<HTMLElement>;
   title: string;
   subtitle?: string;
   onSave: (verdict: Verdict, note: string) => void;
@@ -41,10 +50,8 @@ function Composer(props: {
   };
 
   return (
-    <div
-      className="absolute right-0 top-full z-50 mt-1.5 flex w-[290px] flex-col gap-2 rounded-lg border border-amber bg-surface p-2.5 shadow-lg"
-      onClick={(e) => e.stopPropagation()}
-    >
+    <Popover anchor={props.anchor} width={300} onClose={props.onClose}>
+      <div className="flex flex-col gap-2 p-2.5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate font-display text-[11px] font-bold tracking-widest text-muted">
@@ -104,7 +111,8 @@ function Composer(props: {
       >
         Capture ⌘↵
       </button>
-    </div>
+      </div>
+    </Popover>
   );
 }
 
@@ -119,12 +127,14 @@ export function FlagButton(props: { region: string; snapshot: () => string }): J
   const uat = useAppStore((s) => s.uat);
   const snag = useAppStore((s) => s.snag);
   const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
 
   if (!uat) return null;
 
   return (
-    <span className="relative inline-flex">
+    <span className="inline-flex">
       <button
+        ref={anchor}
         type="button"
         onClick={() => setOpen((v) => !v)}
         title={`flag: ${props.region}`}
@@ -137,6 +147,7 @@ export function FlagButton(props: { region: string; snapshot: () => string }): J
       </button>
       {open && (
         <Composer
+          anchor={anchor}
           title={props.region}
           onSave={(verdict, note) =>
             void snag({ region: props.region, verdict, note, snapshot: props.snapshot() })
@@ -163,19 +174,21 @@ export function VerdictBar(props: {
   const uat = useAppStore((s) => s.uat);
   const verdict = useAppStore((s) => s.verdict);
   const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
 
   if (!uat) return null;
 
   const n = props.selected.length;
 
   return (
-    <span className="relative inline-flex items-center gap-2">
+    <span className="inline-flex items-center gap-2">
       <span className="font-mono text-[10px] text-muted">
         {n === 0 ? 'click tiles to judge them' : `${n} selected`}
       </span>
       {n > 0 && (
         <>
           <button
+            ref={anchor}
             type="button"
             onClick={() => setOpen((v) => !v)}
             className="rounded-md bg-amber px-2.5 py-1 font-display text-[11px] font-bold text-cream hover:brightness-105"
@@ -193,6 +206,7 @@ export function VerdictBar(props: {
       )}
       {open && (
         <Composer
+          anchor={anchor}
           title={`${n} image${n === 1 ? '' : 's'}`}
           subtitle={props.selected.map((s) => s.subject).join(', ')}
           onSave={(v, note) => {
@@ -237,7 +251,9 @@ export function UatToggle(): JSX.Element {
           title="reveal the captured corpus in Finder"
           className="ml-1 font-mono text-[10px] text-amber hover:underline"
         >
-          {total}
+          {/* Labelled, because a bare number next to the harvest counters reads
+              as a harvest stat (live UAT: "I don't really know what the 10 means"). */}
+          {total} captured
         </button>
       )}
     </span>

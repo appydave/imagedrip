@@ -79,6 +79,8 @@ const imagedrip: ImagedripApi = {
     ipcRenderer.invoke(IPC.harvestThumb, relPath),
   attach: (bounds: Rect): Promise<void> => ipcRenderer.invoke(IPC.harnessAttach, bounds),
   setBounds: (bounds: Rect): Promise<void> => ipcRenderer.invoke(IPC.harnessSetBounds, bounds),
+  setPanelVisible: (visible: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC.harnessSetVisible, visible),
   newConversation: (): Promise<void> => ipcRenderer.invoke(IPC.harnessNewConversation),
   feed: (prompt: string): Promise<void> => ipcRenderer.invoke(IPC.harnessFeed, prompt),
   stop: (): Promise<void> => ipcRenderer.invoke(IPC.harnessStop),

@@ -3,6 +3,8 @@ import type { RunManifest, RunSummary, Rect } from '@shared/ipc';
 import { compose, type DomainState } from '@shared/domain';
 import { useAppStore } from './store';
 import { FlagButton, UatToggle, VerdictBar } from './FlagButton';
+import { Modal, Popover } from './Popover';
+import { Grabber, useResizable } from './useResizable';
 
 /** Map a DOM element to the webview bounds (CSS px === DIP in Electron's content view). */
 function rectOf(el: HTMLElement): Rect {
@@ -55,6 +57,11 @@ export default function App(): JSX.Element {
   // macOS hides the native title bar (hiddenInset) — so the top bar must be the
   // drag handle, and it must clear the floating traffic-light buttons on the left.
   const isMac = navigator.userAgent.includes('Macintosh');
+
+  // Both side panels are drag-resizable and remember their width. Neither was,
+  // and both were too narrow to work in (live UAT 2026-08-03).
+  const ctx = useResizable('imagedrip.ctxWidth', 240, { min: 200, max: 620 }, 'left');
+  const gpt = useResizable('imagedrip.gptWidth', 330, { min: 280, max: 1000 }, 'right');
 
   // The ChatGPT column is a RESERVED placeholder — main overlays the live
   // WebContentsView at this element's rect. We never render ChatGPT ourselves.
@@ -149,14 +156,18 @@ export default function App(): JSX.Element {
         {/* Live UAT gate (docs/live-uat.md) — off by default, never a nag. */}
         <UatToggle />
 
+        {/* Every number is now labelled with what it counts. "4/16 harvested"
+            gave no clue the 16 was the theme's prompt count (live UAT: "I don't
+            know what the 4/6 is about"). */}
         <div className="flex items-center gap-4 font-mono text-[11px] text-muted">
-          <span>
-            <b className="font-display text-base text-brown">{harvestedN}</b>/{totalN} harvested
+          <span title={`${harvestedN} images harvested out of ${totalN} prompts in this theme`}>
+            <b className="font-display text-base text-brown">{harvestedN}</b>
+            <span className="text-muted">/{totalN}</span> images done
           </span>
-          <span>
+          <span title="images left in this conversation before a fresh chat + re-posted primer">
             re-prime in <b className="text-amber">{reprimeLabel}</b>
           </span>
-          <span>{avgLabel}</span>
+          <span title="rolling average generation time per image">{avgLabel}</span>
         </div>
 
         {/* run state at a glance (WP5) — a label, not just button shapes */}
@@ -182,19 +193,41 @@ export default function App(): JSX.Element {
           />
         </span>
 
+        {/* The switch never said what it switched. Dial-in and Auto are two ways
+            to feed the SAME queue — one at a time by hand, or all of them
+            unattended (live UAT: "I'm really lost on what the dial versus auto
+            buttons do… I find the whole dial, auto, and run theme confusing"). */}
         <div className="flex overflow-hidden rounded-md border border-edge font-display text-xs tracking-wide [-webkit-app-region:no-drag]">
-          {(['dial-in', 'auto'] as const).map((m) => (
+          {(
+            [
+              {
+                key: 'dial-in' as const,
+                label: 'Dial-in',
+                sub: 'one at a time',
+                title:
+                  'DIAL-IN — send prompts one at a time, by hand.\n\nUse it to get the look right: ⚡ Initialise project posts the primer, then ⚡ inject on any queued row sends just that one. Nothing runs on its own.',
+              },
+              {
+                key: 'auto' as const,
+                label: 'Auto',
+                sub: 'whole queue',
+                title:
+                  'AUTO — run the whole queue unattended.\n\n▶ Run theme… starts it: feed → wait for the image → harvest → pause → next, re-priming a fresh chat every ~18 images. Use it once Dial-in has the look right.',
+              },
+            ]
+          ).map((m) => (
             <button
-              key={m}
+              key={m.key}
               type="button"
-              onClick={() => setMode(m)}
+              onClick={() => setMode(m.key)}
+              title={m.title}
               className={
-                mode === m
-                  ? 'bg-yellow px-3 py-1.5 font-semibold text-brown'
-                  : 'px-3 py-1.5 text-muted hover:bg-linen'
+                'flex flex-col items-center px-3 py-1 leading-tight ' +
+                (mode === m.key ? 'bg-yellow font-semibold text-brown' : 'text-muted hover:bg-linen')
               }
             >
-              {m === 'dial-in' ? 'Dial-in' : 'Auto'}
+              <span>{m.label}</span>
+              <span className="font-mono text-[9px] opacity-70">{m.sub}</span>
             </button>
           ))}
         </div>
@@ -268,7 +301,9 @@ export default function App(): JSX.Element {
       {/* ── body ────────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1">
         {ctxOpen ? (
+          <>
           <ContextPanel
+            width={ctx.width}
             domain={domain}
             isRunning={isRunning}
             runs={runs}
@@ -285,6 +320,8 @@ export default function App(): JSX.Element {
             onChooseDir={chooseOutputDir}
             onOpenRun={(id) => void openRun(id)}
           />
+          <Grabber onMouseDown={ctx.onGrabberDown} dragging={ctx.dragging} />
+          </>
         ) : (
           <button
             type="button"
@@ -327,7 +364,8 @@ export default function App(): JSX.Element {
 
         {/* native ChatGPT — the ONLY place "generating" ever shows. Reserved rect;
             main overlays the live WebContentsView here. */}
-        <div className="relative flex flex-shrink-0 flex-col">
+        <Grabber onMouseDown={gpt.onGrabberDown} dragging={gpt.dragging} />
+        <div style={{ width: gpt.width }} className="relative flex flex-shrink-0 flex-col">
           {/* The live view is overlaid on gptRef by main, so it covers anything
               drawn inside it — the ⚑ for this region has to sit OUTSIDE the rect. */}
           {uat && (
@@ -341,7 +379,7 @@ export default function App(): JSX.Element {
           )}
           <div
             ref={gptRef}
-            className="relative flex w-[330px] flex-1 flex-col items-center justify-center border-l border-edge bg-gpt"
+            className="relative flex w-full flex-1 flex-col items-center justify-center border-l border-edge bg-gpt"
           >
           <span className="pointer-events-none absolute right-3 top-2.5 rounded-full border border-dashed border-[#333] px-2 py-0.5 font-mono text-[9px] text-[#6a6a6a]">
             native ChatGPT — live
@@ -390,6 +428,7 @@ function RunEntryButton(props: {
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [primed, setPrimed] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
 
   const toggle = (): void => {
     if (open) {
@@ -445,32 +484,37 @@ function RunEntryButton(props: {
   );
 
   return (
-    <div className="relative">
+    <div className="inline-flex">
       <button
+        ref={anchor}
         type="button"
         onClick={toggle}
         className="rounded-md bg-amber px-3.5 py-1.5 font-display text-xs font-bold tracking-wide text-cream hover:brightness-105"
       >
         ▶ Run theme…
       </button>
+      {/* Through Popover: this chooser used to open BEHIND the native ChatGPT
+          view, so the whole WP5 run-entry choice was invisible and unrunnable. */}
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1.5 flex w-[300px] flex-col gap-1.5 rounded-lg border border-edge bg-surface p-2 shadow-lg">
-          {primed ? [continueBtn, freshBtn] : [freshBtn, continueBtn]}
-          {primed && (
-            <div className="rounded-md border border-amber bg-cream px-2.5 py-2 font-mono text-[10px] leading-relaxed text-brown">
-              ⚠ after ~{props.chunkSize} images the run re-primes a fresh chat from the SAVED
-              Project.md — refinements living only in this conversation are lost then. Fold them
-              into Project first.{' '}
-              <button
-                type="button"
-                onClick={props.onOpenProject}
-                className="font-bold text-amber hover:underline"
-              >
-                Open Project ↗
-              </button>
-            </div>
-          )}
-        </div>
+        <Popover anchor={anchor} width={300} onClose={() => setOpen(false)}>
+          <div className="flex flex-col gap-1.5 p-2">
+            {primed ? [continueBtn, freshBtn] : [freshBtn, continueBtn]}
+            {primed && (
+              <div className="rounded-md border border-amber bg-cream px-2.5 py-2 font-mono text-[10px] leading-relaxed text-brown">
+                ⚠ after ~{props.chunkSize} images the run re-primes a fresh chat from the SAVED
+                Project.md — refinements living only in this conversation are lost then. Fold them
+                into Project first.{' '}
+                <button
+                  type="button"
+                  onClick={props.onOpenProject}
+                  className="font-bold text-amber hover:underline"
+                >
+                  Open Project ↗
+                </button>
+              </div>
+            )}
+          </div>
+        </Popover>
       )}
     </div>
   );
@@ -554,6 +598,7 @@ function SaveDot(props: { state: SaveState }): JSX.Element {
 
 /* ── CONTEXT panel — the layered model made visible ───────────────── */
 function ContextPanel(props: {
+  width: number;
   domain: DomainState | null;
   isRunning: boolean;
   runs: RunSummary[] | null;
@@ -575,10 +620,28 @@ function ContextPanel(props: {
   const primerPreview = d ? compose(d.brand, d.project) : '';
 
   return (
-    <div className="flex w-[240px] flex-shrink-0 flex-col gap-2.5 overflow-y-auto border-r border-edge bg-surface p-3.5">
-      <div className="flex items-center justify-between font-display text-[11px] font-semibold tracking-widest text-muted">
-        CONTEXT
-        <button type="button" onClick={props.onClose} className="text-muted hover:text-brown">
+    <div
+      style={{ width: props.width }}
+      className="flex flex-shrink-0 flex-col gap-2.5 overflow-y-auto border-r border-edge bg-surface p-3.5"
+    >
+      {/* "CONTEXT" alone said nothing about what the cards below it were
+          (snag-2: "I don't know what this area is… it just says context").
+          The subtitle names the layered model the cards actually implement. */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-display text-[11px] font-semibold tracking-widest text-muted">
+            CONTEXT — WHAT CHATGPT IS TOLD
+          </div>
+          <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted opacity-80">
+            Brand + Project compose the <b>primer</b>, posted once per chat. Prompts below
+            inherit it.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={props.onClose}
+          className="flex-shrink-0 text-muted hover:text-brown"
+        >
           ✕
         </button>
       </div>
@@ -843,6 +906,12 @@ function BrandCard(props: {
 
   return (
     <div className="rounded-lg border border-edge bg-cream p-2.5">
+      {/* Every card carries its own heading. Without one, the name in the box
+          reads as a random label — snag-2: "It says Beauty and Joy… I'm not
+          sure what I'm looking at… I don't know what field it's going into." */}
+      <div className="mb-1 font-display text-[10px] font-semibold tracking-widest text-muted">
+        BRAND — THE FIXED LOOK
+      </div>
       <div className="flex items-center justify-between gap-2">
         {props.locked ? (
           <div className="font-display text-sm font-semibold">{brand.name} 🔒</div>
@@ -878,20 +947,22 @@ function BrandCard(props: {
         )}
         {!props.locked && <SaveDot state={dirty ? (name.state === 'saving' || body.state === 'saving' ? 'saving' : 'dirty') : 'saved'} />}
       </div>
-      {brands.length > 1 && (
-        <select
-          value={activeBrandId}
-          disabled={props.locked}
-          onChange={(e) => props.onSwitch(e.target.value)}
-          className="mt-1.5 w-full rounded-md border border-edge bg-cream px-1.5 py-1 font-display text-xs text-brown outline-none focus:border-amber disabled:opacity-60"
-        >
-          {brands.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-      )}
+      {/* Always rendered. Hiding it below 2 brands meant nothing said that more
+          than one brand was even possible — snag-2: "I'm assuming I can have
+          other ones. I'm not sure where the list of this would go." */}
+      <select
+        value={activeBrandId}
+        disabled={props.locked || brands.length < 2}
+        onChange={(e) => props.onSwitch(e.target.value)}
+        title={brands.length < 2 ? 'only one brand so far — ＋ new adds another' : 'switch brand'}
+        className="mt-1.5 w-full rounded-md border border-edge bg-cream px-1.5 py-1 font-display text-xs text-brown outline-none focus:border-amber disabled:opacity-60"
+      >
+        {brands.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
+          </option>
+        ))}
+      </select>
       {creating && !props.locked && (
         <div className="mt-1.5 flex gap-1.5">
           <input
@@ -938,11 +1009,15 @@ function ProjectCard(props: {
   const name = useAutosave(project.name, (v) => props.onSave({ name: v }));
   const body = useAutosave(project.body, (v) => props.onSave({ body: v }));
   const [creating, setCreating] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const dirty = name.state !== 'saved' || body.state !== 'saved';
 
   return (
     <>
       <div className="rounded-lg border border-edge bg-cream p-2.5">
+        <div className="mb-1 font-display text-[10px] font-semibold tracking-widest text-muted">
+          PROJECT — WHAT YOU TUNE
+        </div>
         <div className="flex items-center justify-between gap-2">
           <input
             value={name.value}
@@ -992,24 +1067,46 @@ function ProjectCard(props: {
             />
           </div>
         )}
+        <div className="mt-2 flex items-center justify-between">
+          <span className="font-mono text-[10px] text-muted">Project.md</span>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            title="edit full screen — the rail is too narrow to read a long Project.md"
+            className="rounded border border-edge bg-cream px-1.5 py-0.5 font-mono text-[10px] text-muted hover:border-amber hover:text-brown"
+          >
+            ⤢ expand
+          </button>
+        </div>
         <textarea
           value={body.value}
           onChange={(e) => body.onChange(e.target.value)}
           onBlur={body.flush}
           placeholder="Project.md — the dialled-in layer…"
-          className="mt-2 h-24 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber"
+          className="mt-1 h-24 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber"
         />
-        <button
-          type="button"
-          onClick={() => {
-            name.flush();
-            body.flush();
-          }}
-          className="mt-1.5 w-full rounded-md border border-edge bg-cream px-2.5 py-1.5 text-left font-display text-xs text-brown hover:border-amber"
-        >
-          Save now ↩ <span className="font-mono text-[10px] text-muted">(autosave has you anyway)</span>
-        </button>
+        {/* "Save now" is gone: it duplicated the autosave that already runs on
+            debounce and blur, and the saved/unsaved dot above already reports
+            the truth. It was pure space (live UAT: "seems a little bit
+            redundant… taking up space when we don't need it"). */}
       </div>
+
+      {expanded && (
+        <Modal title={`Project.md — ${project.name}`} onClose={() => setExpanded(false)}>
+          <textarea
+            value={body.value}
+            onChange={(e) => body.onChange(e.target.value)}
+            onBlur={body.flush}
+            autoFocus
+            placeholder="Project.md — the dialled-in layer…"
+            className="h-[60vh] w-full resize-none rounded-md border border-edge bg-cream p-3 font-mono text-[13px] leading-relaxed text-brown outline-none focus:border-amber"
+          />
+          <div className="mt-2 flex items-center justify-between font-mono text-[11px] text-muted">
+            <span>{body.value.length} characters · autosaves as you type</span>
+            <SaveDot state={body.state} />
+          </div>
+        </Modal>
+      )}
 
       {creating && (
         <NewProjectForm
@@ -1035,21 +1132,25 @@ function CopyCard(props: {
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-lg border border-edge bg-cream">
-      <div className="flex items-stretch">
+      {/* The label alone read as a heading, and the ▸ read as a disclosure
+          triangle — so nothing on this card looked clickable (live UAT: "we got
+          the copy primer and the copy prompt, but there's no actual copy
+          button"). The action now looks like a button and says what it does. */}
+      <div className="flex items-stretch gap-1 p-1.5">
         <button
           type="button"
           onClick={props.onCopy}
-          className="flex-1 px-2.5 py-2 text-left font-display text-xs text-brown hover:text-amber"
+          className="flex-1 rounded-md border border-edge bg-linen px-2.5 py-1.5 text-left font-display text-xs font-semibold text-brown hover:border-amber hover:text-amber"
         >
-          {props.label}
+          ⧉ {props.label}
         </button>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           title="preview exactly what will be copied"
-          className="px-2.5 font-mono text-[11px] text-muted hover:text-amber"
+          className="rounded-md border border-edge px-2 font-mono text-[10px] text-muted hover:border-amber hover:text-amber"
         >
-          {open ? '▾' : '▸'}
+          {open ? 'hide' : 'peek'}
         </button>
       </div>
       <div className="px-2.5 pb-2 font-mono text-[10px] leading-relaxed text-muted">
@@ -1303,7 +1404,17 @@ function HarvestedLane(props: {
   // batch ("everything after the re-prime went washed out"). Selection is
   // renderer-local — it is a review gesture, not app state.
   const [picked, setPicked] = useState<string[]>([]);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const [size, setSize] = useState<TileSize>(
+    () => (localStorage.getItem('imagedrip.tileSize') as TileSize) || 'm',
+  );
   const selectable = props.items.filter((it) => it.savedPath);
+
+  const setTileSize = (s: TileSize): void => {
+    localStorage.setItem('imagedrip.tileSize', s);
+    setSize(s);
+  };
+  const shown = props.items.find((it) => it.id === viewing);
 
   const toggle = (id: string): void =>
     setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -1318,10 +1429,29 @@ function HarvestedLane(props: {
         HARVESTED <span className="font-mono text-[13px] text-amber">{props.items.length}</span>
         <FlagButton
           region="harvested"
-          snapshot={() => `${props.items.length} harvested tiles shown`}
+          snapshot={() => `${props.items.length} harvested tiles shown · size=${size}`}
         />
         <span className="flex-1" />
         <VerdictBar selected={selected} onClear={() => setPicked([])} />
+        {/* Tile size — small was the only option, and this lane is where the
+            time is actually spent looking (iv-5…8: "I should be able to have a
+            slider that allows me to change the sizes"). */}
+        <span className="flex overflow-hidden rounded-md border border-edge">
+          {(['s', 'm', 'l'] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setTileSize(s)}
+              title={`${TILE[s].label} tiles`}
+              className={
+                'px-1.5 py-0.5 font-mono text-[10px] ' +
+                (size === s ? 'bg-yellow text-brown' : 'text-muted hover:bg-linen')
+              }
+            >
+              {s.toUpperCase()}
+            </button>
+          ))}
+        </span>
       </h4>
       {props.items.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-8 text-center font-mono text-[11px] leading-relaxed text-muted opacity-80">
@@ -1329,7 +1459,12 @@ function HarvestedLane(props: {
           project output dir.
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] content-start gap-2.5 overflow-auto">
+        <div
+          style={{
+            gridTemplateColumns: `repeat(auto-fill, minmax(${TILE[size].px}px, 1fr))`,
+          }}
+          className="grid content-start gap-2.5 overflow-auto"
+        >
           {props.items.map((it) => (
             <HarvestThumb
               key={it.id}
@@ -1337,11 +1472,58 @@ function HarvestedLane(props: {
               savedPath={it.savedPath}
               picked={picked.includes(it.id)}
               onPick={uat && it.savedPath ? () => toggle(it.id) : undefined}
+              onOpen={it.savedPath ? () => setViewing(it.id) : undefined}
             />
           ))}
         </div>
       )}
+
+      {shown && (
+        <Modal title={fileNameOf(shown)} onClose={() => setViewing(null)}>
+          <FullImage savedPath={shown.savedPath as string} subject={shown.subject} />
+        </Modal>
+      )}
     </div>
+  );
+}
+
+type TileSize = 's' | 'm' | 'l';
+const TILE: Record<TileSize, { px: number; label: string }> = {
+  s: { px: 110, label: 'small' },
+  m: { px: 170, label: 'medium' },
+  l: { px: 280, label: 'large' },
+};
+
+/**
+ * The REAL filename on disk, not the prompt subject.
+ *
+ * The caption used to render `{subject}.png`, so a prompt called
+ * "Luc Moreau —" displayed as `Luc Moreau —.png` while the actual file was
+ * `luc-moreau.png`. That produced four 👎 verdicts asking for lowercase-dash
+ * naming that the app was ALREADY doing — the label was the only thing wrong.
+ */
+function fileNameOf(it: { subject: string; savedPath?: string }): string {
+  if (!it.savedPath) return it.subject;
+  return it.savedPath.slice(it.savedPath.lastIndexOf('/') + 1);
+}
+
+/** Full-size image for the viewer modal. */
+function FullImage(props: { savedPath: string; subject: string }): JSX.Element {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void window.imagedrip.harvestThumb(props.savedPath).then((d) => {
+      if (live) setSrc(d);
+    });
+    return () => {
+      live = false;
+    };
+  }, [props.savedPath]);
+
+  return src ? (
+    <img src={src} alt={props.subject} className="mx-auto max-h-[75vh] w-auto max-w-full" />
+  ) : (
+    <div className="py-16 text-center font-mono text-xs text-muted">loading…</div>
   );
 }
 
@@ -1352,6 +1534,8 @@ function HarvestThumb(props: {
   /** Live UAT selection state; `onPick` is undefined when UAT is off. */
   picked?: boolean;
   onPick?: () => void;
+  /** Open the full-size viewer. Always available, UAT on or off. */
+  onOpen?: () => void;
 }): JSX.Element {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
@@ -1366,23 +1550,43 @@ function HarvestThumb(props: {
     };
   }, [props.savedPath]);
 
+  // Click opens the image; the corner checkbox selects it for a verdict. Making
+  // the tile itself do double duty would mean you couldn't look at an image
+  // without judging it.
   return (
     <div
-      onClick={props.onPick}
+      onClick={props.onOpen}
       className={
-        'relative aspect-square overflow-hidden rounded-lg border bg-linen ' +
-        (props.onPick ? 'cursor-pointer ' : '') +
+        'group relative aspect-square overflow-hidden rounded-lg border bg-linen ' +
+        (props.onOpen ? 'cursor-zoom-in ' : '') +
         (props.picked ? 'border-amber ring-2 ring-amber' : 'border-edge')
       }
     >
       {src && <img src={src} alt={props.subject} className="h-full w-full object-cover" />}
-      {props.picked && (
-        <span className="absolute right-1.5 top-1.5 rounded-full bg-amber px-1.5 font-mono text-[10px] font-bold text-cream">
+      {props.onPick && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onPick?.();
+          }}
+          title={props.picked ? 'deselect' : 'select for a verdict'}
+          className={
+            'absolute left-1.5 top-1.5 h-5 w-5 rounded border font-mono text-[11px] leading-none ' +
+            (props.picked
+              ? 'border-amber bg-amber text-cream'
+              : 'border-white/70 bg-black/30 text-transparent hover:text-white/80')
+          }
+        >
           ✓
-        </span>
+        </button>
       )}
-      <span className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/55 to-transparent px-2 pb-1.5 pt-3.5 font-mono text-[10px] text-white">
-        {props.subject}.png <span className="text-[#a7e6b6]">✓</span>
+      <span
+        title={fileNameOf(props)}
+        className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/55 to-transparent px-2 pb-1.5 pt-3.5 font-mono text-[10px] text-white"
+      >
+        <span className="min-w-0 truncate">{fileNameOf(props)}</span>
+        <span className="text-[#a7e6b6]">✓</span>
       </span>
     </div>
   );

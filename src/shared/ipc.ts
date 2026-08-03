@@ -54,6 +54,8 @@ export const IPC = {
   // ── ImageDrip: renderer → main harness control (window.imagedrip.*) ──
   harnessAttach: 'imagedrip:harness:attach',
   harnessSetBounds: 'imagedrip:harness:set-bounds',
+  /** Hide the native ChatGPT view so a renderer popover can be seen over it. */
+  harnessSetVisible: 'imagedrip:harness:set-visible',
   harnessNewConversation: 'imagedrip:harness:new-conversation',
   harnessFeed: 'imagedrip:harness:feed',
   harnessStop: 'imagedrip:harness:stop',
@@ -317,6 +319,12 @@ export interface ImagedripApi {
   attach(bounds: Rect): Promise<void>;
   /** Re-position on window resize / panel layout change. */
   setBounds(bounds: Rect): Promise<void>;
+  /**
+   * Show/hide the native ChatGPT view. It composites ABOVE all HTML, so any
+   * popover overlapping it is invisible until the view is hidden. Hiding does
+   * not detach — the session and any running generation continue.
+   */
+  setPanelVisible(visible: boolean): Promise<void>;
   /** Open a fresh chat before a batch. */
   newConversation(): Promise<void>;
   /** Submit one prompt via synthesized clipboard-paste + Enter. */
