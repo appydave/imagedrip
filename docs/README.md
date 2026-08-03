@@ -63,6 +63,8 @@ polish) not started.
 |---|---|
 | [build-handover.md](build-handover.md) | The v1 build brief. **Historical** — v1 shipped — but its "critical gotchas" section is still the best list of the traps in this codebase. |
 | [working-rules.md](working-rules.md) | Standing rules for how work is done on this project (light theme, no "generating" state, refine-don't-replace, confirm before building). |
+| [kdd/](kdd/README.md) | **What we learned the expensive way.** Four learnings + one ADR. Read the frontend ones before touching the ChatGPT panel or any floating UI — both failures are silent and look like something else. |
+| [live-uat.md](live-uat.md) | The in-app judgment-capture layer: what gets flagged, the two records, the sidecar, and what is deliberately out of scope. |
 | [handover-webview-harness-g3.md](handover-webview-harness-g3.md) | The earlier brief that produced the ChatGPT driver. Historical. |
 | [../probe/README.md](../probe/README.md) | The three probes that de-risked the approach, and how to re-run them to re-pin ChatGPT's selectors. |
 
