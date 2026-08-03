@@ -1465,7 +1465,27 @@ function HarvestedLane(props: {
     localStorage.setItem('imagedrip.tileSize', s);
     setSize(s);
   };
-  const shown = props.items.find((it) => it.id === viewing);
+  // Only tiles with a file can be opened, so the viewer walks THAT list — an
+  // arrow key must never land on a tile with nothing to show.
+  const viewable = props.items.filter((it) => it.savedPath);
+  const shownIndex = viewable.findIndex((it) => it.id === viewing);
+  const shown = shownIndex >= 0 ? viewable[shownIndex] : undefined;
+
+  // ← / → step through the harvest without closing and reopening the modal.
+  // Reviewing a run means comparing image N against N+1; making that a
+  // round-trip through the grid is what turns a review into a chore.
+  useEffect(() => {
+    if (shownIndex < 0) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const next = shownIndex + (e.key === 'ArrowRight' ? 1 : -1);
+      // Clamp rather than wrap: hitting an end should feel like an end.
+      if (next >= 0 && next < viewable.length) setViewing(viewable[next].id);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [shownIndex, viewable]);
 
   const toggle = (id: string): void =>
     setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -1530,8 +1550,30 @@ function HarvestedLane(props: {
       )}
 
       {shown && (
-        <Modal title={fileNameOf(shown)} onClose={() => setViewing(null)}>
+        <Modal
+          title={`${fileNameOf(shown)}  ·  ${shownIndex + 1} of ${viewable.length}`}
+          onClose={() => setViewing(null)}
+        >
           <FullImage savedPath={shown.savedPath as string} subject={shown.subject} />
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              disabled={shownIndex === 0}
+              onClick={() => setViewing(viewable[shownIndex - 1].id)}
+              className="rounded-md border border-edge bg-cream px-3 py-1.5 font-display text-xs text-brown enabled:hover:border-amber disabled:opacity-40"
+            >
+              ← previous
+            </button>
+            <span className="font-mono text-[10px] text-muted">← → arrow keys</span>
+            <button
+              type="button"
+              disabled={shownIndex === viewable.length - 1}
+              onClick={() => setViewing(viewable[shownIndex + 1].id)}
+              className="rounded-md border border-edge bg-cream px-3 py-1.5 font-display text-xs text-brown enabled:hover:border-amber disabled:opacity-40"
+            >
+              next →
+            </button>
+          </div>
         </Modal>
       )}
     </div>
