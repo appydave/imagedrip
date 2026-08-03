@@ -64,3 +64,10 @@ to repeat one.
   real default. Requirements doc corrected (chunk path untested / git-commit gotcha / WP7 fonts).
   **STOPPED before WP6 per ruling — awaiting David's in-app acceptance of WP1–WP5**, especially
   the WP5 dial-in→Continue scenario and the real domain.json migration.
+- **Live UAT built (2026-08-03, `docs/live-uat.md`)** — the acceptance pass now has a capture
+  layer. ⚑ toggle in the top bar (off by default, persisted); ⚑ on every cockpit region raises a
+  screen-anchored `Snag`; harvested tiles are multi-selectable and take an `ImageVerdict` carrying
+  the EXACT primer from that run's manifest. Two anchors → two stores, appended as JSONL to
+  `~/Library/Application Support/imagedrip/live-uat/`. Sidecar only: it never writes `domain.json`
+  or a run manifest. **No inbox** (no resolve/delete/bulk-clear) — known debt if it outlives the
+  first processing pass. Acting on the pile is `live-uat-process`, not an app feature.

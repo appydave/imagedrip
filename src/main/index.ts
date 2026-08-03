@@ -14,7 +14,9 @@ import {
   type RunSummary,
 } from '@shared/ipc';
 import type { DomainState } from '@shared/domain';
+import type { SnagInput, UatCounts, VerdictInput } from '@shared/live-uat';
 import { createConsole } from './create-console.js';
+import { readCounts, revealStore, writeSnag, writeVerdict } from './live-uat-store.js';
 import {
   composePrimer,
   createBrand,
@@ -92,6 +94,80 @@ function getOutputAuthor(): SwappableFileAuthor {
 }
 
 const exec = promisify(execFile);
+
+const verdictEnum = z.enum(['down', 'question', 'up', 'idea']);
+
+const snagSchema = z.object({
+  region: z.string().min(1),
+  verdict: verdictEnum,
+  note: z.string(),
+  snapshot: z.string(),
+  mode: z.enum(['dial-in', 'auto']),
+  phase: z.string(),
+});
+
+const verdictSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        promptId: z.string().min(1),
+        savedPath: z.string().min(1),
+        subject: z.string(),
+      }),
+    )
+    .min(1),
+  verdict: verdictEnum,
+  note: z.string(),
+});
+
+/**
+ * Record image judgments with a REAL producer snapshot (docs/live-uat.md).
+ *
+ * The primer is read back out of the run manifest that produced the image — not
+ * recomposed from the current Brand/Project, which would silently attribute an
+ * image to a primer it was never generated from. Without a truthful producer
+ * this corpus is a bug list, not a tuning signal.
+ */
+async function recordVerdicts(input: VerdictInput): Promise<void> {
+  const s = await getDomain();
+  const root = await ensureOutputRoot();
+  const manifests = new Map<string, RunManifest | null>();
+
+  for (const item of input.items) {
+    const slash = item.savedPath.indexOf('/');
+    // Pre-WP1 harvests were written flat, with no run folder and no manifest.
+    const runId = slash > 0 ? item.savedPath.slice(0, slash) : '';
+    const file = slash > 0 ? item.savedPath.slice(slash + 1) : item.savedPath;
+
+    if (runId && !manifests.has(runId)) {
+      manifests.set(runId, await readRunManifest(root, runId).catch(() => null));
+    }
+    const manifest = runId ? (manifests.get(runId) ?? null) : null;
+    const record = manifest?.prompts.find((p) => p.id === item.promptId);
+
+    await writeVerdict({
+      runId: runId || '(no run folder)',
+      promptId: item.promptId,
+      file,
+      verdict: input.verdict,
+      note: input.note,
+      producer: {
+        primer:
+          manifest?.primer ??
+          '(unavailable — no run manifest for this image; pre-WP1 flat harvest)',
+        promptText:
+          record?.text ??
+          s.theme.prompts.find((p) => p.id === item.promptId)?.text ??
+          item.subject,
+        mode: manifest?.mode,
+        brandId: s.activeBrandId,
+        projectId: s.project.id,
+        generationMs: record?.generationMs,
+      },
+    });
+  }
+  logger?.info({ n: input.items.length, verdict: input.verdict }, 'live-uat verdicts');
+}
 
 /** Point the author at the active project's output dir (creating it), return it.
  *  The dir is git-initialised (advisory-1 #4) — FileAuthor's per-write commit
@@ -374,6 +450,32 @@ const desktop = createConsole({
       channel: IPC.harvestThumb,
       input: z.string(),
       handle: (rel) => readThumb(rel),
+    });
+
+    // ── Live UAT: the judgment sidecar (docs/live-uat.md) ──
+    // Capture only. These handlers must never write domain.json or a run
+    // manifest — the feedback channel stays separate from the decision channel.
+    ipc.register<SnagInput, void>({
+      channel: IPC.uatSnag,
+      input: snagSchema,
+      handle: async (input) => {
+        const s = await getDomain();
+        await writeSnag(input, s.project.id);
+        logger?.info({ region: input.region, verdict: input.verdict }, 'live-uat snag');
+      },
+    });
+    ipc.register<VerdictInput, void>({
+      channel: IPC.uatVerdict,
+      input: verdictSchema,
+      handle: (input) => recordVerdicts(input),
+    });
+    ipc.register<void, UatCounts>({
+      channel: IPC.uatCounts,
+      handle: () => readCounts(),
+    });
+    ipc.register<void, void>({
+      channel: IPC.uatReveal,
+      handle: () => revealStore(),
     });
 
     // ── ImageDrip harness control (window.imagedrip.*) ──

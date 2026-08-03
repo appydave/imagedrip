@@ -12,6 +12,7 @@ import {
   type RunSummary,
 } from '../shared/ipc';
 import type { DomainState } from '../shared/domain';
+import type { SnagInput, UatCounts, VerdictInput } from '../shared/live-uat';
 
 const api: AppytronApi = {
   getAppInfo: (): Promise<AppInfo> => ipcRenderer.invoke(IPC.appInfo),
@@ -67,6 +68,12 @@ const imagedrip: ImagedripApi = {
       ipcRenderer.on(IPC.runStatus, listener);
       return () => ipcRenderer.removeListener(IPC.runStatus, listener);
     },
+  },
+  uat: {
+    snag: (input: SnagInput): Promise<void> => ipcRenderer.invoke(IPC.uatSnag, input),
+    verdict: (input: VerdictInput): Promise<void> => ipcRenderer.invoke(IPC.uatVerdict, input),
+    counts: (): Promise<UatCounts> => ipcRenderer.invoke(IPC.uatCounts),
+    reveal: (): Promise<void> => ipcRenderer.invoke(IPC.uatReveal),
   },
   harvestThumb: (relPath: string): Promise<string | null> =>
     ipcRenderer.invoke(IPC.harvestThumb, relPath),

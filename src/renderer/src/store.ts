@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { DomainState, ImportMode } from '@shared/domain';
 import type { RunManifest, RunStatus, RunSummary } from '@shared/ipc';
+import type { UatCounts, Verdict, VerdictInput } from '@shared/live-uat';
 
 export type Mode = 'dial-in' | 'auto';
 
@@ -60,7 +61,19 @@ interface AppState {
 
   setCtx: (open: boolean) => void;
   setMode: (mode: Mode) => void;
+
+  /** Live UAT gate (docs/live-uat.md). Off by default; persisted across restarts. */
+  uat: boolean;
+  uatCounts: UatCounts | null;
+  setUat: (on: boolean) => void;
+  refreshUatCounts: () => Promise<void>;
+  /** Raise a screen-anchored snag. `mode`/`phase` are filled from live state. */
+  snag: (input: { region: string; verdict: Verdict; note: string; snapshot: string }) => Promise<void>;
+  /** Judge harvested images; main resolves the producer snapshot from the manifest. */
+  verdict: (input: VerdictInput) => Promise<void>;
 }
+
+const UAT_KEY = 'imagedrip.uat';
 
 async function copy(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
@@ -88,6 +101,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   init: async () => {
     set({ domain: await window.imagedrip.domain.get() });
     void get().loadRuns();
+    if (get().uat) void get().refreshUatCounts();
     if (subscribed) return;
     subscribed = true;
     // Live run status. On each harvest / terminal transition, re-read the domain so
@@ -241,4 +255,32 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setCtx: (open) => set({ ctxOpen: open }),
   setMode: (mode) => set({ mode }),
+
+  // ── Live UAT (docs/live-uat.md) — capture only. These calls must never be
+  // able to change what the app does; the feedback channel is separate from the
+  // decision channel by construction (they don't touch domain.json).
+  uat: localStorage.getItem(UAT_KEY) === 'on',
+  uatCounts: null,
+  setUat: (on) => {
+    localStorage.setItem(UAT_KEY, on ? 'on' : 'off');
+    set({ uat: on });
+    if (on) void get().refreshUatCounts();
+  },
+  refreshUatCounts: async () => {
+    set({ uatCounts: await window.imagedrip.uat.counts() });
+  },
+  snag: async (input) => {
+    await window.imagedrip.uat.snag({
+      ...input,
+      mode: get().mode,
+      phase: get().status?.phase ?? 'idle',
+    });
+    set({ flash: `⚑ snagged: ${input.region}` });
+    void get().refreshUatCounts();
+  },
+  verdict: async (input) => {
+    await window.imagedrip.uat.verdict(input);
+    set({ flash: `⚑ judged ${input.items.length} image${input.items.length === 1 ? '' : 's'}` });
+    void get().refreshUatCounts();
+  },
 }));

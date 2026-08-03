@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RunManifest, RunSummary, Rect } from '@shared/ipc';
 import { compose, type DomainState } from '@shared/domain';
 import { useAppStore } from './store';
+import { FlagButton, UatToggle, VerdictBar } from './FlagButton';
 
 /** Map a DOM element to the webview bounds (CSS px === DIP in Electron's content view). */
 function rectOf(el: HTMLElement): Rect {
@@ -48,6 +49,7 @@ export default function App(): JSX.Element {
     injectPrompt,
     setCtx,
     setMode,
+    uat,
   } = useAppStore();
 
   // macOS hides the native title bar (hiddenInset) — so the top bar must be the
@@ -92,7 +94,9 @@ export default function App(): JSX.Element {
   useLayoutEffect(() => {
     const el = gptRef.current;
     if (el && attached.current) void window.imagedrip.setBounds(rectOf(el));
-  }, [ctxOpen, mode]);
+    // `uat` is in here because the ⚑ strip above the panel changes its rect —
+    // miss it and the overlaid ChatGPT view drifts out of alignment.
+  }, [ctxOpen, mode, uat]);
 
   // Transient copy/save confirmations self-clear.
   useEffect(() => {
@@ -142,6 +146,9 @@ export default function App(): JSX.Element {
         </span>
         <span className="flex-1" />
 
+        {/* Live UAT gate (docs/live-uat.md) — off by default, never a nag. */}
+        <UatToggle />
+
         <div className="flex items-center gap-4 font-mono text-[11px] text-muted">
           <span>
             <b className="font-display text-base text-brown">{harvestedN}</b>/{totalN} harvested
@@ -166,6 +173,15 @@ export default function App(): JSX.Element {
           {isRunning ? '● LIVE' : isPaused ? '⏸ PAUSED' : '○ IDLE'}
         </span>
 
+        <span className="[-webkit-app-region:no-drag]">
+          <FlagButton
+            region="topbar"
+            snapshot={() =>
+              `state=${isRunning ? 'LIVE' : isPaused ? 'PAUSED' : 'IDLE'} ${harvestedN}/${totalN} harvested · re-prime in ${reprimeLabel} · ${avgLabel}`
+            }
+          />
+        </span>
+
         <div className="flex overflow-hidden rounded-md border border-edge font-display text-xs tracking-wide [-webkit-app-region:no-drag]">
           {(['dial-in', 'auto'] as const).map((m) => (
             <button
@@ -186,6 +202,12 @@ export default function App(): JSX.Element {
         {/* run control — phase-driven primary action (WP5): one coherent group.
             STOP exists ONLY when there is something to stop. */}
         <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
+          <FlagButton
+            region="run-control"
+            snapshot={() =>
+              `mode=${mode} phase=${phase} harvested=${harvestedN}/${totalN} queued=${queued.length} reprimeIn=${reprimeLabel}`
+            }
+          />
           {isRunning ? (
             <button
               type="button"
@@ -294,17 +316,33 @@ export default function App(): JSX.Element {
               onImport={(t, m) => void importPrompts(t, m)}
             />
             <HarvestedLane
-              items={harvested.map((p) => ({ subject: p.subject, savedPath: p.savedPath }))}
+              items={harvested.map((p) => ({
+                id: p.id,
+                subject: p.subject,
+                savedPath: p.savedPath,
+              }))}
             />
           </div>
         )}
 
         {/* native ChatGPT — the ONLY place "generating" ever shows. Reserved rect;
             main overlays the live WebContentsView here. */}
-        <div
-          ref={gptRef}
-          className="relative flex w-[330px] flex-shrink-0 flex-col items-center justify-center border-l border-edge bg-gpt"
-        >
+        <div className="relative flex flex-shrink-0 flex-col">
+          {/* The live view is overlaid on gptRef by main, so it covers anything
+              drawn inside it — the ⚑ for this region has to sit OUTSIDE the rect. */}
+          {uat && (
+            <div className="flex items-center justify-end gap-1 border-b border-l border-edge bg-surface px-2 py-0.5">
+              <span className="font-mono text-[9px] text-muted">ChatGPT panel</span>
+              <FlagButton
+                region="chatgpt"
+                snapshot={() => `ChatGPT panel — fixed 330px wide (WP6 not built) · phase=${phase}`}
+              />
+            </div>
+          )}
+          <div
+            ref={gptRef}
+            className="relative flex w-[330px] flex-1 flex-col items-center justify-center border-l border-edge bg-gpt"
+          >
           <span className="pointer-events-none absolute right-3 top-2.5 rounded-full border border-dashed border-[#333] px-2 py-0.5 font-mono text-[9px] text-[#6a6a6a]">
             native ChatGPT — live
           </span>
@@ -313,6 +351,7 @@ export default function App(): JSX.Element {
             <br />
             first run: sign in once (session persists).
           </span>
+          </div>
         </div>
       </div>
 
@@ -583,6 +622,15 @@ function ContextPanel(props: {
         onCopy={props.onCopyPrompt}
       />
 
+      <div className="flex items-center justify-end">
+        <FlagButton
+          region="context-copy"
+          snapshot={() =>
+            `primer=${primerPreview.length}ch · next queued="${nextQueued?.subject ?? '(none)'}"`
+          }
+        />
+      </div>
+
       <ListPromptCard onCopy={props.onCopyText} />
 
       {/* run history (WP1) — every previous run of THIS project, from its manifest */}
@@ -590,6 +638,12 @@ function ContextPanel(props: {
         <div className="mb-1.5 flex items-center gap-2 font-display text-[11px] font-semibold tracking-widest text-muted">
           RUNS
           <span className="font-mono text-[13px] text-amber">{props.runs?.length ?? '…'}</span>
+          <FlagButton
+            region="context-runs"
+            snapshot={() =>
+              `${props.runs?.length ?? 0} runs listed for project "${d?.project.name ?? '?'}"`
+            }
+          />
         </div>
         <div className="flex flex-col gap-1.5 overflow-y-auto">
           {(props.runs ?? []).map((r) => (
@@ -800,6 +854,12 @@ function BrandCard(props: {
             className="w-full rounded-md border border-transparent bg-transparent font-display text-sm font-semibold text-brown outline-none hover:border-edge focus:border-amber"
           />
         )}
+        <FlagButton
+          region="context-brand"
+          snapshot={() =>
+            `brand="${brand.name}" (${brands.length} brands) locked=${props.locked} body=${brand.body.length}ch`
+          }
+        />
         {!props.locked && (
           <button
             type="button"
@@ -890,6 +950,12 @@ function ProjectCard(props: {
             onBlur={name.flush}
             className="w-full rounded-md border border-transparent bg-transparent font-display text-sm font-semibold text-brown outline-none hover:border-edge focus:border-amber"
           />
+          <FlagButton
+            region="context-project"
+            snapshot={() =>
+              `project="${project.name}" (${projects.length} projects) outputDir=${project.outputDir ?? '(unset)'} body=${project.body.length}ch`
+            }
+          />
           <button
             type="button"
             onClick={() => setCreating((v) => !v)}
@@ -916,8 +982,14 @@ function ProjectCard(props: {
           </select>
         )}
         {project.outputDir && (
-          <div title={project.outputDir} className="mt-1.5 truncate font-mono text-[10px] text-muted">
-            → {project.outputDir}
+          <div className="mt-1.5 flex items-center gap-1">
+            <span title={project.outputDir} className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted">
+              → {project.outputDir}
+            </span>
+            <FlagButton
+              region="context-output"
+              snapshot={() => `outputDir=${project.outputDir} project="${project.name}"`}
+            />
           </div>
         )}
         <textarea
@@ -1101,6 +1173,12 @@ function QueuedLane(props: {
       <h4 className="mb-2.5 flex items-center justify-between font-display text-xs font-semibold tracking-widest text-muted">
         <span className="flex items-center gap-2">
           QUEUED <span className="font-mono text-[13px] text-amber">{props.prompts.length}</span>
+          <FlagButton
+            region="queued"
+            snapshot={() =>
+              `${props.prompts.length} queued · dialIn=${props.dialIn} · importing=${importing} · next="${props.prompts[0]?.subject ?? '(none)'}"`
+            }
+          />
         </span>
         <button
           type="button"
@@ -1218,12 +1296,32 @@ function QueuedLane(props: {
 
 /* ── HARVESTED lane — the star. Only real, harvested images appear here. ── */
 function HarvestedLane(props: {
-  items: { subject: string; savedPath?: string }[];
+  items: { id: string; subject: string; savedPath?: string }[];
 }): JSX.Element {
+  const uat = useAppStore((s) => s.uat);
+  // Live UAT: tiles become multi-selectable so ONE verdict can cover a whole
+  // batch ("everything after the re-prime went washed out"). Selection is
+  // renderer-local — it is a review gesture, not app state.
+  const [picked, setPicked] = useState<string[]>([]);
+  const selectable = props.items.filter((it) => it.savedPath);
+
+  const toggle = (id: string): void =>
+    setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+
+  const selected = selectable
+    .filter((it) => picked.includes(it.id))
+    .map((it) => ({ promptId: it.id, savedPath: it.savedPath as string, subject: it.subject }));
+
   return (
     <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-edge bg-surface p-3">
       <h4 className="mb-2.5 flex items-center gap-2 font-display text-xs font-semibold tracking-widest text-muted">
         HARVESTED <span className="font-mono text-[13px] text-amber">{props.items.length}</span>
+        <FlagButton
+          region="harvested"
+          snapshot={() => `${props.items.length} harvested tiles shown`}
+        />
+        <span className="flex-1" />
+        <VerdictBar selected={selected} onClear={() => setPicked([])} />
       </h4>
       {props.items.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-8 text-center font-mono text-[11px] leading-relaxed text-muted opacity-80">
@@ -1233,7 +1331,13 @@ function HarvestedLane(props: {
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] content-start gap-2.5 overflow-auto">
           {props.items.map((it) => (
-            <HarvestThumb key={it.subject} subject={it.subject} savedPath={it.savedPath} />
+            <HarvestThumb
+              key={it.id}
+              subject={it.subject}
+              savedPath={it.savedPath}
+              picked={picked.includes(it.id)}
+              onPick={uat && it.savedPath ? () => toggle(it.id) : undefined}
+            />
           ))}
         </div>
       )}
@@ -1242,7 +1346,13 @@ function HarvestedLane(props: {
 }
 
 /** One harvested tile — loads the real PNG from the scoped harvest root as a data URL. */
-function HarvestThumb(props: { subject: string; savedPath?: string }): JSX.Element {
+function HarvestThumb(props: {
+  subject: string;
+  savedPath?: string;
+  /** Live UAT selection state; `onPick` is undefined when UAT is off. */
+  picked?: boolean;
+  onPick?: () => void;
+}): JSX.Element {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -1257,8 +1367,20 @@ function HarvestThumb(props: { subject: string; savedPath?: string }): JSX.Eleme
   }, [props.savedPath]);
 
   return (
-    <div className="relative aspect-square overflow-hidden rounded-lg border border-edge bg-linen">
+    <div
+      onClick={props.onPick}
+      className={
+        'relative aspect-square overflow-hidden rounded-lg border bg-linen ' +
+        (props.onPick ? 'cursor-pointer ' : '') +
+        (props.picked ? 'border-amber ring-2 ring-amber' : 'border-edge')
+      }
+    >
       {src && <img src={src} alt={props.subject} className="h-full w-full object-cover" />}
+      {props.picked && (
+        <span className="absolute right-1.5 top-1.5 rounded-full bg-amber px-1.5 font-mono text-[10px] font-bold text-cream">
+          ✓
+        </span>
+      )}
       <span className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/55 to-transparent px-2 pb-1.5 pt-3.5 font-mono text-[10px] text-white">
         {props.subject}.png <span className="text-[#a7e6b6]">✓</span>
       </span>

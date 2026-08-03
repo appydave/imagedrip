@@ -5,6 +5,7 @@
  */
 
 import type { DomainState } from './domain';
+import type { SnagInput, UatCounts, VerdictInput } from './live-uat';
 
 export const IPC = {
   appInfo: 'app:info',
@@ -58,6 +59,12 @@ export const IPC = {
   harnessStop: 'imagedrip:harness:stop',
   /** main → renderer push of harness events (image-done / rate-limit / refused / stall). */
   harnessEvent: 'imagedrip:harness:event',
+
+  // ── Live UAT: the judgment sidecar (docs/live-uat.md) — never touches domain.json ──
+  uatSnag: 'imagedrip:uat:snag',
+  uatVerdict: 'imagedrip:uat:verdict',
+  uatCounts: 'imagedrip:uat:counts',
+  uatReveal: 'imagedrip:uat:reveal',
 } as const;
 
 /**
@@ -289,6 +296,20 @@ export interface ImagedripApi {
     injectPrompt(promptId: string): Promise<void>;
     /** Subscribe to run status snapshots; returns an unsubscribe fn. */
     onStatus(cb: (s: RunStatus) => void): () => void;
+  };
+  /**
+   * Live UAT (`docs/live-uat.md`) — capture only. Two anchors, two stores, one
+   * control. Writes go to a sidecar under userData; nothing here can change what
+   * the app does, and acting on the pile is a separate session, not a feature.
+   */
+  uat: {
+    /** Flag cockpit friction against a screen region. */
+    snag(input: SnagInput): Promise<void>;
+    /** Judge one or many harvested images; main resolves the producer snapshot. */
+    verdict(input: VerdictInput): Promise<void>;
+    counts(): Promise<UatCounts>;
+    /** Reveal the corpus folder in Finder. */
+    reveal(): Promise<void>;
   };
   /** Read a harvested image (path relative to the harvest root) as a data URL. */
   harvestThumb(relPath: string): Promise<string | null>;
