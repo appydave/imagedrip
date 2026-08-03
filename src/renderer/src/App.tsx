@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { RunManifest, RunSummary, Rect } from '@shared/ipc';
+import type { RunManifest, RunStatus, RunSummary, Rect } from '@shared/ipc';
 import { compose, type DomainState } from '@shared/domain';
 import { useAppStore } from './store';
 import { FlagButton, UatToggle, VerdictBar } from './FlagButton';
@@ -285,8 +285,12 @@ export default function App(): JSX.Element {
           <span title="images left in this conversation before a fresh chat + re-posted primer">
             re-prime in <b className="text-amber">{reprimeLabel}</b>
           </span>
-          <span title="rolling average generation time per image">{avgLabel}</span>
         </div>
+
+        {/* The timings were always measured and never shown — only a single
+            rolling average survived to the UI. You cannot sanity-check a stall
+            budget against an average; you need the spread. */}
+        <TimingsButton status={status} avgLabel={avgLabel} />
 
         {/* A paused run has to say WHY on the chip itself. "It's pausing all the
             time. I don't know why it only goes at one or two and then stops"
@@ -544,6 +548,96 @@ function RunEntryButton(props: {
         </Popover>
       )}
     </div>
+  );
+}
+
+const secs = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
+
+/**
+ * Per-image generation timings, and the stall budget derived from them.
+ *
+ * The app measured every generation from the start and threw all of it away
+ * except a rolling average — so the stall cap could only ever be guessed, and
+ * was guessed wrong twice. This shows the evidence: every image, its time, the
+ * spread, and the cap those numbers imply.
+ */
+function TimingsButton(props: { status: RunStatus | null; avgLabel: string }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const timings = props.status?.timings ?? [];
+  const slowest = timings.length ? Math.max(...timings.map((t) => t.ms)) : null;
+  const fastest = timings.length ? Math.min(...timings.map((t) => t.ms)) : null;
+
+  return (
+    <span className="inline-flex [-webkit-app-region:no-drag]">
+      <button
+        ref={anchor}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="per-image generation times, and the stall budget they imply"
+        className="rounded font-mono text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-amber"
+      >
+        {props.avgLabel}
+      </button>
+      {open && (
+        <Popover anchor={anchor} width={300} onClose={() => setOpen(false)}>
+          <div className="flex flex-col gap-2 p-2.5">
+            <div className="font-display text-[11px] font-bold tracking-widest text-brown">
+              GENERATION TIMES
+            </div>
+
+            {timings.length === 0 ? (
+              <p className="font-mono text-[10px] leading-relaxed text-muted">
+                No images measured yet this run. The stall budget starts at{' '}
+                <b className="text-brown">{secs(props.status?.stallMs ?? 0)}</b> and re-derives
+                itself from the first image onward.
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-1 text-center">
+                  {[
+                    { k: 'fastest', v: fastest },
+                    { k: 'average', v: props.status?.avgMs ?? null },
+                    { k: 'slowest', v: slowest },
+                  ].map((s) => (
+                    <div key={s.k} className="rounded-md border border-edge bg-cream py-1">
+                      <div className="font-display text-xs font-bold text-brown">
+                        {s.v == null ? '—' : secs(s.v)}
+                      </div>
+                      <div className="font-mono text-[9px] text-muted">{s.k}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="max-h-52 overflow-y-auto rounded-md border border-edge bg-cream">
+                  {timings.map((t, i) => (
+                    <div
+                      key={`${t.subject}-${i}`}
+                      className="flex items-center justify-between gap-2 border-b border-edge/50 px-2 py-1 last:border-0 font-mono text-[10px]"
+                    >
+                      <span className="text-muted">{String(i + 1).padStart(2, '0')}</span>
+                      <span className="min-w-0 flex-1 truncate text-brown">{t.subject}</span>
+                      {/* The slowest sample is what sets the cap — mark it. */}
+                      <span className={t.ms === slowest ? 'font-bold text-amber' : 'text-muted'}>
+                        {secs(t.ms)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="rounded-md border border-amber bg-cream px-2 py-1.5 font-mono text-[10px] leading-relaxed text-brown">
+              stall budget: <b>{secs(props.status?.stallMs ?? 0)}</b>
+              <div className="mt-0.5 text-muted">
+                Computed from the numbers above — the greater of 1.75× the average and 1.3× the
+                slowest. Any image that runs long raises it for the rest of the run.
+              </div>
+            </div>
+          </div>
+        </Popover>
+      )}
+    </span>
   );
 }
 

@@ -205,6 +205,15 @@ export interface RunStatus {
   reprimeInImages: number;
   /** Rolling average generation time (ms), or null before the first image. */
   avgMs: number | null;
+  /**
+   * Every generation this run has measured, in order — the evidence behind the
+   * stall budget. Kept so the operator can SEE the timings rather than trust a
+   * single average: "we really should have that as a list somewhere visible…
+   * we can't do it if we don't track it" (live UAT, 2026-08-03).
+   */
+  timings: { subject: string; ms: number }[];
+  /** The current stall cap (ms) — derived from `timings`, not a constant. */
+  stallMs: number;
   /** When `waiting`, ms until the next feed (for a live countdown). */
   nextFeedInMs: number | null;
   /** Human-readable note (pause reason, refusal skip, harvest error). */

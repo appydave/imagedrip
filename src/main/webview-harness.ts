@@ -59,6 +59,8 @@ export class WebviewHarness {
   private readonly opts: WebviewHarnessOptions;
   private readonly logger?: Logger;
   private view: WebContentsView | null = null;
+  /** Runtime stall cap, derived from observed generations — see setStallMs. */
+  private stallOverrideMs: number | null = null;
   /** True while the view is parked off-screen so a popover can be seen. */
   private parked = false;
   /** The rect the renderer last asked for — restored when un-parking. */
@@ -330,9 +332,18 @@ export class WebviewHarness {
     wc.sendInputEvent({ type: 'keyUp', keyCode: 'Return', modifiers });
   }
 
+  /**
+   * Set the stall cap at runtime. The BatchRunner re-derives it from the
+   * generations it has actually measured (`stall-budget.ts`), so this replaces
+   * a constant that was previously guessed — and guessed wrong twice.
+   */
+  setStallMs(ms: number): void {
+    this.stallOverrideMs = ms;
+  }
+
   private armStall(): void {
     this.clearStall();
-    const waited = this.opts.stallMs ?? DEFAULT_STALL_MS;
+    const waited = this.stallOverrideMs ?? this.opts.stallMs ?? DEFAULT_STALL_MS;
     this.stallTimer = setTimeout(() => {
       this.stallCb?.({ waitedMs: waited });
     }, waited);

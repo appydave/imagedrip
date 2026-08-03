@@ -30,6 +30,7 @@ interface Fake {
   runner: BatchRunner;
   feeds: string[];
   harvests: string[];
+  stallCaps: number[];
   newConversations: () => number;
   imageDone: (url: string) => void;
 }
@@ -41,6 +42,7 @@ function makeFake(
 ): Fake {
   const feeds: string[] = [];
   const harvests: string[] = [];
+  const stallCaps: number[] = [];
   let newConv = 0;
   let imageCb: ((e: { imageUrl: string; at: number }) => void) | undefined;
 
@@ -51,6 +53,11 @@ function makeFake(
     onRateLimit: () => {},
     onRefused: () => {},
     onStall: () => {},
+    // The runner re-derives the stall cap from measured generations and pushes
+    // it down here; the fake just records that it was told.
+    setStallMs: (ms: number) => {
+      stallCaps.push(ms);
+    },
     feed: async (text: string) => {
       if (opts.feedDelayMs) await new Promise((r) => setTimeout(r, opts.feedDelayMs));
       feeds.push(text);
@@ -76,6 +83,7 @@ function makeFake(
     runner,
     feeds,
     harvests,
+    stallCaps,
     newConversations: () => newConv,
     imageDone: (url) => imageCb?.({ imageUrl: url, at: Date.now() }),
   };

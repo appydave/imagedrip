@@ -3,6 +3,7 @@ import type { Prompt } from '../shared/domain.js';
 import { slugify } from '../shared/domain.js';
 import type { RunConfig, RunStatus } from '../shared/ipc.js';
 import { RateLimitGuard } from './rate-limit-guard.js';
+import { BOOTSTRAP_STALL_MS, computeStallMs } from './stall-budget.js';
 import type { WebviewHarness } from './webview-harness.js';
 
 /**
@@ -101,6 +102,9 @@ export class BatchRunner {
   private manualPaused = false;
   private feedAt = 0;
   private avgMs: number | null = null;
+  /** Every measured generation this run — the evidence the stall cap derives from. */
+  private timings: { subject: string; ms: number }[] = [];
+  private stallMs = BOOTSTRAP_STALL_MS;
   private note: string | undefined;
 
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
@@ -172,6 +176,12 @@ export class BatchRunner {
     this.stopped = false;
     this.manualPaused = false;
     this.avgMs = null;
+    // Timings are per-run: a different theme, brand or image size is a different
+    // generation cost, so carrying samples across runs would budget for the
+    // wrong workload. The cap re-learns from the first image of each run.
+    this.timings = [];
+    this.stallMs = BOOTSTRAP_STALL_MS;
+    this.d.harness.setStallMs(this.stallMs);
     this.note = undefined;
 
     // Open the run record (WP1) — its id becomes the harvest subfolder.
@@ -451,6 +461,23 @@ export class BatchRunner {
     const measured = this.feedAt ? Date.now() - this.feedAt : undefined;
     if (measured) this.avgMs = this.avgMs == null ? measured : this.avgMs * 0.7 + measured * 0.3;
 
+    // Every measurement widens what we know, so re-derive the stall budget from
+    // the evidence rather than leaving it at a constant somebody guessed. The
+    // image that just exceeded the old cap is exactly the one that should raise
+    // it for the images after it.
+    if (measured) {
+      this.timings.push({ subject: this.queue[this.idx]?.subject ?? '?', ms: measured });
+      const next = computeStallMs(this.timings.map((t) => t.ms));
+      if (next !== this.stallMs) {
+        this.stallMs = next;
+        this.d.harness.setStallMs(next);
+        this.logger?.info(
+          { stallMs: next, samples: this.timings.length, slowest: Math.max(...this.timings.map((t) => t.ms)) },
+          'stall budget re-derived from observed generations',
+        );
+      }
+    }
+
     const prompt = this.queue[this.idx];
     const file = `${slugify(prompt.subject)}.png`;
     const relPath = this.runPrefix ? `${this.runPrefix}/${file}` : file;
@@ -583,6 +610,8 @@ export class BatchRunner {
       currentSubject: this.queue[this.idx]?.subject ?? null,
       reprimeInImages: this.phase === 'done' ? 0 : remainingToChunk,
       avgMs: this.avgMs,
+      timings: this.timings,
+      stallMs: this.stallMs,
       nextFeedInMs: nextFeedInMs ?? null,
       note: this.note,
       at: Date.now(),
