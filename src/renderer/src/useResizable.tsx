@@ -17,7 +17,12 @@ export function useResizable(
   bounds: { min: number; max: number },
   /** 'left' grows the panel as you drag right (panel is on the left edge). */
   side: 'left' | 'right',
-): { width: number; onGrabberDown: (e: React.MouseEvent) => void; dragging: boolean } {
+): {
+  width: number;
+  setWidth: (w: number) => void;
+  onGrabberDown: (e: React.MouseEvent) => void;
+  dragging: boolean;
+} {
   const [width, setWidth] = useState(() => {
     const saved = Number(localStorage.getItem(key));
     return Number.isFinite(saved) && saved > 0 ? clamp(saved, bounds) : fallback;
@@ -58,7 +63,54 @@ export function useResizable(
     localStorage.setItem(key, String(width));
   }, [key, width]);
 
-  return { width, onGrabberDown, dragging };
+  return {
+    width,
+    setWidth: useCallback((w: number) => setWidth(clamp(w, bounds)), [bounds]),
+    onGrabberDown,
+    dragging,
+  };
+}
+
+/**
+ * Named width presets.
+ *
+ * Dragging is precise but effortful; a preset is one click. Asked for directly
+ * after the harvested-tile S/M/L landed — "that small, medium, large you did
+ * for images might be a good way of thinking of the ChatGPT panel."
+ */
+export function SizePresets(props: {
+  presets: { key: string; px: number; title: string }[];
+  width: number;
+  onPick: (px: number) => void;
+}): JSX.Element {
+  return (
+    <span className="flex overflow-hidden rounded border border-edge">
+      {props.presets.map((p) => (
+        <button
+          key={p.key}
+          type="button"
+          onClick={() => props.onPick(p.px)}
+          title={p.title}
+          className={
+            'px-1.5 py-px font-mono text-[10px] ' +
+            // "Active" is nearest-match, not equality — dragging lands between
+            // presets and a bar with nothing lit looks broken.
+            (nearest(props.presets, props.width) === p.key
+              ? 'bg-yellow text-brown'
+              : 'text-muted hover:bg-linen')
+          }
+        >
+          {p.key}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+function nearest(presets: { key: string; px: number }[], width: number): string {
+  return presets.reduce((best, p) =>
+    Math.abs(p.px - width) < Math.abs(best.px - width) ? p : best,
+  ).key;
 }
 
 function clamp(v: number, b: { min: number; max: number }): number {

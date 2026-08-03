@@ -4,7 +4,7 @@ import { compose, type DomainState } from '@shared/domain';
 import { useAppStore } from './store';
 import { FlagButton, UatToggle, VerdictBar } from './FlagButton';
 import { Modal, Popover } from './Popover';
-import { Grabber, useResizable } from './useResizable';
+import { Grabber, SizePresets, useResizable } from './useResizable';
 
 /** Map a DOM element to the webview bounds (CSS px === DIP in Electron's content view). */
 function rectOf(el: HTMLElement): Rect {
@@ -151,39 +151,13 @@ export default function App(): JSX.Element {
           <span className="h-[7px] w-[7px] rounded-full bg-sage" />
           ChatGPT
         </span>
-        <span className="flex-1" />
-
-        {/* Live UAT gate (docs/live-uat.md) — off by default, never a nag. */}
-        <UatToggle />
-
-        {/* Every number is now labelled with what it counts. "4/16 harvested"
-            gave no clue the 16 was the theme's prompt count (live UAT: "I don't
-            know what the 4/6 is about"). */}
-        <div className="flex items-center gap-4 font-mono text-[11px] text-muted">
-          <span title={`${harvestedN} images harvested out of ${totalN} prompts in this theme`}>
-            <b className="font-display text-base text-brown">{harvestedN}</b>
-            <span className="text-muted">/{totalN}</span> images done
-          </span>
-          <span title="images left in this conversation before a fresh chat + re-posted primer">
-            re-prime in <b className="text-amber">{reprimeLabel}</b>
-          </span>
-          <span title="rolling average generation time per image">{avgLabel}</span>
-        </div>
-
-        {/* run state at a glance (WP5) — a label, not just button shapes */}
-        <span
-          className={
-            'rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold tracking-widest ' +
-            (isRunning
-              ? 'border-sage bg-cream text-sage'
-              : isPaused
-                ? 'border-amber bg-cream text-amber'
-                : 'border-edge bg-cream text-muted')
-          }
-        >
-          {isRunning ? '● LIVE' : isPaused ? '⏸ PAUSED' : '○ IDLE'}
-        </span>
-
+        {/* ══ ACTIONS — everything that can OPEN lives here, on the left ══
+            The ChatGPT panel is a native surface painted over all HTML; no
+            z-index reaches it. So the fix isn't to fight the stacking — it's to
+            never open a menu above it in the first place. Round 2 of the live
+            UAT put it plainly: "why would you put anything near it that needs
+            to navigate this particular z-index problem, which none of them can
+            navigate?" Everything right of the spacer below is READ-ONLY. */}
         <span className="[-webkit-app-region:no-drag]">
           <FlagButton
             region="topbar"
@@ -296,6 +270,39 @@ export default function App(): JSX.Element {
             </button>
           )}
         </div>
+
+        <span className="flex-1" />
+
+        {/* ══ STATUS — read-only, and the only thing allowed to sit above the
+            ChatGPT column. Nothing here opens, so nothing here can be eaten. ══
+            Every number says what it counts: "4/16" gave no clue the 16 was the
+            theme's prompt count (live UAT: "I don't know what the 4/6 is"). */}
+        <div className="flex items-center gap-4 font-mono text-[11px] text-muted">
+          <span title={`${harvestedN} images harvested out of ${totalN} prompts in this theme`}>
+            <b className="font-display text-base text-brown">{harvestedN}</b>
+            <span className="text-muted">/{totalN}</span> images done
+          </span>
+          <span title="images left in this conversation before a fresh chat + re-posted primer">
+            re-prime in <b className="text-amber">{reprimeLabel}</b>
+          </span>
+          <span title="rolling average generation time per image">{avgLabel}</span>
+        </div>
+
+        <span
+          className={
+            'rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold tracking-widest ' +
+            (isRunning
+              ? 'border-sage bg-cream text-sage'
+              : isPaused
+                ? 'border-amber bg-cream text-amber'
+                : 'border-edge bg-cream text-muted')
+          }
+        >
+          {isRunning ? '● LIVE' : isPaused ? '⏸ PAUSED' : '○ IDLE'}
+        </span>
+
+        {/* Live UAT gate (docs/live-uat.md) — off by default, never a nag. */}
+        <UatToggle />
       </header>
 
       {/* ── body ────────────────────────────────────────────────── */}
@@ -368,15 +375,27 @@ export default function App(): JSX.Element {
         <div style={{ width: gpt.width }} className="relative flex flex-shrink-0 flex-col">
           {/* The live view is overlaid on gptRef by main, so it covers anything
               drawn inside it — the ⚑ for this region has to sit OUTSIDE the rect. */}
-          {uat && (
-            <div className="flex items-center justify-end gap-1 border-b border-l border-edge bg-surface px-2 py-0.5">
-              <span className="font-mono text-[9px] text-muted">ChatGPT panel</span>
-              <FlagButton
-                region="chatgpt"
-                snapshot={() => `ChatGPT panel — fixed 330px wide (WP6 not built) · phase=${phase}`}
-              />
-            </div>
-          )}
+          {/* The panel's own control strip. Always rendered — it's the only
+              honest home for the panel's width, and it keeps those controls
+              OUTSIDE the native view's rect where they can still be clicked. */}
+          <div className="flex items-center justify-end gap-1.5 border-b border-l border-edge bg-surface px-2 py-1">
+            <span className="mr-auto font-mono text-[9px] tracking-wide text-muted">
+              ChatGPT — drag the edge, or:
+            </span>
+            <SizePresets
+              presets={[
+                { key: 'S', px: 380, title: 'narrow — 380px' },
+                { key: 'M', px: 560, title: 'medium — 560px' },
+                { key: 'L', px: 820, title: 'wide — 820px, for reading a long reply' },
+              ]}
+              width={gpt.width}
+              onPick={gpt.setWidth}
+            />
+            <FlagButton
+              region="chatgpt"
+              snapshot={() => `ChatGPT panel — ${gpt.width}px wide · phase=${phase}`}
+            />
+          </div>
           <div
             ref={gptRef}
             className="relative flex w-full flex-1 flex-col items-center justify-center border-l border-edge bg-gpt"
@@ -585,6 +604,26 @@ function useAutosave(
   return { value, state, onChange, flush };
 }
 
+/**
+ * A card heading in the context rail.
+ *
+ * Numbered on purpose: the cards are a SEQUENCE (brand → project → the primer
+ * they compose), and an unnumbered stack of boxes gives no hint of that. The
+ * hint line says what the card is FOR, which is what was actually missing —
+ * snag-2: "I don't know what field it's going into or what the reasoning is."
+ */
+function CardHeading(props: { step: number; title: string; hint: string }): JSX.Element {
+  return (
+    <div className="mb-1.5 flex items-baseline gap-1.5">
+      <span className="font-mono text-[10px] font-bold text-amber">{props.step}</span>
+      <span className="font-display text-[10px] font-bold tracking-[0.15em] text-brown">
+        {props.title}
+      </span>
+      <span className="min-w-0 truncate font-mono text-[9px] text-muted">{props.hint}</span>
+    </div>
+  );
+}
+
 /** The saved/unsaved indicator — text + colour, not just a shape (WP2 bug #6). */
 function SaveDot(props: { state: SaveState }): JSX.Element {
   return props.state === 'saved' ? (
@@ -627,23 +666,38 @@ function ContextPanel(props: {
       {/* "CONTEXT" alone said nothing about what the cards below it were
           (snag-2: "I don't know what this area is… it just says context").
           The subtitle names the layered model the cards actually implement. */}
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="font-display text-[11px] font-semibold tracking-widest text-muted">
-            CONTEXT — WHAT CHATGPT IS TOLD
-          </div>
-          <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted opacity-80">
-            Brand + Project compose the <b>primer</b>, posted once per chat. Prompts below
-            inherit it.
-          </div>
+          <span className="font-display text-[11px] font-bold tracking-[0.18em] text-brown">
+            CONTEXT
+          </span>
         </div>
         <button
           type="button"
           onClick={props.onClose}
+          title="collapse the context rail"
           className="flex-shrink-0 text-muted hover:text-brown"
         >
           ✕
         </button>
+      </div>
+
+      {/* Round 1 explained the model in a sentence — which read as more small
+          grey prose in a rail already full of it, and wrapped badly when narrow.
+          Same fact as a DIAGRAM: the layered model IS a pipeline, so draw the
+          pipeline. Chips wrap instead of truncating, so it survives any width. */}
+      <div className="rounded-lg border border-edge bg-cream px-2 py-2">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 font-display text-[11px] font-semibold text-brown">
+          <span className="rounded bg-linen px-1.5 py-0.5">BRAND</span>
+          <span className="text-muted">+</span>
+          <span className="rounded bg-linen px-1.5 py-0.5">PROJECT</span>
+          <span className="font-mono text-amber">→</span>
+          <span className="rounded bg-yellow px-1.5 py-0.5">PRIMER</span>
+        </div>
+        <p className="mt-1.5 font-mono text-[10px] leading-relaxed text-muted">
+          Posted <b className="text-brown">once per chat</b>. Every prompt after it inherits
+          that look — which is why prompts stay short.
+        </p>
       </div>
 
       {d && (
@@ -668,6 +722,16 @@ function ContextPanel(props: {
         />
       )}
 
+      <div className="mt-1 flex items-center justify-between">
+        <CardHeading step={3} title="COPY OUT" hint="to paste into ChatGPT by hand" />
+        <FlagButton
+          region="context-copy"
+          snapshot={() =>
+            `primer=${primerPreview.length}ch · next queued="${nextQueued?.subject ?? '(none)'}"`
+          }
+        />
+      </div>
+
       <CopyCard
         label="Copy primer"
         description="Brand + Project composed — posted ONCE per chat to set the look."
@@ -684,15 +748,6 @@ function ContextPanel(props: {
         preview={nextQueued?.text ?? '(queue empty — import a prompt list first)'}
         onCopy={props.onCopyPrompt}
       />
-
-      <div className="flex items-center justify-end">
-        <FlagButton
-          region="context-copy"
-          snapshot={() =>
-            `primer=${primerPreview.length}ch · next queued="${nextQueued?.subject ?? '(none)'}"`
-          }
-        />
-      </div>
 
       <ListPromptCard onCopy={props.onCopyText} />
 
@@ -909,9 +964,7 @@ function BrandCard(props: {
       {/* Every card carries its own heading. Without one, the name in the box
           reads as a random label — snag-2: "It says Beauty and Joy… I'm not
           sure what I'm looking at… I don't know what field it's going into." */}
-      <div className="mb-1 font-display text-[10px] font-semibold tracking-widest text-muted">
-        BRAND — THE FIXED LOOK
-      </div>
+      <CardHeading step={1} title="BRAND" hint="the fixed look — locks during runs" />
       <div className="flex items-center justify-between gap-2">
         {props.locked ? (
           <div className="font-display text-sm font-semibold">{brand.name} 🔒</div>
@@ -1015,9 +1068,7 @@ function ProjectCard(props: {
   return (
     <>
       <div className="rounded-lg border border-edge bg-cream p-2.5">
-        <div className="mb-1 font-display text-[10px] font-semibold tracking-widest text-muted">
-          PROJECT — WHAT YOU TUNE
-        </div>
+        <CardHeading step={2} title="PROJECT" hint="what you tune — this is the dial" />
         <div className="flex items-center justify-between gap-2">
           <input
             value={name.value}

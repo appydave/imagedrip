@@ -49,6 +49,10 @@ export class WebviewHarness {
   private readonly opts: WebviewHarnessOptions;
   private readonly logger?: Logger;
   private view: WebContentsView | null = null;
+  /** True while the view is parked off-screen so a popover can be seen. */
+  private parked = false;
+  /** The rect the renderer last asked for — restored when un-parking. */
+  private wantedBounds: Rect | null = null;
 
   private imageDoneCb?: ImageDoneCb;
   private rateLimitCb?: RateLimitCb;
@@ -88,6 +92,7 @@ export class WebviewHarness {
       },
     });
     this.view = view;
+    this.wantedBounds = bounds;
     this.wireInbound(view);
     this.opts.window.contentView.addChildView(view);
     view.setBounds(bounds);
@@ -96,6 +101,11 @@ export class WebviewHarness {
   }
 
   setBounds(bounds: Rect): void {
+    // While parked, remember where the panel WANTS to be but don't apply it —
+    // the renderer's ResizeObserver fires during layout changes and would
+    // otherwise drag the view back on screen mid-popover.
+    this.wantedBounds = bounds;
+    if (this.parked) return;
     this.view?.setBounds(bounds);
   }
 
@@ -103,17 +113,32 @@ export class WebviewHarness {
    * Show/hide the ChatGPT view without detaching it.
    *
    * A `WebContentsView` is a NATIVE view composited over the window — it paints
-   * above every HTML element regardless of z-index, so any renderer popover that
-   * overlaps this rect is simply invisible. That silently swallowed the WP5 run-
-   * entry chooser (live UAT, 2026-08-03: "something dropping down and showing
-   * underneath ChatGPT").
+   * above every HTML element regardless of z-index, so any renderer popover
+   * overlapping its rect is simply invisible. That silently swallowed the WP5
+   * run-entry chooser (live UAT 2026-08-03: "something dropping down and
+   * showing underneath ChatGPT").
    *
-   * The renderer hides the view while a popover is open and restores it after.
-   * Hiding is NOT detaching: the page keeps running, the session and any
-   * in-flight generation are untouched, and a run can continue behind it.
+   * `setVisible(false)` alone did NOT reliably clear the native surface here, so
+   * hiding also PARKS the view off-screen via setBounds — a path this app
+   * already depends on and knows works. Belt and braces, because a popover you
+   * cannot see is indistinguishable from a broken button.
+   *
+   * Hiding is not detaching: the page keeps running, the session and any
+   * in-flight generation are untouched, and a run continues behind it.
    */
   setVisible(visible: boolean): void {
-    this.view?.setVisible(visible);
+    const view = this.view;
+    if (!view) return;
+    if (visible) {
+      this.parked = false;
+      view.setVisible(true);
+      if (this.wantedBounds) view.setBounds(this.wantedBounds);
+      return;
+    }
+    this.parked = true;
+    view.setVisible(false);
+    // Park far off-screen at zero size — nothing left to composite over the UI.
+    view.setBounds({ x: -20000, y: 0, width: 1, height: 1 });
   }
 
   async newConversation(): Promise<void> {
