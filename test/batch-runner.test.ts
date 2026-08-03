@@ -267,3 +267,36 @@ describe('BatchRunner chat-primed state (advisory-1 #8)', () => {
     expect(f.runner.chatIsPrimed).toBe(true); // primer re-posted in the new chat
   });
 });
+
+/**
+ * A concurrent second feed sends ChatGPT one message containing the prompt
+ * TWICE — observed live on 2026-08-03 as "EmuEmu" and "CassowaryCassowary".
+ * feed() is async (clipboard → click → paste → Enter), so two overlapping calls
+ * both paste before either Enter lands. Several paths can race: the cadence
+ * timer, resume(), and the rate-limit release.
+ */
+describe('BatchRunner double-feed guard', () => {
+  it('ignores a feedNext re-entered while a feed is still in flight', async () => {
+    const f = makeFake(PROMPTS, 'PRIMER', { feedDelayMs: 50 });
+    await f.runner.start({ ...FAST, entry: 'continue' });
+
+    // Resume mid-feed — the exact race: the first feed has not resolved yet.
+    f.runner.resume();
+    f.runner.resume();
+    await new Promise((r) => setTimeout(r, 120));
+
+    // Exactly one feed, and the text is the prompt ONCE — not concatenated.
+    expect(f.feeds).toEqual(['a kangaroo']);
+  });
+
+  it('still advances normally after the latch releases', async () => {
+    const f = makeFake(PROMPTS, 'PRIMER', { feedDelayMs: 20 });
+    await f.runner.start({ ...FAST, entry: 'continue' });
+    await new Promise((r) => setTimeout(r, 60));
+    f.imageDone('https://files.example/kangaroo.png');
+    await new Promise((r) => setTimeout(r, 80));
+
+    // The latch must not wedge the run — the next prompt still feeds.
+    expect(f.feeds).toEqual(['a kangaroo', 'a koala']);
+  });
+});

@@ -42,7 +42,17 @@ type StallCb = (e: { waitedMs: number }) => void;
 
 const DEFAULT_PARTITION = 'persist:imagedrip-chatgpt';
 const DEFAULT_URL = 'https://chatgpt.com/';
-const DEFAULT_STALL_MS = 3 * 60 * 1000;
+/**
+ * How long to wait for an image before calling it a stall.
+ *
+ * Raised from 3 to 6 minutes on 2026-08-03: a real run of detailed character
+ * sheets averaged ~80–120s per image, and the heaviest ones exceeded the old
+ * 3-minute cap — so the runner declared a stall on images that were still
+ * generating perfectly well, and the run halted every couple of prompts. A
+ * stall is meant to catch a DEAD generation, not a slow one; erring long costs
+ * a wait, erring short costs the whole run.
+ */
+const DEFAULT_STALL_MS = 6 * 60 * 1000;
 const LOCATE_TIMEOUT_MS = 2000;
 
 export class WebviewHarness {
@@ -301,6 +311,12 @@ export class WebviewHarness {
     // Edit>Paste editing command and was observed to fire `paste` + `input` events
     // with `isTrusted === true`, so it upholds invariant #1 (trusted input, not JS
     // `.value=`) AND actually lands the text. This is the correct mechanism.
+    // Select first so the paste REPLACES rather than appends. The composer is
+    // not guaranteed empty: a submit that didn't take (the known
+    // paste-without-enter symptom) leaves the previous text sitting there, and
+    // the next paste concatenates onto it. Paste-over-selection is the same
+    // trusted editing command, so invariant #1 still holds.
+    wc.selectAll();
     wc.paste();
   }
 

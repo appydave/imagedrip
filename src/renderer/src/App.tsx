@@ -288,7 +288,12 @@ export default function App(): JSX.Element {
           <span title="rolling average generation time per image">{avgLabel}</span>
         </div>
 
+        {/* A paused run has to say WHY on the chip itself. "It's pausing all the
+            time. I don't know why it only goes at one or two and then stops"
+            (live UAT) — the reason existed in status.note but only ever reached
+            the footer, which is the last place you look when something halts. */}
         <span
+          title={status?.note ?? undefined}
           className={
             'rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold tracking-widest ' +
             (isRunning
@@ -299,6 +304,9 @@ export default function App(): JSX.Element {
           }
         >
           {isRunning ? '● LIVE' : isPaused ? '⏸ PAUSED' : '○ IDLE'}
+          {isPaused && status?.note ? (
+            <span className="ml-1.5 font-normal normal-case tracking-normal">— {status.note}</span>
+          ) : null}
         </span>
 
         {/* Live UAT gate (docs/live-uat.md) — off by default, never a nag. */}

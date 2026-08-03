@@ -95,6 +95,8 @@ export class BatchRunner {
 
   private phase: RunStatus['phase'] = 'idle';
   private awaiting = false;
+  /** True from the start of a feed() until it resolves — see feedNext's latch. */
+  private feeding = false;
   private stopped = true;
   private manualPaused = false;
   private feedAt = 0;
@@ -218,13 +220,29 @@ export class BatchRunner {
     this.emit();
   }
 
-  /** Resume from a manual pause / rate-limit / stall (re-feeds the current prompt). */
+  /**
+   * Resume from a manual pause / rate-limit / stall.
+   *
+   * Only feeds when we are NOT already awaiting an image. Resuming a manual
+   * pause taken mid-generation used to re-send the prompt that was already in
+   * flight, so ChatGPT received it twice — the live "EmuEmu" /
+   * "CassowaryCassowary" duplicates of 2026-08-03.
+   *
+   * A genuine stall is a different state and still re-feeds: the stall handler
+   * clears `awaiting` before pausing, precisely so a dead generation can be
+   * retried while a slow one is simply waited out.
+   */
   resume(): void {
     if (this.stopped) return;
     this.manualPaused = false;
     this.guard.resume();
     this.note = undefined;
-    // If we were awaiting an image (stall), re-feed the current prompt; else advance.
+    if (this.awaiting) {
+      // The image is still coming — go back to waiting, don't re-send.
+      this.phase = 'awaiting';
+      this.emit();
+      return;
+    }
     void this.feedNext();
   }
 
@@ -375,6 +393,16 @@ export class BatchRunner {
 
   private async feedNext(): Promise<void> {
     if (this.stopped || this.manualPaused || this.guard.isPaused) return;
+    // RE-ENTRANCY LATCH. Several paths can call feedNext concurrently — the
+    // cadence timer, resume(), and the rate-limit release all do — and feed()
+    // is async (clipboard → click → paste → Enter). Two overlapping calls both
+    // paste into the composer BEFORE either Enter lands, and ChatGPT receives
+    // one message containing the prompt twice: "EmuEmu", "CassowaryCassowary"
+    // (observed 2026-08-03). It also silently burns a queue slot and an image.
+    if (this.feeding) {
+      this.logger?.warn({ idx: this.idx }, 'feedNext re-entered while feeding — ignored');
+      return;
+    }
     if (this.idx >= this.queue.length) {
       this.phase = 'done';
       this.note = undefined;
@@ -388,7 +416,14 @@ export class BatchRunner {
     this.note = undefined;
     this.emit();
 
-    await this.feedGuarded(prompt.text);
+    this.feeding = true;
+    try {
+      await this.feedGuarded(prompt.text);
+    } finally {
+      // Released even on a throw — a stuck latch would wedge the run forever,
+      // which is worse than the double-feed it prevents.
+      this.feeding = false;
+    }
     if (this.stopped) return;
 
     this.awaiting = true;
