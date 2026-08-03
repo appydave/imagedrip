@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { WebContentsView, clipboard, type BrowserWindow } from 'electron';
+import { WebContentsView, clipboard, session, type BrowserWindow } from 'electron';
 import type { Logger } from '@appydave/core';
 import type { ChatGPTSelectors } from './chatgpt-selectors.js';
 import type { FileAuthor } from './file-author.js';
@@ -80,9 +80,35 @@ export class WebviewHarness {
       this.setBounds(bounds);
       return;
     }
+    const partition = this.opts.partition ?? DEFAULT_PARTITION;
+
+    // Present as plain Chrome BEFORE the first load.
+    //
+    // Electron's default UA carries `imagedrip/0.1.0` and `Electron/34.x`, and
+    // that is enough for OpenAI's bot protection to serve the static shell and
+    // your session cookie while quietly refusing the `/backend-api/*` XHRs.
+    // The symptom is maddening precisely because it looks like a login that
+    // worked: you are signed in as yourself, the chrome renders, and every list
+    // that hydrates from an API — conversation history, the workspace switcher
+    // — sits in skeleton placeholders forever. David hit this repeatedly:
+    // "I've seen this particular problem happen before, and it's happening
+    // again today… it looks like it's logged in as me, but it's not showing
+    // correctly."
+    //
+    // Set on the SESSION, not just the view, so XHR/fetch, the service worker
+    // and the in-session image harvest all agree on one identity. The Chrome
+    // major is read from the running Chromium so it stays truthful as Electron
+    // is upgraded, rather than drifting into a version that never existed.
+    const chromeMajor = process.versions.chrome.split('.')[0];
+    const userAgent =
+      `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ` +
+      `(KHTML, like Gecko) Chrome/${chromeMajor}.0.0.0 Safari/537.36`;
+    session.fromPartition(partition).setUserAgent(userAgent);
+    this.logger?.info({ userAgent }, 'webview user agent pinned to plain Chrome');
+
     const view = new WebContentsView({
       webPreferences: {
-        partition: this.opts.partition ?? DEFAULT_PARTITION,
+        partition,
         preload: this.preloadPath(),
         contextIsolation: true,
         nodeIntegration: false,

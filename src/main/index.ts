@@ -540,4 +540,31 @@ const desktop = createConsole({
   },
 });
 
-void desktop.start();
+/**
+ * ONE ImageDrip at a time — enforced, not asked for politely.
+ *
+ * The ChatGPT view lives in a `persist:` partition, which is a Chromium profile
+ * directory holding LevelDB stores that take an exclusive LOCK. A second
+ * instance cannot take those locks, so its storage subsystems fail and reset —
+ * which is exactly what the recurring
+ *
+ *   ERROR:quota_database.cc — Could not open the quota database, resetting.
+ *   ERROR:service_worker_storage.cc — Failed to delete the database: IO error
+ *
+ * were telling us during the 2026-08-03 session, while two dev instances sat
+ * running at once. David spotted the cause: "you do start up image drips for
+ * me, but you don't close down previous ones."
+ *
+ * A second launch now surrenders immediately and focuses the window that
+ * already owns the profile, rather than quietly corrupting it.
+ */
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!hostWindow || hostWindow.isDestroyed()) return;
+    if (hostWindow.isMinimized()) hostWindow.restore();
+    hostWindow.focus();
+  });
+  void desktop.start();
+}
