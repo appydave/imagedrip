@@ -36,7 +36,35 @@ describe('computeStallMs', () => {
   });
 
   it('never drops below the floor, however fast the samples', () => {
-    expect(computeStallMs([s(1), s(2)])).toBe(90 * 1000);
+    // Ten fast-but-plausible samples: past CONFIDENT_SAMPLES, so tightening is
+    // allowed — down to the hard floor, never below.
+    expect(computeStallMs(Array(10).fill(s(6)))).toBe(90 * 1000);
+  });
+
+  /**
+   * REGRESSION — run 2026-08-03-1233-smoothies.
+   *
+   * Recorded generations: 0.9s, 86.7s, then 153.7s. The budget computed 113s
+   * from the first two and declared a stall on the third, which was a perfectly
+   * healthy image. The adaptive budget caused the stall it exists to prevent.
+   */
+  describe('regression: the run that stalled at 113s', () => {
+    it('discards the 0.9s sample — that was a re-fire, not a generation', () => {
+      expect(computeStallMs([s(0.9), s(86.7)])).toBe(computeStallMs([s(86.7)]));
+    });
+
+    it('does not tighten below bootstrap on two samples', () => {
+      // The exact inputs that produced 113s must now clear the 153.7s image.
+      const budget = computeStallMs([s(0.9), s(86.7)]);
+      expect(budget).toBe(BOOTSTRAP_STALL_MS);
+      expect(budget).toBeGreaterThan(s(153.7));
+    });
+
+    it('still widens past bootstrap once a genuinely slow image lands', () => {
+      // Widening never waits for confidence — one slow image is evidence enough.
+      expect(computeStallMs([s(0.9), s(86.7), s(153.7)])).toBeGreaterThan(s(153.7));
+      expect(computeStallMs([s(300), s(300)])).toBeGreaterThan(BOOTSTRAP_STALL_MS);
+    });
   });
 
   it('never exceeds the ceiling, so a dead generation still ends the wait', () => {

@@ -23,6 +23,27 @@
 /** No samples yet: assume a slow model rather than interrupt a healthy run. */
 export const BOOTSTRAP_STALL_MS = 4 * 60 * 1000;
 
+/**
+ * Below this, it was not a generation.
+ *
+ * A real image takes tens of seconds. A sub-5s "generation" is a re-fired or
+ * mis-attributed DOM src, and averaging it in drags the budget toward zero.
+ * Live run 2026-08-03-1233 recorded 0.9s for "José Rizal" — with that sample
+ * included the budget computed 113s, and the next legitimate image (153.7s)
+ * was declared a stall by the very mechanism meant to prevent that.
+ */
+const MIN_PLAUSIBLE_MS = 5 * 1000;
+
+/**
+ * Samples needed before the budget is allowed to tighten below bootstrap.
+ *
+ * Two samples are not a distribution. In that same run, 1.3× the slowest of two
+ * samples (86.7s) gave 113s — and the very next image took 153.7s. Early on the
+ * honest position is that we do not yet know the spread, so stay conservative
+ * and only tighten once there is enough evidence to justify it.
+ */
+const CONFIDENT_SAMPLES = 5;
+
 /** Never impatient enough to cut off a normal image… */
 const MIN_STALL_MS = 90 * 1000;
 /** …and never so patient that a genuinely dead generation hangs the run. */
@@ -42,14 +63,19 @@ const MAX_FACTOR = 1.3;
  * for the ones after it.
  */
 export function computeStallMs(samples: number[]): number {
-  const valid = samples.filter((ms) => Number.isFinite(ms) && ms > 0);
+  const valid = samples.filter((ms) => Number.isFinite(ms) && ms >= MIN_PLAUSIBLE_MS);
   if (valid.length === 0) return BOOTSTRAP_STALL_MS;
 
   const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
   const slowest = Math.max(...valid);
 
   const budget = Math.max(mean * MEAN_FACTOR, slowest * MAX_FACTOR);
-  return Math.round(Math.min(MAX_STALL_MS, Math.max(MIN_STALL_MS, budget)));
+
+  // Tightening below bootstrap requires enough samples to have earned it.
+  // Widening is always allowed — a slow image is evidence immediately.
+  const floor = valid.length < CONFIDENT_SAMPLES ? BOOTSTRAP_STALL_MS : MIN_STALL_MS;
+
+  return Math.round(Math.min(MAX_STALL_MS, Math.max(floor, budget)));
 }
 
 /** Summary stats for the timings panel — what the cap was derived FROM. */
@@ -59,7 +85,7 @@ export function summarise(samples: number[]): {
   minMs: number | null;
   maxMs: number | null;
 } {
-  const valid = samples.filter((ms) => Number.isFinite(ms) && ms > 0);
+  const valid = samples.filter((ms) => Number.isFinite(ms) && ms >= MIN_PLAUSIBLE_MS);
   if (valid.length === 0) return { count: 0, meanMs: null, minMs: null, maxMs: null };
   return {
     count: valid.length,
