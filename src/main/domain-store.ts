@@ -26,6 +26,7 @@ import {
   readProject,
   readTemplate,
   repoRootOf,
+  repoRunsDir,
   templateDir,
   writeProject,
   writeTemplate,
@@ -598,7 +599,13 @@ export async function createProject(input: {
           id,
           name,
           body: '',
-          outputDir: input.outputDir?.trim() || defaultProjectDir(outputRoot(), name),
+          // WP3's folder convention: with a repo attached, runs land in
+          // `<repo>/projects/<project>/runs/<run-id>/`, beside the project's
+          // own files rather than off in ~/Pictures. Without one, the v2
+          // default stands. An explicit choice always wins over both.
+          outputDir:
+            input.outputDir?.trim() ||
+            (repoRoot ? repoRunsDir(repoRoot, id) : defaultProjectDir(outputRoot(), name)),
           // Born in the repo when there is one (WP2).
           ...(repoRoot ? { sourcePath: projectDir(repoRoot, id) } : {}),
         },

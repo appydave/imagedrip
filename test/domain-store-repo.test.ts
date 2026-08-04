@@ -110,6 +110,22 @@ describe('attachRepo — publish, then re-import (WP2 acceptance)', () => {
     // Renaming the brand record is still fine — that is app-side identity.
     await expect(store.saveBrand({ name: 'Beauty & Joy' })).resolves.toBeTruthy();
   });
+
+  /** WP3's folder convention, decided by whether a repo is attached. */
+  it('defaults a new project’s runs to <repo>/projects/<project>/runs', async () => {
+    const store = await import('../src/main/domain-store');
+    await store.createProject({ name: 'Summer Menu' });
+    expect(await store.getActiveOutputDir()).toBe(join(repo, 'projects', 'summer-menu', 'runs'));
+    // …and the project's own files sit beside them, in the same folder.
+    expect((await store.getDomain()).project.sourcePath).toBe(projectDir(repo, 'summer-menu'));
+  });
+
+  it('still honours an EXPLICIT output folder over the repo default', async () => {
+    const store = await import('../src/main/domain-store');
+    await store.createProject({ name: 'One Off', outputDir: '/somewhere/deliberate' });
+    expect(await store.getActiveOutputDir()).toBe('/somewhere/deliberate');
+    await store.switchProject('spring-gallery');
+  });
 });
 
 /**

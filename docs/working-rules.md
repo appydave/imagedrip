@@ -64,6 +64,26 @@ to repeat one.
   real default. Requirements doc corrected (chunk path untested / git-commit gotcha / WP7 fonts).
   **STOPPED before WP6 per ruling — awaiting David's in-app acceptance of WP1–WP5**, especially
   the WP5 dial-in→Continue scenario and the real domain.json migration.
+- **v3 (Templates & Brand Repos, `docs/requirements-v3-templates-and-repos.md`):** WP1–WP3 built.
+  WP1: **Template** is a first-class axis between Brand and Project — the ARTIFACT KIND
+  (character sheet / storyboard / infographic), carrying `body`, `importFormat`, `listPrompt`
+  and `negatives`. The primer is now `compose(Brand, Template, Project)`; a project points at
+  a template (per-project, per §3 `project.json`), Template locks during a run exactly as
+  Brand does, and it drives the import-format default and the LIST PROMPT card's wording.
+  **Back-compat is proven, not assumed:** the v3→v4 migration creates no templates and points
+  no project at one, and an absent/empty template composes byte-identically to the pre-v3
+  primer (`test/domain-compose.test.ts`).
+  WP2: `src/main/repo-store.ts` — the brand repo on disk is the SOURCE OF TRUTH
+  (`i-<brand>/{brand/,templates/<id>/,projects/<id>/}`), mirroring `video-projects/`. Read on
+  activate, write on save; `domain.json` demotes to an index of pointers. Attach imports what
+  is there (disk wins) and publishes what is not. **`brand/DESIGN.md` is only ever READ** — the
+  `brand` skill is canonical, so a sourced brand body is read-only in the app.
+  WP3: default output is `<repo>/projects/<project>/runs/<run-id>/`; `_template/` scaffolds
+  for templates and projects; and the **nested-repo trap is fixed** — `ensureOutputRoot` now
+  asks `git rev-parse --is-inside-work-tree` (walks ancestors) instead of looking for
+  `<dir>/.git`, and additionally declines to init inside a brand repo root, which is WP5's job.
+  **Not done: WP4 (`library.json`) and WP5 (scaffold a new brand repo, git init, private flag).**
+  `~/dev/image-projects/i-*` exist but are deliberately NOT git repos yet — do not init them.
 - **Live UAT built (2026-08-03, `docs/live-uat.md`)** — the acceptance pass now has a capture
   layer. ⚑ toggle in the top bar (off by default, persisted); ⚑ on every cockpit region raises a
   screen-anchored `Snag`; harvested tiles are multi-selectable and take an `ImageVerdict` carrying

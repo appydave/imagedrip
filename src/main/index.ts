@@ -16,6 +16,7 @@ import {
 import type { DomainState } from '@shared/domain';
 import type { SnagInput, UatCounts, VerdictInput } from '@shared/live-uat';
 import { createConsole } from './create-console.js';
+import { isInside, isInsideWorkTree } from './git-scope.js';
 import { readCounts, revealStore, writeSnag, writeVerdict } from './live-uat-store.js';
 import {
   attachRepo,
@@ -173,23 +174,53 @@ async function recordVerdicts(input: VerdictInput): Promise<void> {
   logger?.info({ n: input.items.length, verdict: input.verdict }, 'live-uat verdicts');
 }
 
-/** Point the author at the active project's output dir (creating it), return it.
- *  The dir is git-initialised (advisory-1 #4) — FileAuthor's per-write commit
- *  silently no-ops outside a repo, which made WP1's committed-harvest guarantee
- *  a fiction until now. */
+/**
+ * Point the author at the active project's output dir (creating it), return it.
+ *
+ * The dir is git-initialised (advisory-1 #4) — FileAuthor's per-write commit
+ * silently no-ops outside a repo, which made the committed-harvest guarantee a
+ * fiction until then. But WHEN to init is the part v3 WP3 fixes; there are three
+ * cases and the old code only saw one:
+ *
+ *  1. Already inside a work tree → do NOTHING. The old check looked for
+ *     `<dir>/.git` and never at ancestors, so pointing the output dir anywhere
+ *     inside an existing repo silently created a NESTED one — after which the
+ *     outer repo tracks nothing below it and the "committed" harvests live in a
+ *     repository nobody pushes. `git rev-parse --is-inside-work-tree` asks the
+ *     question that was meant.
+ *
+ *  2. Inside a brand repo root that is not yet a git repo → do NOTHING, and say
+ *     so. The git boundary for the v3 layout is the BRAND REPO
+ *     (`~/dev/image-projects/i-<brand>`), not `projects/<x>/runs/`. Initialising
+ *     the leaf would plant exactly the nested repo case 1 exists to prevent, one
+ *     level down. Whether a brand repo is git-initialised is WP5's job.
+ *
+ *  3. A standalone folder (the v2 default, `~/Pictures/ImageDrip/<slug>`) → init
+ *     it, exactly as before.
+ */
 async function ensureOutputRoot(): Promise<string> {
   const dir = await getActiveOutputDir();
   await fs.mkdir(dir, { recursive: true });
-  try {
-    await fs.access(join(dir, '.git'));
-  } catch {
-    try {
-      await exec('git', ['init', '--quiet'], { cwd: dir });
-      logger?.info({ dir }, 'output dir git-initialised');
-    } catch (err) {
-      logger?.warn({ dir, err: String(err) }, 'git init failed — harvests will be uncommitted');
+
+  if (await isInsideWorkTree(dir)) {
+    logger?.info({ dir }, 'output dir is inside an existing git work tree — not initialising');
+  } else {
+    const repoRoot = (await getDomain()).brand.repoRoot;
+    if (repoRoot && isInside(repoRoot, dir)) {
+      logger?.info(
+        { dir, repoRoot },
+        'output dir is inside a brand repo that is not git-initialised — leaving it to the repo, harvests stay uncommitted for now',
+      );
+    } else {
+      try {
+        await exec('git', ['init', '--quiet'], { cwd: dir });
+        logger?.info({ dir }, 'output dir git-initialised');
+      } catch (err) {
+        logger?.warn({ dir, err: String(err) }, 'git init failed — harvests will be uncommitted');
+      }
     }
   }
+
   getOutputAuthor().setRoot(dir);
   return dir;
 }
