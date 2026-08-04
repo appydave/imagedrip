@@ -9,6 +9,7 @@ import {
   type ImportFormat,
   type ImportMode,
   type Prompt,
+  type Template,
 } from '../shared/domain.js';
 import {
   defaultProjectDir,
@@ -92,16 +93,32 @@ function activeBrand(s: PersistedDomain): (typeof s.brands)[number] {
   return s.brands.find((b) => b.id === s.activeBrandId) ?? s.brands[0];
 }
 
-/** The renderer-facing view: active brand + project + theme, plus switcher lists. */
+/**
+ * The template the ACTIVE project points at — null when it points at none, and
+ * null when it points at one that no longer exists. Never a silent substitute:
+ * a wrong recipe in the primer is worse than a missing one, and the TEMPLATE
+ * card shows "(none)" either way.
+ */
+function activeTemplate(s: PersistedDomain): Template | null {
+  const id = activeRecord(s).project.templateId;
+  if (!id) return null;
+  return s.templates.find((t) => t.id === id) ?? null;
+}
+
+/** The renderer-facing view: active brand + template + project + theme, plus switcher lists. */
 function view(s: PersistedDomain): DomainState {
   const rec = activeRecord(s);
   const brand = activeBrand(s);
+  const template = activeTemplate(s);
   return {
     brand,
+    template,
     project: rec.project,
     theme: rec.theme,
     activeBrandId: brand.id,
     brands: s.brands.map((b) => ({ id: b.id, name: b.name })),
+    activeTemplateId: template?.id ?? null,
+    templates: s.templates.map((t) => ({ id: t.id, name: t.name })),
     activeProjectId: rec.project.id,
     projects: s.projects.map((r) => ({
       id: r.project.id,
@@ -200,10 +217,87 @@ export async function switchBrand(id: string): Promise<DomainState> {
   return updateDoc((s) => (s.brands.some((b) => b.id === id) ? { ...s, activeBrandId: id } : s));
 }
 
-/** The primer = compose(active Brand, active Project) — posted ONCE per conversation. */
+/**
+ * Persist an edit to the template the ACTIVE project points at.
+ * Callers must hold the run lock — changing the recipe mid-run is the same class
+ * of error as changing the style (v3 WP1).
+ */
+export async function saveTemplate(patch: {
+  name?: string;
+  body?: string;
+  importFormat?: ImportFormat;
+  listPrompt?: string;
+  negatives?: string;
+}): Promise<DomainState> {
+  const name = patch.name?.trim();
+  return updateDoc((s) => {
+    const active = activeTemplate(s);
+    if (!active) throw new Error('no template selected — pick or create one first');
+    return {
+      ...s,
+      templates: s.templates.map((t) =>
+        t.id === active.id
+          ? {
+              ...t,
+              ...(patch.body !== undefined ? { body: patch.body } : {}),
+              ...(name ? { name } : {}),
+              ...(patch.importFormat ? { importFormat: patch.importFormat } : {}),
+              ...(patch.listPrompt !== undefined ? { listPrompt: patch.listPrompt } : {}),
+              ...(patch.negatives !== undefined ? { negatives: patch.negatives } : {}),
+            }
+          : t,
+      ),
+    };
+  });
+}
+
+/**
+ * Create a template AND point the active project at it. Draft-until-Create, the
+ * same discipline as brands and projects.
+ */
+export async function createTemplate(input: {
+  name: string;
+  importFormat?: ImportFormat;
+}): Promise<DomainState> {
+  const name = input.name.trim();
+  if (!name) throw new Error('template name is required');
+  return updateDoc((s) => {
+    const id = uniqueSlug(name, s.templates.map((t) => t.id));
+    const activeId = activeRecord(s).project.id;
+    return {
+      ...s,
+      templates: [...s.templates, { id, name, body: '', importFormat: input.importFormat ?? 'lines' }],
+      projects: s.projects.map((r) =>
+        r.project.id === activeId ? { ...r, project: { ...r.project, templateId: id } } : r,
+      ),
+    };
+  });
+}
+
+/**
+ * Point the ACTIVE project at a template — or at none (`null`). This is a
+ * per-PROJECT pointer, not a global selection: §3's `project.json { brand,
+ * template }` is what makes "two different projects on one character-sheet
+ * recipe" a thing you can express at all.
+ */
+export async function switchTemplate(id: string | null): Promise<DomainState> {
+  if (id !== null) {
+    const current = await persisted();
+    if (!current.templates.some((t) => t.id === id)) throw new Error(`unknown template: ${id}`);
+  }
+  return updateActive((rec) => ({
+    ...rec,
+    project: { ...rec.project, templateId: id ?? undefined },
+  }));
+}
+
+/**
+ * The primer = compose(active Brand, its Template, active Project) — posted ONCE
+ * per conversation. With no template this is byte-identical to the pre-v3 primer.
+ */
 export async function composePrimer(): Promise<string> {
   const s = await persisted();
-  return compose(activeBrand(s), activeRecord(s).project);
+  return compose(activeBrand(s), activeTemplate(s), activeRecord(s).project);
 }
 
 /** The active theme prompts, in order — the run queue snapshot source. */

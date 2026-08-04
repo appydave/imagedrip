@@ -21,6 +21,7 @@ import {
   composePrimer,
   createBrand,
   createProject,
+  createTemplate,
   getActiveOutputDir,
   getDomain,
   getQueue,
@@ -29,8 +30,10 @@ import {
   resetRun,
   saveBrand,
   saveProject,
+  saveTemplate,
   switchBrand,
   switchProject,
+  switchTemplate,
 } from './domain-store.js';
 import { BatchRunner } from './batch-runner.js';
 import { SwappableFileAuthor } from './output-router.js';
@@ -365,6 +368,52 @@ const desktop = createConsole({
       handle: (id) => {
         if (runner?.running) throw new Error('brand is locked while a run is live');
         return switchBrand(id);
+      },
+    });
+
+    // ── ImageDrip template identity (v3 WP1) ──
+    // Run-locked exactly as Brand is: the recipe and the style are the two
+    // things a run must hold still, or the manifest stops describing the run.
+    ipc.register<{ name: string; importFormat?: 'lines' | 'blocks' }, DomainState>({
+      channel: IPC.templateCreate,
+      input: z.object({
+        name: z.string().min(1),
+        importFormat: z.enum(['lines', 'blocks']).optional(),
+      }),
+      handle: (input) => {
+        if (runner?.running) throw new Error('template is locked while a run is live');
+        return createTemplate(input);
+      },
+    });
+    ipc.register<string | null, DomainState>({
+      channel: IPC.templateSwitch,
+      input: z.string().min(1).nullable(),
+      handle: (id) => {
+        if (runner?.running) throw new Error('template is locked while a run is live');
+        return switchTemplate(id);
+      },
+    });
+    ipc.register<
+      {
+        name?: string;
+        body?: string;
+        importFormat?: 'lines' | 'blocks';
+        listPrompt?: string;
+        negatives?: string;
+      },
+      DomainState
+    >({
+      channel: IPC.templateSave,
+      input: z.object({
+        name: z.string().min(1).optional(),
+        body: z.string().optional(),
+        importFormat: z.enum(['lines', 'blocks']).optional(),
+        listPrompt: z.string().optional(),
+        negatives: z.string().optional(),
+      }),
+      handle: (patch) => {
+        if (runner?.running) throw new Error('template is locked while a run is live');
+        return saveTemplate(patch);
       },
     });
     ipc.register<void, string>({

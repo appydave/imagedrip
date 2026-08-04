@@ -4,6 +4,7 @@ import {
   slugify,
   type Brand,
   type Project,
+  type Template,
   type Theme,
 } from '../shared/domain.js';
 
@@ -11,12 +12,18 @@ import {
  * The persisted domain document + its migration chain.
  *
  *   v1 — one { brand, project, theme }
- *   v2 — multi-project: { brand, projects[], activeProjectId }        (WP1)
- *   v3 — multi-brand:   { brands[], activeBrandId, projects[], … }    (WP2)
+ *   v2 — multi-project: { brand, projects[], activeProjectId }        (v2 WP1)
+ *   v3 — multi-brand:   { brands[], activeBrandId, projects[], … }    (v2 WP2)
+ *   v4 — templates:     { …v3, templates[] } + Project.templateId     (v3 WP1)
  *
  * Migration is silent and lossless: existing content becomes the first
  * record(s), untouched. Pure (no electron imports) so it is unit-testable —
  * the only environment input is `outputRoot` (in the app: ~/Pictures/ImageDrip).
+ *
+ * v3 → v4 deliberately creates NO templates and points no project at one. An
+ * absent template composes the pre-v3 primer byte-for-byte (`compose` in
+ * `shared/domain.ts`), so the upgrade cannot change what any existing project
+ * posts to ChatGPT. Templates are something David opts INTO, per project.
  */
 
 /** One project + the theme it owns. */
@@ -26,9 +33,11 @@ export interface ProjectRecord {
 }
 
 export interface PersistedDomain {
-  version: 3;
+  version: 4;
   brands: Brand[];
   activeBrandId: string;
+  /** The template LIBRARY — shared across brands and projects (§2). */
+  templates: Template[];
   projects: ProjectRecord[];
   activeProjectId: string;
 }
@@ -77,9 +86,13 @@ const SEED_PROJECT_BODY = [
 /** First-run defaults (fresh install — no domain.json yet). */
 export function seedDefaults(outputRoot: string): PersistedDomain {
   return {
-    version: 3,
+    version: 4,
     brands: [SEED_BRAND],
     activeBrandId: SEED_BRAND.id,
+    // Seeded EMPTY on purpose: the seed project's primer must read the same on a
+    // fresh install as it does on a migrated one, and a demo template would put
+    // text in the primer that nobody chose.
+    templates: [],
     projects: [
       {
         project: {
@@ -110,8 +123,27 @@ interface V2Shape {
   activeProjectId: string;
 }
 
-function isV3(raw: unknown): raw is PersistedDomain {
+interface V3Shape {
+  version: 3;
+  brands: Brand[];
+  activeBrandId: string;
+  projects: ProjectRecord[];
+  activeProjectId: string;
+}
+
+function isV4(raw: unknown): raw is PersistedDomain {
   const r = raw as Partial<PersistedDomain> | null;
+  return (
+    !!r &&
+    r.version === 4 &&
+    Array.isArray(r.brands) &&
+    Array.isArray(r.templates) &&
+    Array.isArray(r.projects)
+  );
+}
+
+function isV3(raw: unknown): raw is V3Shape {
+  const r = raw as Partial<V3Shape> | null;
   return !!r && r.version === 3 && Array.isArray(r.brands) && Array.isArray(r.projects);
 }
 
@@ -142,8 +174,16 @@ function fixProjects(
   return { projects: fixed, touched };
 }
 
+/**
+ * v3 → v4: the template library appears, EMPTY. No project is pointed at a
+ * template, so every existing primer is unchanged (see the header note).
+ */
+function v3ToV4(raw: V3Shape): PersistedDomain {
+  return { ...raw, version: 4, templates: [] };
+}
+
 /** v2 → v3: the single brand becomes the first (active) brand record. */
-function v2ToV3(raw: V2Shape): PersistedDomain {
+function v2ToV3(raw: V2Shape): V3Shape {
   const brand: Brand = { ...raw.brand, id: raw.brand.id || slugify(raw.brand.name) };
   return {
     version: 3,
@@ -175,7 +215,22 @@ function v1ToV2(raw: V1Shape, outputRoot: string): V2Shape {
 }
 
 /**
- * Normalize whatever is on disk to v3. `migrated` signals the caller to write
+ * Backfill any template record missing an id or an importFormat. `lines` is the
+ * fallback because it is what every import did before templates existed.
+ */
+function fixTemplates(templates: Template[]): { templates: Template[]; touched: boolean } {
+  let touched = false;
+  const fixed = templates.map((t) => {
+    const id = t.id || uniqueSlug(t.name, templates.map((x) => x.id).filter(Boolean));
+    const importFormat = t.importFormat ?? 'lines';
+    if (id !== t.id || importFormat !== t.importFormat) touched = true;
+    return { ...t, id, importFormat };
+  });
+  return { templates: fixed, touched };
+}
+
+/**
+ * Normalize whatever is on disk to v4. `migrated` signals the caller to write
  * the upgraded document back.
  *
  * Advisory-1 #3: a document that PARSED but matches no known shape is NEVER
@@ -187,8 +242,9 @@ export function migrateDomain(
   raw: unknown,
   outputRoot: string,
 ): { state: PersistedDomain; migrated: boolean } {
-  if (isV3(raw)) {
+  if (isV4(raw)) {
     const { projects, touched } = fixProjects(raw.projects, outputRoot);
+    const { templates, touched: templatesTouched } = fixTemplates(raw.templates);
     let brandsTouched = false;
     const brands = raw.brands.map((b) => {
       const id = b.id || uniqueSlug(b.name, raw.brands.map((x) => x.id).filter(Boolean));
@@ -196,24 +252,29 @@ export function migrateDomain(
       return { ...b, id };
     });
     return {
-      state: { ...raw, projects, brands },
-      migrated: touched || brandsTouched,
+      state: { ...raw, projects, templates, brands },
+      migrated: touched || templatesTouched || brandsTouched,
     };
+  }
+
+  if (isV3(raw)) {
+    const { projects } = fixProjects(raw.projects, outputRoot);
+    return { state: v3ToV4({ ...raw, projects }), migrated: true };
   }
 
   if (isV2(raw)) {
     const { projects } = fixProjects(raw.projects, outputRoot);
-    return { state: v2ToV3({ ...raw, projects }), migrated: true };
+    return { state: v3ToV4(v2ToV3({ ...raw, projects })), migrated: true };
   }
 
   if (isV1(raw)) {
-    return { state: v2ToV3(v1ToV2(raw, outputRoot)), migrated: true };
+    return { state: v3ToV4(v2ToV3(v1ToV2(raw, outputRoot))), migrated: true };
   }
 
   if (raw == null) return { state: seedDefaults(outputRoot), migrated: true };
 
   throw new Error(
-    'domain.json is unrecognizable (not v1/v2/v3) — refusing to overwrite it with seed data. ' +
+    'domain.json is unrecognizable (not v1/v2/v3/v4) — refusing to overwrite it with seed data. ' +
       'Restore from the .bak file next to it.',
   );
 }

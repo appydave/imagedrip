@@ -25,6 +25,12 @@ export const IPC = {
   brandCreate: 'imagedrip:brand:create',
   brandSwitch: 'imagedrip:brand:switch',
 
+  // ── ImageDrip: template identity (v3 WP1) — run-locked exactly like Brand ──
+  templateCreate: 'imagedrip:template:create',
+  /** Point the ACTIVE project at a template, or at none (null). */
+  templateSwitch: 'imagedrip:template:switch',
+  templateSave: 'imagedrip:template:save',
+
   // ── ImageDrip: project identity (WP1) — create/switch, output dir picker ──
   projectCreate: 'imagedrip:project:create',
   projectSwitch: 'imagedrip:project:switch',
@@ -277,7 +283,7 @@ export interface ImagedripApi {
     saveProject(patch: { name?: string; body?: string; outputDir?: string }): Promise<DomainState>;
     /** Persist an edit to the active brand. Refused while a run is live (WP2). */
     saveBrand(patch: { name?: string; body?: string }): Promise<DomainState>;
-    /** primer = compose(Brand, Project) — the text posted once per conversation. */
+    /** primer = compose(Brand, Template, Project) — posted once per conversation. */
     composePrimer(): Promise<string>;
     /** Re-queue every prompt so the theme can be run again; returns the new state. */
     resetRun(): Promise<DomainState>;
@@ -300,6 +306,23 @@ export interface ImagedripApi {
   brands: {
     create(input: { name: string }): Promise<DomainState>;
     switch(id: string): Promise<DomainState>;
+  };
+  /**
+   * The Template library (v3 WP1) — the artifact KIND, reused across brands and
+   * projects. Locked while a run is live for the same reason Brand is: changing
+   * the recipe mid-run splits one run across two different artifacts.
+   */
+  templates: {
+    create(input: { name: string; importFormat?: 'lines' | 'blocks' }): Promise<DomainState>;
+    /** Point the active project at a template — `null` means "no template". */
+    switch(id: string | null): Promise<DomainState>;
+    save(patch: {
+      name?: string;
+      body?: string;
+      importFormat?: 'lines' | 'blocks';
+      listPrompt?: string;
+      negatives?: string;
+    }): Promise<DomainState>;
   };
   /** Run history (WP1) — previous runs of the ACTIVE project, from their manifests. */
   runs: {

@@ -53,6 +53,19 @@ const imagedrip: ImagedripApi = {
       ipcRenderer.invoke(IPC.brandCreate, input),
     switch: (id: string): Promise<DomainState> => ipcRenderer.invoke(IPC.brandSwitch, id),
   },
+  templates: {
+    create: (input: { name: string; importFormat?: 'lines' | 'blocks' }): Promise<DomainState> =>
+      ipcRenderer.invoke(IPC.templateCreate, input),
+    switch: (id: string | null): Promise<DomainState> =>
+      ipcRenderer.invoke(IPC.templateSwitch, id),
+    save: (patch: {
+      name?: string;
+      body?: string;
+      importFormat?: 'lines' | 'blocks';
+      listPrompt?: string;
+      negatives?: string;
+    }): Promise<DomainState> => ipcRenderer.invoke(IPC.templateSave, patch),
+  },
   runs: {
     list: (): Promise<RunSummary[]> => ipcRenderer.invoke(IPC.runsList),
     manifest: (runId: string): Promise<RunManifest | null> =>

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RunManifest, RunStatus, RunSummary, Rect } from '@shared/ipc';
-import { compose, parsePromptList, type DomainState } from '@shared/domain';
+import { compose, parsePromptList, renderListPrompt, type DomainState } from '@shared/domain';
 import { useAppStore } from './store';
 import { FlagButton, UatToggle, VerdictBar } from './FlagButton';
 import { Modal, Popover } from './Popover';
@@ -36,6 +36,9 @@ export default function App(): JSX.Element {
     saveBrand,
     createBrand,
     switchBrand,
+    saveTemplate,
+    createTemplate,
+    switchTemplate,
     copyText,
     createProject,
     switchProject,
@@ -331,6 +334,9 @@ export default function App(): JSX.Element {
             onSaveBrand={saveBrand}
             onCreateBrand={(name) => void createBrand(name)}
             onSwitchBrand={(id) => void switchBrand(id)}
+            onSaveTemplate={saveTemplate}
+            onCreateTemplate={(name) => void createTemplate(name)}
+            onSwitchTemplate={(id) => void switchTemplate(id)}
             onCopyPrimer={() => void copyPrimer()}
             onCopyPrompt={() => void copyNextPrompt()}
             onCopyText={(text, label) => void copyText(text, label)}
@@ -365,9 +371,13 @@ export default function App(): JSX.Element {
         ) : (
           <div className="flex min-w-0 flex-1 gap-3.5 p-3.5">
             <QueuedLane
+              // Re-keyed on the template so the import-format toggle picks up the
+              // new default when the project is pointed at a different recipe.
+              key={`q-${domain?.activeTemplateId ?? 'none'}`}
               prompts={queued}
               dialIn={mode === 'dial-in'}
               injectBusy={isRunning || isPaused}
+              defaultFormat={domain?.template?.importFormat ?? 'lines'}
               onInject={(id) => void injectPrompt(id)}
               onImport={(t, m, f) => void importPrompts(t, m, f)}
             />
@@ -822,6 +832,15 @@ function ContextPanel(props: {
   onSaveBrand: (patch: { name?: string; body?: string }) => Promise<boolean>;
   onCreateBrand: (name: string) => void;
   onSwitchBrand: (id: string) => void;
+  onSaveTemplate: (patch: {
+    name?: string;
+    body?: string;
+    importFormat?: 'lines' | 'blocks';
+    listPrompt?: string;
+    negatives?: string;
+  }) => Promise<boolean>;
+  onCreateTemplate: (name: string) => void;
+  onSwitchTemplate: (id: string | null) => void;
   onCopyPrimer: () => void;
   onCopyPrompt: () => void;
   onCopyText: (text: string, label: string) => void;
@@ -832,7 +851,7 @@ function ContextPanel(props: {
 }): JSX.Element {
   const d = props.domain;
   const nextQueued = d?.theme.prompts.find((p) => p.status === 'queued');
-  const primerPreview = d ? compose(d.brand, d.project) : '';
+  const primerPreview = d ? compose(d.brand, d.template, d.project) : '';
 
   return (
     <div
@@ -866,13 +885,27 @@ function ContextPanel(props: {
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 font-display text-[11px] font-semibold text-brown">
           <span className="rounded bg-linen px-1.5 py-0.5">BRAND</span>
           <span className="text-muted">+</span>
+          {/* TEMPLATE is dimmed when the project points at none — the primer
+              really is just Brand + Project then, and the diagram must not
+              claim a layer that isn't in the text. */}
+          <span
+            className={
+              'rounded px-1.5 py-0.5 ' +
+              (d?.template ? 'bg-linen' : 'bg-linen/50 text-muted line-through')
+            }
+          >
+            TEMPLATE
+          </span>
+          <span className="text-muted">+</span>
           <span className="rounded bg-linen px-1.5 py-0.5">PROJECT</span>
           <span className="font-mono text-amber">→</span>
           <span className="rounded bg-yellow px-1.5 py-0.5">PRIMER</span>
         </div>
         <p className="mt-1.5 font-mono text-[10px] leading-relaxed text-muted">
-          Posted <b className="text-brown">once per chat</b>. Every prompt after it inherits
-          that look — which is why prompts stay short.
+          The <b className="text-brown">look</b>, the <b className="text-brown">artifact</b>, the{' '}
+          <b className="text-brown">subject</b> — posted{' '}
+          <b className="text-brown">once per chat</b>. Every prompt after it inherits all three,
+          which is why prompts stay short.
         </p>
       </div>
 
@@ -884,6 +917,17 @@ function ContextPanel(props: {
           onSave={props.onSaveBrand}
           onCreate={props.onCreateBrand}
           onSwitch={props.onSwitchBrand}
+        />
+      )}
+
+      {d && (
+        <TemplateCard
+          key={`t-${d.activeProjectId}-${d.activeTemplateId ?? 'none'}`}
+          domain={d}
+          locked={props.isRunning}
+          onSave={props.onSaveTemplate}
+          onCreate={props.onCreateTemplate}
+          onSwitch={props.onSwitchTemplate}
         />
       )}
 
@@ -900,7 +944,7 @@ function ContextPanel(props: {
       )}
 
       <div className="mt-1 flex items-center justify-between">
-        <CardHeading step={3} title="COPY OUT" hint="to paste into ChatGPT by hand" />
+        <CardHeading step={4} title="COPY OUT" hint="to paste into ChatGPT by hand" />
         <FlagButton
           region="context-copy"
           snapshot={() =>
@@ -926,7 +970,7 @@ function ContextPanel(props: {
         onCopy={props.onCopyPrompt}
       />
 
-      <ListPromptCard onCopy={props.onCopyText} />
+      <ListPromptCard template={d?.template ?? null} onCopy={props.onCopyText} />
 
       {/* run history (WP1) — every previous run of THIS project, from its manifest */}
       <div className="mt-1 flex min-h-0 flex-col">
@@ -1227,6 +1271,202 @@ function BrandCard(props: {
   );
 }
 
+/* ── TEMPLATE card (v3 WP1) — the ARTIFACT KIND, between the look and the subject ── */
+function TemplateCard(props: {
+  domain: DomainState;
+  locked: boolean;
+  onSave: (patch: {
+    name?: string;
+    body?: string;
+    importFormat?: 'lines' | 'blocks';
+    listPrompt?: string;
+    negatives?: string;
+  }) => Promise<boolean>;
+  onCreate: (name: string) => void;
+  onSwitch: (id: string | null) => void;
+}): JSX.Element {
+  const { template, templates, activeTemplateId } = props.domain;
+  const name = useAutosave(template?.name ?? '', (v) => props.onSave({ name: v }));
+  const body = useAutosave(template?.body ?? '', (v) => props.onSave({ body: v }));
+  const negatives = useAutosave(template?.negatives ?? '', (v) => props.onSave({ negatives: v }));
+  const listPrompt = useAutosave(template?.listPrompt ?? '', (v) =>
+    props.onSave({ listPrompt: v }),
+  );
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const dirty =
+    name.state !== 'saved' ||
+    body.state !== 'saved' ||
+    negatives.state !== 'saved' ||
+    listPrompt.state !== 'saved';
+  const saving = [name, body, negatives, listPrompt].some((f) => f.state === 'saving');
+
+  return (
+    <div className="rounded-lg border border-edge bg-cream p-2.5">
+      <CardHeading step={2} title="TEMPLATE" hint="the artifact kind — locks during runs" />
+      <div className="flex items-center justify-between gap-2">
+        {template ? (
+          props.locked ? (
+            <div className="font-display text-sm font-semibold">{template.name} 🔒</div>
+          ) : (
+            <input
+              value={name.value}
+              onChange={(e) => name.onChange(e.target.value)}
+              onBlur={name.flush}
+              className="w-full rounded-md border border-transparent bg-transparent font-display text-sm font-semibold text-brown outline-none hover:border-edge focus:border-amber"
+            />
+          )
+        ) : (
+          <div className="font-display text-sm font-semibold text-muted">(no template)</div>
+        )}
+        <FlagButton
+          region="context-template"
+          snapshot={() =>
+            `template="${template?.name ?? '(none)'}" (${templates.length} templates) format=${template?.importFormat ?? '—'} negatives=${template?.negatives?.length ?? 0}ch body=${template?.body.length ?? 0}ch`
+          }
+        />
+        {!props.locked && (
+          <button
+            type="button"
+            onClick={() => setCreating((v) => !v)}
+            className="flex-shrink-0 font-display text-[11px] text-muted hover:text-amber"
+          >
+            {creating ? '✕' : '＋ new'}
+          </button>
+        )}
+      </div>
+      <div className="mt-0.5 flex items-center justify-between font-mono text-[11px] text-muted">
+        {props.locked ? (
+          <span className="text-amber">template 🔒 locked while a run is live</span>
+        ) : (
+          <span>the recipe — reusable across brands + projects</span>
+        )}
+        {!props.locked && template && (
+          <SaveDot state={dirty ? (saving ? 'saving' : 'dirty') : 'saved'} />
+        )}
+      </div>
+      {/* "(none)" is a real, selectable option: a project without a template
+          composes the pre-v3 primer exactly, and that has to stay reachable. */}
+      <select
+        value={activeTemplateId ?? ''}
+        disabled={props.locked}
+        onChange={(e) => props.onSwitch(e.target.value || null)}
+        title={
+          templates.length === 0
+            ? 'no templates yet — ＋ new creates one'
+            : 'point THIS project at a template'
+        }
+        className="mt-1.5 w-full rounded-md border border-edge bg-cream px-1.5 py-1 font-display text-xs text-brown outline-none focus:border-amber disabled:opacity-60"
+      >
+        <option value="">(none — primer is Brand + Project)</option>
+        {templates.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+      {creating && !props.locked && (
+        <div className="mt-1.5 flex gap-1.5">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="template name, e.g. character-sheet"
+            className="min-w-0 flex-1 rounded-md border border-edge bg-cream p-1.5 font-display text-xs text-brown outline-none focus:border-amber"
+          />
+          <button
+            type="button"
+            disabled={!newName.trim()}
+            onClick={() => {
+              props.onCreate(newName.trim());
+              setNewName('');
+              setCreating(false);
+            }}
+            className="rounded-md bg-yellow px-2.5 py-1 font-display text-xs font-semibold text-brown enabled:hover:brightness-95 disabled:opacity-50"
+          >
+            Create
+          </button>
+        </div>
+      )}
+
+      {template ? (
+        <>
+          <textarea
+            value={body.value}
+            onChange={(e) => body.onChange(e.target.value)}
+            onBlur={body.flush}
+            disabled={props.locked}
+            placeholder="template.md — the recipe: what KIND of image this makes…"
+            className="mt-2 h-20 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber disabled:opacity-60"
+          />
+
+          {/* The artifact kind decides how a list is cut up — an infographic is
+              inherently multi-line, a character list is one-per-line. Choosing
+              it here sets the DEFAULT at import time instead of re-deciding it
+              on every paste. */}
+          <div className="mt-2 font-mono text-[10px] text-muted">import format default</div>
+          <div className="mt-1 flex overflow-hidden rounded-md border border-edge font-display text-[11px]">
+            {(
+              [
+                { key: 'lines' as const, label: 'One per line' },
+                { key: 'blocks' as const, label: '--- blocks' },
+              ]
+            ).map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                disabled={props.locked}
+                onClick={() => void props.onSave({ importFormat: f.key })}
+                className={
+                  'flex-1 px-2 py-1 leading-tight disabled:opacity-60 ' +
+                  (template.importFormat === f.key
+                    ? 'bg-yellow font-semibold text-brown'
+                    : 'text-muted hover:bg-linen')
+                }
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* NEGATIVES is a field, not a habit. Challenge DV's "no AI-fabricated
+              survivors, faces, or testimonials" must be carried by the template
+              itself — something you type into the primer is something you can
+              forget to type. */}
+          <div className="mt-2 font-mono text-[10px] text-muted">
+            negatives — hard constraints, composed into the primer
+          </div>
+          <textarea
+            value={negatives.value}
+            onChange={(e) => negatives.onChange(e.target.value)}
+            onBlur={negatives.flush}
+            disabled={props.locked}
+            placeholder="e.g. no text, no watermarks, no AI-fabricated people…"
+            className="mt-1 h-12 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber disabled:opacity-60"
+          />
+
+          <div className="mt-2 font-mono text-[10px] text-muted">
+            list prompt — <code>{'{count}'}</code> · <code>{'{subject}'}</code>
+          </div>
+          <textarea
+            value={listPrompt.value}
+            onChange={(e) => listPrompt.onChange(e.target.value)}
+            onBlur={listPrompt.flush}
+            disabled={props.locked}
+            placeholder="blank = the built-in ask"
+            className="mt-1 h-12 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber disabled:opacity-60"
+          />
+        </>
+      ) : (
+        <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted">
+          No template — the primer is Brand + Project, exactly as before. A template is the{' '}
+          <b className="text-brown">recipe</b> (character sheet, storyboard, infographic) so the
+          same recipe can be pointed at a new subject without copy-paste.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ── PROJECT card (WP2) — name + body autosave; switch / new project (WP1) ── */
 function ProjectCard(props: {
   domain: DomainState;
@@ -1247,7 +1487,7 @@ function ProjectCard(props: {
   return (
     <>
       <div className="rounded-lg border border-edge bg-cream p-2.5">
-        <CardHeading step={2} title="PROJECT" hint="what you tune — this is the dial" />
+        <CardHeading step={3} title="PROJECT" hint="the subject — what you tune" />
         <div className="flex items-center justify-between gap-2">
           <input
             value={name.value}
@@ -1434,20 +1674,30 @@ function CopyCard(props: {
   );
 }
 
-/* ── Listing-prompt helper (WP2 bug #15) — the canned import-list ask ── */
-function listPromptText(count: number, subject: string): string {
-  return `Give me a list of ${count} ${subject}. Names only, one per line, in a code block, no commentary.`;
-}
-
-function ListPromptCard(props: { onCopy: (text: string, label: string) => void }): JSX.Element {
+/* ── Listing-prompt helper (WP2 bug #15) — the canned import-list ask ──
+     The wording now comes from the TEMPLATE when it supplies one (v3 WP1): the
+     right ask for a storyboard is not the right ask for a nail-art catalogue,
+     and it used to be one hardcoded generic string. */
+function ListPromptCard(props: {
+  /** The active project's template, or null — supplies the tuned ask. */
+  template: DomainState['template'];
+  onCopy: (text: string, label: string) => void;
+}): JSX.Element {
+  const tuned = props.template?.listPrompt;
   const [count, setCount] = useState(12);
   const [subject, setSubject] = useState('Australian animals');
-  const [text, setText] = useState(() => listPromptText(12, 'Australian animals'));
+  const [text, setText] = useState(() => renderListPrompt(12, 'Australian animals', tuned));
   const edited = useRef(false);
 
   const regen = (n: number, s: string): void => {
-    if (!edited.current) setText(listPromptText(n, s));
+    if (!edited.current) setText(renderListPrompt(n, s, tuned));
   };
+
+  // Follow the template's ask when it changes — but never clobber a hand-edit.
+  useEffect(() => {
+    if (!edited.current) setText(renderListPrompt(count, subject, tuned));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tuned]);
 
   return (
     <div className="rounded-lg border border-edge bg-cream p-2.5">
@@ -1455,7 +1705,9 @@ function ListPromptCard(props: { onCopy: (text: string, label: string) => void }
         LIST PROMPT
       </div>
       <div className="mt-0.5 font-mono text-[10px] leading-relaxed text-muted">
-        ask ChatGPT for an import list — code block, N items, no chatter
+        {tuned
+          ? `ask ChatGPT for an import list — tuned by the "${props.template?.name}" template`
+          : 'ask ChatGPT for an import list — code block, N items, no chatter'}
       </div>
       <div className="mt-1.5 flex gap-1.5">
         <input
@@ -1500,7 +1752,7 @@ function ListPromptCard(props: { onCopy: (text: string, label: string) => void }
             type="button"
             onClick={() => {
               edited.current = false;
-              setText(listPromptText(count, subject));
+              setText(renderListPrompt(count, subject, tuned));
             }}
             className="rounded-md border border-edge bg-cream px-2 py-1.5 font-mono text-[10px] text-muted hover:border-amber"
           >
@@ -1518,6 +1770,12 @@ function QueuedLane(props: {
   /** Dial-in (WP4): rows reveal a manual inject action on hover. */
   dialIn: boolean;
   injectBusy: boolean;
+  /**
+   * The TEMPLATE's import format (v3 WP1) — the artifact kind knows how its
+   * lists are shaped, so it seeds the toggle instead of `lines` always winning.
+   * Still only a DEFAULT: the toggle stays freely changeable per import.
+   */
+  defaultFormat: 'lines' | 'blocks';
   onInject: (promptId: string) => void;
   onImport: (text: string, mode: 'replace' | 'add' | 'clear', format: 'lines' | 'blocks') => void;
 }): JSX.Element {
@@ -1528,7 +1786,7 @@ function QueuedLane(props: {
   const [confirmClear, setConfirmClear] = useState(false);
   // An EXPLICIT choice, never sniffed from the draft: a one-per-line list
   // containing a stray `---` would otherwise be silently read as two prompts.
-  const [format, setFormat] = useState<'lines' | 'blocks'>('lines');
+  const [format, setFormat] = useState<'lines' | 'blocks'>(props.defaultFormat);
 
   const incoming = parsePromptList(draft, 0, format).length;
   const queuedN = props.prompts.length;

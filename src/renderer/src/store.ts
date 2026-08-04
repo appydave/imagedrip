@@ -35,6 +35,17 @@ interface AppState {
   saveBrand: (patch: { name?: string; body?: string }) => Promise<boolean>;
   createBrand: (name: string) => Promise<void>;
   switchBrand: (id: string) => Promise<void>;
+  /** Autosave path for the TEMPLATE card — false when the run-lock refused it. */
+  saveTemplate: (patch: {
+    name?: string;
+    body?: string;
+    importFormat?: ImportFormat;
+    listPrompt?: string;
+    negatives?: string;
+  }) => Promise<boolean>;
+  createTemplate: (name: string) => Promise<void>;
+  /** Point the active project at a template — null means "no template". */
+  switchTemplate: (id: string | null) => Promise<void>;
   copyPrimer: () => Promise<void>;
   copyNextPrompt: () => Promise<void>;
   copyText: (text: string, label: string) => Promise<void>;
@@ -162,6 +173,32 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ domain: await window.imagedrip.brands.switch(id) });
     } catch {
       set({ flash: 'brand is locked while a run is live' });
+    }
+  },
+  saveTemplate: async (patch) => {
+    try {
+      set({ domain: await window.imagedrip.templates.save(patch) });
+      return true;
+    } catch {
+      set({ flash: 'template is locked while a run is live' });
+      return false;
+    }
+  },
+  createTemplate: async (name) => {
+    try {
+      set({
+        domain: await window.imagedrip.templates.create({ name }),
+        flash: `template "${name}" created`,
+      });
+    } catch {
+      set({ flash: 'template is locked while a run is live' });
+    }
+  },
+  switchTemplate: async (id) => {
+    try {
+      set({ domain: await window.imagedrip.templates.switch(id) });
+    } catch {
+      set({ flash: 'template is locked while a run is live' });
     }
   },
   copyPrimer: async () => {
