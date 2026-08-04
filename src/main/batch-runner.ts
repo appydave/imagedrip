@@ -3,6 +3,7 @@ import type { Prompt } from '../shared/domain.js';
 import { slugify } from '../shared/domain.js';
 import type { RunConfig, RunStatus } from '../shared/ipc.js';
 import { RateLimitGuard } from './rate-limit-guard.js';
+import { BOOTSTRAP_CADENCE, computeCadence } from './cadence.js';
 import { BOOTSTRAP_STALL_MS, computeStallMs } from './stall-budget.js';
 import type { WebviewHarness } from './webview-harness.js';
 
@@ -105,6 +106,14 @@ export class BatchRunner {
   /** Every measured generation this run — the evidence the stall cap derives from. */
   private timings: { subject: string; ms: number }[] = [];
   private stallMs = BOOTSTRAP_STALL_MS;
+  /** Inter-image delay derived from the median generation — NOT the stall cap. */
+  private cadence = BOOTSTRAP_CADENCE;
+  /**
+   * True when the caller pinned the cadence in RunConfig. An explicit value
+   * always wins over the derived one — tests drive the loop at cadence 0, and
+   * silently overriding that with a derived multi-second delay would hang them.
+   */
+  private cadencePinned = false;
   private note: string | undefined;
 
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
@@ -181,6 +190,9 @@ export class BatchRunner {
     // wrong workload. The cap re-learns from the first image of each run.
     this.timings = [];
     this.stallMs = BOOTSTRAP_STALL_MS;
+    this.cadence = BOOTSTRAP_CADENCE;
+    this.cadencePinned =
+      config?.cadenceBaseMs !== undefined || config?.cadenceJitterMs !== undefined;
     this.d.harness.setStallMs(this.stallMs);
     this.note = undefined;
 
@@ -467,6 +479,9 @@ export class BatchRunner {
     // it for the images after it.
     if (measured) {
       this.timings.push({ subject: this.queue[this.idx]?.subject ?? '?', ms: measured });
+      // The two timers answer different questions and move on different
+      // statistics — the cap on the SLOWEST, the cadence on the MEDIAN.
+      if (!this.cadencePinned) this.cadence = computeCadence(this.timings.map((t) => t.ms));
       const next = computeStallMs(this.timings.map((t) => t.ms));
       if (next !== this.stallMs) {
         this.stallMs = next;
@@ -574,8 +589,16 @@ export class BatchRunner {
       .catch((err) => this.logger?.warn({ err: String(err) }, 'run recorder finish failed'));
   }
 
+  /** Pinned config wins; otherwise the cadence derived from observed medians. */
+  private effectiveCadence(): { baseMs: number; jitterMs: number } {
+    return this.cadencePinned
+      ? { baseMs: this.cfg.cadenceBaseMs, jitterMs: this.cfg.cadenceJitterMs }
+      : this.cadence;
+  }
+
   private scheduleNextFeed(): void {
-    const delay = this.cfg.cadenceBaseMs + Math.floor(Math.random() * this.cfg.cadenceJitterMs);
+    const { baseMs, jitterMs } = this.effectiveCadence();
+    const delay = baseMs + Math.floor(Math.random() * jitterMs);
     this.phase = 'waiting';
     this.emit(delay);
     const t = setTimeout(() => {
@@ -612,6 +635,7 @@ export class BatchRunner {
       avgMs: this.avgMs,
       timings: this.timings,
       stallMs: this.stallMs,
+      cadence: this.effectiveCadence(),
       nextFeedInMs: nextFeedInMs ?? null,
       note: this.note,
       at: Date.now(),

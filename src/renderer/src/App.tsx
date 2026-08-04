@@ -627,11 +627,31 @@ function TimingsButton(props: { status: RunStatus | null; avgLabel: string }): J
               </>
             )}
 
-            <div className="rounded-md border border-amber bg-cream px-2 py-1.5 font-mono text-[10px] leading-relaxed text-brown">
-              stall budget: <b>{secs(props.status?.stallMs ?? 0)}</b>
+            {/* TWO timers, two questions, two statistics. They were conflated
+                in the copy and in people's heads; the panel now states the
+                difference rather than listing two numbers side by side. */}
+            <div className="rounded-md border border-edge bg-cream px-2 py-1.5 font-mono text-[10px] leading-relaxed text-brown">
+              <div className="font-bold">
+                cadence: <span className="text-amber">{secs(props.status?.cadence.baseMs ?? 0)}</span>
+                {' + up to '}
+                <span className="text-amber">{secs(props.status?.cadence.jitterMs ?? 0)}</span>
+              </div>
               <div className="mt-0.5 text-muted">
-                Computed from the numbers above — the greater of 1.75× the average and 1.3× the
-                slowest. Any image that runs long raises it for the rest of the run.
+                <b className="text-brown">How long to pause between images.</b> 12% of the{' '}
+                <b className="text-brown">median</b> generation, plus jitter. Median, not average —
+                a single 0.9s re-fire once dragged a mean-based figure to nonsense.
+              </div>
+            </div>
+
+            <div className="rounded-md border border-amber bg-cream px-2 py-1.5 font-mono text-[10px] leading-relaxed text-brown">
+              <div className="font-bold">
+                stall budget: <span className="text-amber">{secs(props.status?.stallMs ?? 0)}</span>
+              </div>
+              <div className="mt-0.5 text-muted">
+                <b className="text-brown">When to call a generation dead.</b> The greater of 1.75×
+                the average and 1.3× the <b className="text-brown">slowest</b> — it must clear the
+                worst real case, not the typical one. Any long image raises it for the rest of the
+                run.
               </div>
             </div>
           </div>
@@ -707,6 +727,60 @@ function useAutosave(
 }
 
 /**
+ * The project's output folder — where every run of this project lands.
+ *
+ * Shows the FULL path (wrapped, not truncated), lets it be changed after
+ * creation, and reveals the folder. The rail is narrow, so the path breaks
+ * across lines rather than hiding its most useful half.
+ */
+function OutputDirControl(props: {
+  project: { name: string; outputDir?: string };
+  onChooseDir: () => Promise<string | null>;
+  onSave: (patch: { outputDir?: string }) => Promise<boolean>;
+}): JSX.Element {
+  const dir = props.project.outputDir;
+  return (
+    <div className="mt-1.5 rounded-md border border-edge bg-linen p-1.5">
+      <div className="mb-0.5 flex items-center justify-between">
+        <span className="font-mono text-[9px] uppercase tracking-wide text-muted">
+          output folder
+        </span>
+        <FlagButton
+          region="context-output"
+          snapshot={() => `outputDir=${dir ?? '(unset)'} project="${props.project.name}"`}
+        />
+      </div>
+      <div className="break-all font-mono text-[10px] leading-snug text-brown">
+        {dir ?? '(unset — defaults to ~/Pictures/ImageDrip/<project>)'}
+      </div>
+      <div className="mt-1 flex gap-1">
+        <button
+          type="button"
+          onClick={() => {
+            void props.onChooseDir().then((picked) => {
+              if (picked) void props.onSave({ outputDir: picked });
+            });
+          }}
+          className="flex-1 rounded border border-edge bg-cream px-1.5 py-0.5 font-mono text-[10px] text-muted hover:border-amber hover:text-brown"
+        >
+          change…
+        </button>
+        <button
+          type="button"
+          onClick={() => void window.imagedrip.projects.revealOutputDir()}
+          className="flex-1 rounded border border-edge bg-cream px-1.5 py-0.5 font-mono text-[10px] text-muted hover:border-amber hover:text-brown"
+        >
+          reveal
+        </button>
+      </div>
+      <div className="mt-0.5 font-mono text-[9px] leading-snug text-muted">
+        every run lands in its own dated subfolder here
+      </div>
+    </div>
+  );
+}
+
+/**
  * A card heading in the context rail.
  *
  * Numbered on purpose: the cards are a SEQUENCE (brand → project → the primer
@@ -744,7 +818,7 @@ function ContextPanel(props: {
   isRunning: boolean;
   runs: RunSummary[] | null;
   onClose: () => void;
-  onSaveProject: (patch: { name?: string; body?: string }) => Promise<boolean>;
+  onSaveProject: (patch: { name?: string; body?: string; outputDir?: string }) => Promise<boolean>;
   onSaveBrand: (patch: { name?: string; body?: string }) => Promise<boolean>;
   onCreateBrand: (name: string) => void;
   onSwitchBrand: (id: string) => void;
@@ -817,6 +891,7 @@ function ContextPanel(props: {
         <ProjectCard
           key={`p-${d.activeProjectId}`}
           domain={d}
+          runs={props.runs}
           onSave={props.onSaveProject}
           onSwitch={props.onSwitchProject}
           onCreate={props.onCreateProject}
@@ -1155,7 +1230,9 @@ function BrandCard(props: {
 /* ── PROJECT card (WP2) — name + body autosave; switch / new project (WP1) ── */
 function ProjectCard(props: {
   domain: DomainState;
-  onSave: (patch: { name?: string; body?: string }) => Promise<boolean>;
+  /** Run history for the expand modal (WP1) — the rail already lists these. */
+  runs: RunSummary[] | null;
+  onSave: (patch: { name?: string; body?: string; outputDir?: string }) => Promise<boolean>;
   onSwitch: (id: string) => void;
   onCreate: (name: string, outputDir?: string) => void;
   onChooseDir: () => Promise<string | null>;
@@ -1209,17 +1286,15 @@ function ProjectCard(props: {
             ))}
           </select>
         )}
-        {project.outputDir && (
-          <div className="mt-1.5 flex items-center gap-1">
-            <span title={project.outputDir} className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted">
-              → {project.outputDir}
-            </span>
-            <FlagButton
-              region="context-output"
-              snapshot={() => `outputDir=${project.outputDir} project="${project.name}"`}
-            />
-          </div>
-        )}
+        {/* The output dir used to be a truncated, dead line of text — settable
+            only in the new-project form, so a wrong choice was permanent. It is
+            now a real control on an existing project, and the path is readable
+            rather than cut off at "→ /Users/davidcruwys/Pic…". */}
+        <OutputDirControl
+          project={project}
+          onChooseDir={props.onChooseDir}
+          onSave={props.onSave}
+        />
         <div className="mt-2 flex items-center justify-between">
           <span className="font-mono text-[10px] text-muted">Project.md</span>
           <button
@@ -1257,6 +1332,47 @@ function ProjectCard(props: {
           <div className="mt-2 flex items-center justify-between font-mono text-[11px] text-muted">
             <span>{body.value.length} characters · autosaves as you type</span>
             <SaveDot state={body.state} />
+          </div>
+
+          {/* The modal used to show Project.md and nothing else, so the two
+              things you most need beside it — where output goes, and what has
+              already run — were only in the narrow rail. */}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div>
+              <div className="mb-1 font-display text-[10px] font-bold tracking-widest text-muted">
+                OUTPUT FOLDER
+              </div>
+              <OutputDirControl
+                project={project}
+                onChooseDir={props.onChooseDir}
+                onSave={props.onSave}
+              />
+            </div>
+            <div>
+              <div className="mb-1 font-display text-[10px] font-bold tracking-widest text-muted">
+                RUNS ({props.runs?.length ?? 0})
+              </div>
+              <div className="max-h-48 overflow-y-auto rounded-md border border-edge bg-cream">
+                {(props.runs ?? []).map((r) => (
+                  <div
+                    key={r.runId}
+                    className="border-b border-edge/50 px-2 py-1 last:border-0 font-mono text-[10px]"
+                  >
+                    <div className="truncate text-brown">{r.runId}</div>
+                    <div className="text-muted">
+                      {fmtWhen(r.startedAt)} · {r.harvested}/{r.total}
+                      {r.mode === 'dial-in' ? ' · dial-in' : ''}
+                      {r.outcome === 'stopped' ? ' · stopped' : ''}
+                    </div>
+                  </div>
+                ))}
+                {!props.runs?.length && (
+                  <p className="px-2 py-2 font-mono text-[10px] text-muted">
+                    no runs yet — each Run theme lands in its own dated subfolder
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </Modal>
       )}
@@ -1403,23 +1519,25 @@ function QueuedLane(props: {
   dialIn: boolean;
   injectBusy: boolean;
   onInject: (promptId: string) => void;
-  onImport: (text: string, mode: 'replace' | 'add') => void;
+  onImport: (text: string, mode: 'replace' | 'add' | 'clear') => void;
 }): JSX.Element {
   const [importing, setImporting] = useState(false);
   const [draft, setDraft] = useState('');
   // Replace discards queued prompts — it warns first (WP3). Two-step inline.
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const incoming = draft
     .split(/\r?\n/)
     .filter((l) => l.trim() && !l.trim().startsWith('#')).length;
   const queuedN = props.prompts.length;
 
-  const doImport = (mode: 'replace' | 'add'): void => {
+  const doImport = (mode: 'replace' | 'add' | 'clear'): void => {
     props.onImport(draft, mode);
     setDraft('');
     setImporting(false);
     setConfirmReplace(false);
+    setConfirmClear(false);
   };
 
   return (
@@ -1439,6 +1557,7 @@ function QueuedLane(props: {
           onClick={() => {
             setImporting((v) => !v);
             setConfirmReplace(false);
+            setConfirmClear(false);
           }}
           className="font-display text-[11px] text-muted hover:text-amber"
         >
@@ -1486,6 +1605,29 @@ function QueuedLane(props: {
                 </button>
               </div>
             </div>
+          ) : confirmClear ? (
+            <div className="flex flex-col gap-1.5 rounded-md border border-amber bg-cream p-2">
+              <span className="font-mono text-[10px] leading-relaxed text-brown">
+                This empties the queue — all {queuedN} queued prompt
+                {queuedN === 1 ? '' : 's'}. Harvested tiles are kept.
+              </span>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => doImport('clear')}
+                  className="flex-1 rounded-md bg-amber px-2.5 py-1.5 font-display text-xs font-bold text-cream hover:brightness-105"
+                >
+                  Clear all {queuedN}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClear(false)}
+                  className="rounded-md border border-edge bg-cream px-2.5 py-1.5 font-display text-xs text-muted hover:border-amber"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           ) : (
             <>
               <button
@@ -1503,6 +1645,16 @@ function QueuedLane(props: {
                 className="rounded-md border border-edge bg-cream px-3 py-1.5 font-display text-xs font-semibold text-muted enabled:hover:border-amber disabled:opacity-50"
               >
                 Replace the {queuedN} queued with {incoming}…
+              </button>
+              {/* Clear is its own action, NOT "replace with nothing" — Replace
+                  is disabled on an empty draft, which left no path to an empty
+                  queue at all. Enabled regardless of what the draft contains. */}
+              <button
+                type="button"
+                onClick={() => setConfirmClear(true)}
+                className="rounded-md border border-edge bg-cream px-3 py-1.5 font-display text-xs text-muted hover:border-amber"
+              >
+                Clear the queue…
               </button>
             </>
           )}

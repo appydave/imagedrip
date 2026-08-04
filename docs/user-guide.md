@@ -142,6 +142,51 @@ the UI tells you that's why it's locked.
 
 ---
 
+## How Brand, Project and Run fit together
+
+This is the part that isn't obvious from the screen, and getting it wrong causes real
+confusion about where files end up.
+
+```
+Brands  (many)          Projects  (many)              Runs  (many per project)
+─────────────           ────────────────              ───────────────────────
+Beauty & Joy            Smoothies  ──► output dir ──► 2026-08-03-1233-smoothies/
+AI-TLDR                 Characters ──► output dir ──► 2026-08-03-1512-smoothies/
+                                                      …
+
+  any Brand  ×  any Project   →   the primer for a run
+```
+
+**Brands and Projects are independent lists.** You pick one of each; the pair composes
+the primer. A Brand is not owned by a Project, which is the whole point — the same look
+can drive several bodies of work without being duplicated.
+
+**The Project owns the queue and the output folder.** Switching projects switches both.
+Change the folder any time on the Project card (**change…**), not just when creating it.
+
+**A Run is created for you — there is no "new run" button.**
+
+- **▶ Run theme…** starts one, and it gets its own dated subfolder.
+- The first **⚡ inject** in Dial-in lazily opens one too, recorded as `mode: dial-in`.
+- Runs never share a folder. A second run cannot touch the first run's files.
+
+**A run is not the same thing as a ChatGPT conversation.** They're related but not
+one-to-one, in both directions:
+
+- *One run can span several conversations.* Every ~18 images the run opens a fresh chat
+  and re-posts the primer, all within the same run and the same folder.
+- *One conversation can host several runs.* Choosing **Continue in this chat** starts a
+  new run inside the conversation you're already in.
+
+The run-entry choice — Continue vs fresh — is the only thing that links a run to a
+conversation. Nothing else in the app binds them.
+
+> **There is no "profile".** If you're looking for one place holding "all my settings",
+> it doesn't exist by design. The state is just *(active Brand, active Project)*, and the
+> Project carries its queue and output folder with it.
+
+---
+
 ## The screen
 
 ```

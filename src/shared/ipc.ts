@@ -29,6 +29,8 @@ export const IPC = {
   projectCreate: 'imagedrip:project:create',
   projectSwitch: 'imagedrip:project:switch',
   projectChooseOutputDir: 'imagedrip:project:choose-output-dir',
+  /** Reveal the ACTIVE project's output folder in Finder. */
+  projectRevealOutputDir: 'imagedrip:project:reveal-output-dir',
 
   // ── ImageDrip: run history (WP1) — browse previous runs of the active project ──
   runsList: 'imagedrip:runs:list',
@@ -212,8 +214,17 @@ export interface RunStatus {
    * we can't do it if we don't track it" (live UAT, 2026-08-03).
    */
   timings: { subject: string; ms: number }[];
-  /** The current stall cap (ms) — derived from `timings`, not a constant. */
+  /**
+   * The current stall cap (ms) — "when is a generation DEAD?". Driven by the
+   * SLOWEST observation, because the cap has to clear the worst real case.
+   */
   stallMs: number;
+  /**
+   * The current inter-image delay (ms) — "how long does a human pause between
+   * asks?". Driven by the MEDIAN, because it tracks the typical case. A
+   * different question from `stallMs`, and a different statistic.
+   */
+  cadence: { baseMs: number; jitterMs: number };
   /** When `waiting`, ms until the next feed (for a live countdown). */
   nextFeedInMs: number | null;
   /** Human-readable note (pause reason, refusal skip, harvest error). */
@@ -256,9 +267,9 @@ export interface ImagedripApi {
     get(): Promise<DomainState>;
     /** Import a prompt list (WP3): `add` appends after the existing queue;
      *  `replace` drops queued items — harvested prompts always survive. */
-    importPrompts(input: { text: string; mode: 'replace' | 'add' }): Promise<DomainState>;
+    importPrompts(input: { text: string; mode: 'replace' | 'add' | 'clear' }): Promise<DomainState>;
     /** Persist an edit to the active project (body and/or name — WP2 autosave). */
-    saveProject(patch: { name?: string; body?: string }): Promise<DomainState>;
+    saveProject(patch: { name?: string; body?: string; outputDir?: string }): Promise<DomainState>;
     /** Persist an edit to the active brand. Refused while a run is live (WP2). */
     saveBrand(patch: { name?: string; body?: string }): Promise<DomainState>;
     /** primer = compose(Brand, Project) — the text posted once per conversation. */
@@ -277,6 +288,8 @@ export interface ImagedripApi {
     switch(id: string): Promise<DomainState>;
     /** Native folder picker for a project output dir; null if cancelled. */
     chooseOutputDir(): Promise<string | null>;
+    /** Reveal the active project's output folder in Finder. */
+    revealOutputDir(): Promise<void>;
   };
   /** Brand identity (WP2). Brand is LOCKED while a run is live — a run-state lock. */
   brands: {

@@ -75,3 +75,31 @@ describe('mergePrompts — replace', () => {
     expect(a).toEqual(b);
   });
 });
+
+/**
+ * Clear is a distinct mode, not "replace with an empty list". Replace is
+ * disabled when the draft parses to zero items, so before this there was no
+ * path to an empty queue at all.
+ */
+describe('mergePrompts — clear', () => {
+  it('empties the queue but keeps every harvested prompt', () => {
+    const existing: Prompt[] = [
+      { id: 'a-1', subject: 'a', text: 'a', status: 'harvested', savedPath: 'r/a.png' },
+      { id: 'b-2', subject: 'b', text: 'b', status: 'queued' },
+      { id: 'c-3', subject: 'c', text: 'c', status: 'queued' },
+    ];
+    const out = mergePrompts(existing, '', 'clear');
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('a-1');
+    expect(out[0].status).toBe('harvested');
+  });
+
+  it('ignores the draft entirely — clear is not an import', () => {
+    const existing: Prompt[] = [{ id: 'b-1', subject: 'b', text: 'b', status: 'queued' }];
+    expect(mergePrompts(existing, 'kangaroo\nkoala', 'clear')).toEqual([]);
+  });
+
+  it('is a no-op on an already-empty queue', () => {
+    expect(mergePrompts([], '', 'clear')).toEqual([]);
+  });
+});

@@ -25,6 +25,7 @@ reconcile before writing, never mint a duplicate — bump the existing entry ins
 | [A native view paints above ALL HTML](learnings/native-view-paints-above-all-html.md) | frontend | high | No `z-index` reaches a `WebContentsView`. Don't fight the compositor — keep anything that *opens* out of its column. |
 | [One `persist:` partition, one process](learnings/one-persist-partition-one-process.md) | infrastructure | high | Two instances can't share a Chromium profile's LevelDB locks. Recurring `quota_database` errors are contention, not noise. |
 | [Render real identity, not a derived guess](learnings/render-real-identity-not-a-derived-guess.md) | frontend | medium | A caption that re-derives a filename will drift from the file — and be believed over it. It manufactured four wrong bug reports. |
+| [Verify the legacy before porting it](learnings/verify-the-legacy-before-porting-it.md) | process | medium | A remembered "sophisticated pacing engine" was 12 lines and *less* capable than what it would have replaced. Read the source before scoping the port. |
 
 ## Decisions
 

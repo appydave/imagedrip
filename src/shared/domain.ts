@@ -149,18 +149,24 @@ export function parsePromptList(text: string, startIndex = 0): Prompt[] {
   return out;
 }
 
-export type ImportMode = 'replace' | 'add';
+export type ImportMode = 'replace' | 'add' | 'clear';
 
 /**
- * mergePrompts (WP3) — the two explicit import semantics:
+ * mergePrompts (WP3) — the explicit import semantics:
  *   - `add`     append the imported list AFTER the existing queue, in order.
  *   - `replace` drop the QUEUED items only; harvested prompts always survive —
  *               they are the run record (and WP1's manifest makes that matter).
+ *   - `clear`   drop the QUEUED items and import nothing. A separate mode
+ *               rather than "replace with an empty list", because Replace is
+ *               disabled when the draft parses to zero items — which left no
+ *               path to an empty queue at all. Same harvested guarantee.
  * Ids stay deterministic: the suffix continues from the kept count, and any
  * residual collision with a kept id bumps the suffix until free.
  */
 export function mergePrompts(existing: Prompt[], text: string, mode: ImportMode): Prompt[] {
   const kept = mode === 'add' ? existing : existing.filter((p) => p.status === 'harvested');
+  // Clear ignores the draft entirely — it is not an import with no content.
+  if (mode === 'clear') return kept;
   const taken = new Set(kept.map((p) => p.id));
   const incoming = parsePromptList(text, kept.length).map((p) => {
     let id = p.id;

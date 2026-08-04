@@ -30,7 +30,7 @@ interface AppState {
   refresh: () => Promise<void>;
   importPrompts: (text: string, mode: ImportMode) => Promise<void>;
   /** Autosave path (WP2) — resolves true on success, false when refused. */
-  saveProject: (patch: { name?: string; body?: string }) => Promise<boolean>;
+  saveProject: (patch: { name?: string; body?: string; outputDir?: string }) => Promise<boolean>;
   /** Autosave path (WP2) — false when the run-lock refused the edit. */
   saveBrand: (patch: { name?: string; body?: string }) => Promise<boolean>;
   createBrand: (name: string) => Promise<void>;
@@ -125,7 +125,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       flash:
         mode === 'add'
           ? `added ${after - before} — ${after} queued`
-          : `replaced ${before} queued with ${after}`,
+          : mode === 'clear'
+            ? `cleared ${before} queued — harvested kept`
+            : `replaced ${before} queued with ${after}`,
     });
   },
   // Autosave feedback lives in the per-card saved/unsaved indicator, not the

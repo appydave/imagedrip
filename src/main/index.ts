@@ -312,15 +312,28 @@ const desktop = createConsole({
       channel: IPC.domainGet,
       handle: () => getDomain(),
     });
-    ipc.register<{ text: string; mode: 'replace' | 'add' }, DomainState>({
+    ipc.register<{ text: string; mode: 'replace' | 'add' | 'clear' }, DomainState>({
       channel: IPC.domainImportPrompts,
-      input: z.object({ text: z.string(), mode: z.enum(['replace', 'add']) }),
+      input: z.object({ text: z.string(), mode: z.enum(['replace', 'add', 'clear']) }),
       handle: ({ text, mode }) => importPrompts(text, mode),
     });
-    ipc.register<{ name?: string; body?: string }, DomainState>({
+    ipc.register<{ name?: string; body?: string; outputDir?: string }, DomainState>({
       channel: IPC.domainSaveProject,
-      input: z.object({ name: z.string().min(1).optional(), body: z.string().optional() }),
-      handle: (patch) => saveProject(patch),
+      input: z.object({
+        name: z.string().min(1).optional(),
+        body: z.string().optional(),
+        outputDir: z.string().min(1).optional(),
+      }),
+      handle: async (patch) => {
+        // Repointing the harvest root mid-run would split a run across two
+        // folders — the same reason project switching is refused while live.
+        if (patch.outputDir && runner?.running) {
+          throw new Error('stop the run before changing the output folder');
+        }
+        const state = await saveProject(patch);
+        if (patch.outputDir) await ensureOutputRoot();
+        return state;
+      },
     });
     // Brand never changes mid-run (working-rules) — a RUN-STATE lock, not read-only.
     ipc.register<{ name?: string; body?: string }, DomainState>({
@@ -387,6 +400,13 @@ const desktop = createConsole({
           properties: ['openDirectory', 'createDirectory'],
         });
         return res.canceled ? null : (res.filePaths[0] ?? null);
+      },
+    });
+
+    ipc.register<void, void>({
+      channel: IPC.projectRevealOutputDir,
+      handle: async () => {
+        shell.openPath(await ensureOutputRoot());
       },
     });
 

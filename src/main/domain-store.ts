@@ -132,15 +132,27 @@ export async function importPrompts(text: string, mode: ImportMode): Promise<Dom
   }));
 }
 
-/** Persist an edit to the active project (body and/or name — WP2 autosave). */
-export async function saveProject(patch: { name?: string; body?: string }): Promise<DomainState> {
+/**
+ * Persist an edit to the active project (name, body and/or outputDir).
+ *
+ * outputDir joined the patch so the folder is changeable AFTER creation — it
+ * used to be settable only in the new-project form, which made a wrong choice
+ * permanent for the life of the project.
+ */
+export async function saveProject(patch: {
+  name?: string;
+  body?: string;
+  outputDir?: string;
+}): Promise<DomainState> {
   const name = patch.name?.trim();
+  const outputDir = patch.outputDir?.trim();
   return updateActive((rec) => ({
     ...rec,
     project: {
       ...rec.project,
       ...(patch.body !== undefined ? { body: patch.body } : {}),
       ...(name ? { name } : {}),
+      ...(outputDir ? { outputDir } : {}),
     },
   }));
 }
