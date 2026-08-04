@@ -50,6 +50,7 @@ polish) not started.
 | [imagedrip-plan.md](imagedrip-plan.md) | **The Northstar.** Origin, the no-API constraint, the layered Brand/Project/Prompt model, the locked architecture (Approach C), security and ToS risk, cost rationale, v1 scope, locked decisions, open questions. |
 | [requirements-v2-usability.md](requirements-v2-usability.md) | **The current build.** v2 Usability & Project Identity — every finding from a live UAT pass traced to the code that caused it, split into seven work packages with acceptance criteria. |
 | [ux-and-workflow.md](ux-and-workflow.md) | The intended end-to-end workflow (setup → dial-in → lock → automation), the cockpit layout, and the v1 build order. |
+| [requirements-v3-templates-and-repos.md](requirements-v3-templates-and-repos.md) | **Proposed, not started.** Splits Template out of Project (the artifact kind — character sheet / storyboard / infographic), and moves the source of truth onto disk in per-brand repos mirroring `video-projects/`. Includes worked samples for six brands. |
 | [two-clocks.md](two-clocks.md) | **How ImageDrip paces itself.** The Stall Budget (is it dead?) vs the Cadence (how long does a human pause?) — two timers, two questions, two statistics. Includes why the adaptive budget was briefly *worse* than the constant it replaced. **Read before touching either timer.** |
 
 ### Specifications
