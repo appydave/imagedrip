@@ -53,6 +53,10 @@ const imagedrip: ImagedripApi = {
       ipcRenderer.invoke(IPC.brandCreate, input),
     switch: (id: string): Promise<DomainState> => ipcRenderer.invoke(IPC.brandSwitch, id),
   },
+  repo: {
+    chooseRoot: (): Promise<string | null> => ipcRenderer.invoke(IPC.repoChooseRoot),
+    attach: (root: string): Promise<DomainState> => ipcRenderer.invoke(IPC.repoAttach, root),
+  },
   templates: {
     create: (input: { name: string; importFormat?: 'lines' | 'blocks' }): Promise<DomainState> =>
       ipcRenderer.invoke(IPC.templateCreate, input),

@@ -25,6 +25,12 @@ export const IPC = {
   brandCreate: 'imagedrip:brand:create',
   brandSwitch: 'imagedrip:brand:switch',
 
+  // ── ImageDrip: the brand repo (v3 WP2) — files on disk are the source of truth ──
+  /** Native folder picker for a brand repo root (`~/dev/image-projects/i-<brand>`). */
+  repoChooseRoot: 'imagedrip:repo:choose-root',
+  /** Point the ACTIVE brand at a repo: import what's there, publish what isn't. */
+  repoAttach: 'imagedrip:repo:attach',
+
   // ── ImageDrip: template identity (v3 WP1) — run-locked exactly like Brand ──
   templateCreate: 'imagedrip:template:create',
   /** Point the ACTIVE project at a template, or at none (null). */
@@ -306,6 +312,21 @@ export interface ImagedripApi {
   brands: {
     create(input: { name: string }): Promise<DomainState>;
     switch(id: string): Promise<DomainState>;
+  };
+  /**
+   * The brand repo (v3 WP2) — `~/dev/image-projects/i-<brand>`. Attaching moves
+   * the source of truth onto disk: brands, templates, projects and queues become
+   * files in git, and `domain.json` demotes to an index of pointers.
+   */
+  repo: {
+    /** Native folder picker for a repo root; null if cancelled. */
+    chooseRoot(): Promise<string | null>;
+    /**
+     * Point the active brand at a repo. Imports everything already there (disk
+     * wins) and publishes anything that only existed in `domain.json`.
+     * Refused while a run is live.
+     */
+    attach(root: string): Promise<DomainState>;
   };
   /**
    * The Template library (v3 WP1) — the artifact KIND, reused across brands and

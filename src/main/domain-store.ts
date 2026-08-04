@@ -19,6 +19,17 @@ import {
   type PersistedDomain,
   type ProjectRecord,
 } from './domain-migrate.js';
+import {
+  ensureScaffolds,
+  projectDir,
+  readRepo,
+  readProject,
+  readTemplate,
+  repoRootOf,
+  templateDir,
+  writeProject,
+  writeTemplate,
+} from './repo-store.js';
 
 /**
  * DomainStore — the local-first persistence behind the cockpit.
@@ -136,8 +147,186 @@ async function updateActive(fn: (rec: ProjectRecord) => ProjectRecord): Promise<
   });
 }
 
+/* ── WP2: the repo on disk is the source of truth ─────────────────── */
+
+/**
+ * Mirror the ACTIVE project (and the template it points at) back to their repo
+ * folders. Only records that HAVE a sourcePath are written — an unsourced
+ * install keeps working exactly as it did, with `domain.json` as its only store.
+ *
+ * The repo root comes from each record's own sourcePath, never from whichever
+ * brand is active, so a save can never land in the wrong repo.
+ *
+ * `quiet` is for the run path (`markHarvested`): a run must never die because a
+ * repo write failed. Explicit user saves stay loud — a save that silently did
+ * not reach disk is precisely the failure this work package exists to end.
+ */
+async function mirrorActive(quiet = false): Promise<void> {
+  try {
+    const s = await persisted();
+    const rec = activeRecord(s);
+    const template = activeTemplate(s);
+    if (rec.project.sourcePath) {
+      await writeProject(repoRootOf(rec.project.sourcePath), rec, activeBrand(s).id);
+    }
+    if (template?.sourcePath) {
+      await writeTemplate(repoRootOf(template.sourcePath), template);
+    }
+  } catch (err) {
+    if (!quiet) throw err;
+  }
+}
+
+/** Run a mutation, then push the result to disk. Returns the post-write view. */
+async function updateAndMirror(
+  fn: () => Promise<DomainState>,
+  quiet = false,
+): Promise<DomainState> {
+  const state = await fn();
+  await mirrorActive(quiet);
+  return state;
+}
+
+/**
+ * Read the ACTIVE brand/template/project back OFF disk (v3 WP2, "read on
+ * activate"). Disk wins: the repo is the source of truth, and an edit made in
+ * an editor or pulled from git must be what the app shows.
+ *
+ * A record whose file has gone is left as it is rather than blanked — a missing
+ * file is far more likely to be an un-cloned repo than a deletion, and silently
+ * emptying David's Project.md over a mount that had not come up yet would be
+ * unrecoverable.
+ */
+async function hydrateActive(): Promise<void> {
+  const s = await persisted();
+  const rec = activeRecord(s);
+  const brand = activeBrand(s);
+  const template = activeTemplate(s);
+
+  const brandBody = brand.sourcePath ? await readFileQuietly(brand.sourcePath) : null;
+  const freshTemplate = template?.sourcePath ? await readTemplate(template.sourcePath) : null;
+  const freshProject = rec.project.sourcePath
+    ? await readProject(repoRootOf(rec.project.sourcePath), rec.project.sourcePath)
+    : null;
+
+  if (brandBody === null && !freshTemplate && !freshProject) return;
+
+  await updateDoc((doc) => ({
+    ...doc,
+    brands: doc.brands.map((b) =>
+      b.id === brand.id && brandBody !== null ? { ...b, body: brandBody } : b,
+    ),
+    templates: doc.templates.map((t) =>
+      freshTemplate && t.id === freshTemplate.id ? { ...t, ...freshTemplate } : t,
+    ),
+    projects: doc.projects.map((r) =>
+      freshProject && r.project.id === freshProject.project.id
+        ? // Keep the id the document already uses; everything else comes from disk.
+          { project: { ...freshProject.project, id: r.project.id }, theme: freshProject.theme }
+        : r,
+    ),
+  }));
+}
+
+async function readFileQuietly(path: string): Promise<string | null> {
+  try {
+    return await fs.readFile(path, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Attach a brand repo (v3 WP2). Two directions in one action, because both are
+ * needed for the store to become a pointer index rather than the store:
+ *
+ *   1. IMPORT — everything already in the repo is read in. Disk wins on a
+ *      matching id; unknown ids are added. This is the "delete domain.json,
+ *      re-point at the repo, lose nothing" path.
+ *   2. PUBLISH — anything still unsourced is written OUT to the repo, so an
+ *      existing install's work moves into git rather than being stranded.
+ *
+ * `brand/DESIGN.md` is only ever READ. The canonical style library is the
+ * `brand` skill, and a second editable copy is exactly the drift v-aitldr's
+ * "do NOT edit here" rule exists to prevent.
+ *
+ * It does NOT git-init the repo — see `ensureScaffolds`.
+ */
+export async function attachRepo(root: string): Promise<DomainState> {
+  const contents = await readRepo(root);
+  await ensureScaffolds(root);
+
+  // 1. Import — disk wins on a matching id, unknown ids are added.
+  await updateDoc((s) => {
+    const activeBrandId = activeBrand(s).id;
+    const templates = [...s.templates];
+    for (const t of contents.templates) {
+      const i = templates.findIndex((x) => x.id === t.id);
+      if (i >= 0) templates[i] = { ...templates[i], ...t };
+      else templates.push(t);
+    }
+    const projects = [...s.projects];
+    for (const rec of contents.projects) {
+      const i = projects.findIndex((r) => r.project.id === rec.project.id);
+      if (i >= 0) projects[i] = rec;
+      else projects.push(rec);
+    }
+    return {
+      ...s,
+      brands: s.brands.map((b) =>
+        b.id === activeBrandId
+          ? {
+              ...b,
+              repoRoot: root,
+              ...(contents.brandSourcePath ? { sourcePath: contents.brandSourcePath } : {}),
+              ...(contents.brandBody !== null ? { body: contents.brandBody } : {}),
+            }
+          : b,
+      ),
+      templates,
+      projects,
+    };
+  });
+
+  // 2. Publish — write out whatever is still only in domain.json, then record
+  //    the sourcePaths those writes established.
+  const s = await persisted();
+  const brandId = activeBrand(s).id;
+  const published = new Map<string, string>();
+  for (const t of s.templates) {
+    if (!t.sourcePath) published.set(`t:${t.id}`, await writeTemplate(root, t));
+  }
+  for (const rec of s.projects) {
+    if (!rec.project.sourcePath) published.set(`p:${rec.project.id}`, await writeProject(root, rec, brandId));
+  }
+  if (published.size === 0) return getDomain();
+
+  return updateDoc((doc) => ({
+    ...doc,
+    templates: doc.templates.map((t) => {
+      const path = published.get(`t:${t.id}`);
+      return path ? { ...t, sourcePath: path } : t;
+    }),
+    projects: doc.projects.map((r) => {
+      const path = published.get(`p:${r.project.id}`);
+      return path ? { ...r, project: { ...r.project, sourcePath: path } } : r;
+    }),
+  }));
+}
+
+/**
+ * Hydrate once per process on the first read — opening the app IS activating
+ * whatever was already active, so an edit made in an editor between sessions
+ * has to be what you see.
+ */
+let hydrated = false;
+
 /** Read the whole domain document (renderer view). */
 export async function getDomain(): Promise<DomainState> {
+  if (!hydrated) {
+    hydrated = true;
+    await hydrateActive();
+  }
   return view(await persisted());
 }
 
@@ -148,10 +337,12 @@ export async function importPrompts(
   mode: ImportMode,
   format: ImportFormat = 'lines',
 ): Promise<DomainState> {
-  return updateActive((rec) => ({
-    ...rec,
-    theme: { ...rec.theme, prompts: mergePrompts(rec.theme.prompts, text, mode, format) },
-  }));
+  return updateAndMirror(() =>
+    updateActive((rec) => ({
+      ...rec,
+      theme: { ...rec.theme, prompts: mergePrompts(rec.theme.prompts, text, mode, format) },
+    })),
+  );
 }
 
 /**
@@ -168,20 +359,38 @@ export async function saveProject(patch: {
 }): Promise<DomainState> {
   const name = patch.name?.trim();
   const outputDir = patch.outputDir?.trim();
-  return updateActive((rec) => ({
-    ...rec,
-    project: {
-      ...rec.project,
-      ...(patch.body !== undefined ? { body: patch.body } : {}),
-      ...(name ? { name } : {}),
-      ...(outputDir ? { outputDir } : {}),
-    },
-  }));
+  return updateAndMirror(() =>
+    updateActive((rec) => ({
+      ...rec,
+      project: {
+        ...rec.project,
+        ...(patch.body !== undefined ? { body: patch.body } : {}),
+        ...(name ? { name } : {}),
+        ...(outputDir ? { outputDir } : {}),
+      },
+    })),
+  );
 }
 
-/** Persist an edit to the ACTIVE brand. Callers must hold the run lock (WP2). */
+/**
+ * Persist an edit to the ACTIVE brand. Callers must hold the run lock (v2 WP2).
+ *
+ * A brand SOURCED from a repo's `brand/DESIGN.md` is read-only (v3 WP2): the
+ * canonical style library is the `brand` skill, and the app holding a second
+ * editable copy is exactly the drift `v-aitldr`'s "do NOT edit here" rule
+ * exists to prevent. It refuses loudly rather than accepting an edit that the
+ * next sync would silently throw away.
+ */
 export async function saveBrand(patch: { name?: string; body?: string }): Promise<DomainState> {
   const name = patch.name?.trim();
+  if (patch.body !== undefined) {
+    const current = activeBrand(await persisted());
+    if (current.sourcePath) {
+      throw new Error(
+        `brand body is synced from ${current.sourcePath} — edit it at the source, not here`,
+      );
+    }
+  }
   return updateDoc((s) => {
     const activeId = activeBrand(s).id;
     return {
@@ -209,12 +418,14 @@ export async function createBrand(input: { name: string }): Promise<DomainState>
   });
 }
 
-/** Activate a saved brand by id. Callers must hold the run lock (WP2). */
+/** Activate a saved brand by id — and read it back off disk (WP2). */
 export async function switchBrand(id: string): Promise<DomainState> {
   const current = await persisted();
   if (!current.brands.some((b) => b.id === id)) throw new Error(`unknown brand: ${id}`);
   // Re-check inside the closure — the validated read above may be stale.
-  return updateDoc((s) => (s.brands.some((b) => b.id === id) ? { ...s, activeBrandId: id } : s));
+  await updateDoc((s) => (s.brands.some((b) => b.id === id) ? { ...s, activeBrandId: id } : s));
+  await hydrateActive();
+  return getDomain();
 }
 
 /**
@@ -230,25 +441,27 @@ export async function saveTemplate(patch: {
   negatives?: string;
 }): Promise<DomainState> {
   const name = patch.name?.trim();
-  return updateDoc((s) => {
-    const active = activeTemplate(s);
-    if (!active) throw new Error('no template selected — pick or create one first');
-    return {
-      ...s,
-      templates: s.templates.map((t) =>
-        t.id === active.id
-          ? {
-              ...t,
-              ...(patch.body !== undefined ? { body: patch.body } : {}),
-              ...(name ? { name } : {}),
-              ...(patch.importFormat ? { importFormat: patch.importFormat } : {}),
-              ...(patch.listPrompt !== undefined ? { listPrompt: patch.listPrompt } : {}),
-              ...(patch.negatives !== undefined ? { negatives: patch.negatives } : {}),
-            }
-          : t,
-      ),
-    };
-  });
+  return updateAndMirror(() =>
+    updateDoc((s) => {
+      const active = activeTemplate(s);
+      if (!active) throw new Error('no template selected — pick or create one first');
+      return {
+        ...s,
+        templates: s.templates.map((t) =>
+          t.id === active.id
+            ? {
+                ...t,
+                ...(patch.body !== undefined ? { body: patch.body } : {}),
+                ...(name ? { name } : {}),
+                ...(patch.importFormat ? { importFormat: patch.importFormat } : {}),
+                ...(patch.listPrompt !== undefined ? { listPrompt: patch.listPrompt } : {}),
+                ...(patch.negatives !== undefined ? { negatives: patch.negatives } : {}),
+              }
+            : t,
+        ),
+      };
+    }),
+  );
 }
 
 /**
@@ -261,17 +474,31 @@ export async function createTemplate(input: {
 }): Promise<DomainState> {
   const name = input.name.trim();
   if (!name) throw new Error('template name is required');
-  return updateDoc((s) => {
-    const id = uniqueSlug(name, s.templates.map((t) => t.id));
-    const activeId = activeRecord(s).project.id;
-    return {
-      ...s,
-      templates: [...s.templates, { id, name, body: '', importFormat: input.importFormat ?? 'lines' }],
-      projects: s.projects.map((r) =>
-        r.project.id === activeId ? { ...r, project: { ...r.project, templateId: id } } : r,
-      ),
-    };
-  });
+  return updateAndMirror(() =>
+    updateDoc((s) => {
+      const id = uniqueSlug(name, s.templates.map((t) => t.id));
+      const activeId = activeRecord(s).project.id;
+      // Born in the repo when there is one (WP2): a template that only ever
+      // existed in domain.json is the exact loss this work package prevents.
+      const repoRoot = activeBrand(s).repoRoot;
+      return {
+        ...s,
+        templates: [
+          ...s.templates,
+          {
+            id,
+            name,
+            body: '',
+            importFormat: input.importFormat ?? 'lines',
+            ...(repoRoot ? { sourcePath: templateDir(repoRoot, id) } : {}),
+          },
+        ],
+        projects: s.projects.map((r) =>
+          r.project.id === activeId ? { ...r, project: { ...r.project, templateId: id } } : r,
+        ),
+      };
+    }),
+  );
 }
 
 /**
@@ -285,10 +512,16 @@ export async function switchTemplate(id: string | null): Promise<DomainState> {
     const current = await persisted();
     if (!current.templates.some((t) => t.id === id)) throw new Error(`unknown template: ${id}`);
   }
-  return updateActive((rec) => ({
-    ...rec,
-    project: { ...rec.project, templateId: id ?? undefined },
-  }));
+  // Pointing the project at a template is a change to the PROJECT, so it is
+  // mirrored; then the newly-active template is read back off disk.
+  await updateAndMirror(() =>
+    updateActive((rec) => ({
+      ...rec,
+      project: { ...rec.project, templateId: id ?? undefined },
+    })),
+  );
+  await hydrateActive();
+  return getDomain();
 }
 
 /**
@@ -307,30 +540,40 @@ export async function getQueue(): Promise<Prompt[]> {
 
 /** Re-queue every prompt (clear harvested status) so a theme can be run again. */
 export async function resetRun(): Promise<DomainState> {
-  return updateActive((rec) => ({
-    ...rec,
-    theme: {
-      ...rec.theme,
-      prompts: rec.theme.prompts.map((p) => ({
-        ...p,
-        status: 'queued' as const,
-        savedPath: undefined,
-      })),
-    },
-  }));
+  return updateAndMirror(() =>
+    updateActive((rec) => ({
+      ...rec,
+      theme: {
+        ...rec.theme,
+        prompts: rec.theme.prompts.map((p) => ({
+          ...p,
+          status: 'queued' as const,
+          savedPath: undefined,
+        })),
+      },
+    })),
+  );
 }
 
-/** Mark one prompt harvested + record where FileAuthor routed it. */
+/**
+ * Mark one prompt harvested + record where FileAuthor routed it.
+ * The repo mirror is QUIET here: this is the run path, and a run must never die
+ * because a repo write failed. `domain.json` still holds the truth either way.
+ */
 export async function markHarvested(promptId: string, savedPath: string): Promise<DomainState> {
-  return updateActive((rec) => ({
-    ...rec,
-    theme: {
-      ...rec.theme,
-      prompts: rec.theme.prompts.map((p) =>
-        p.id === promptId ? { ...p, status: 'harvested', savedPath } : p,
-      ),
-    },
-  }));
+  return updateAndMirror(
+    () =>
+      updateActive((rec) => ({
+        ...rec,
+        theme: {
+          ...rec.theme,
+          prompts: rec.theme.prompts.map((p) =>
+            p.id === promptId ? { ...p, status: 'harvested', savedPath } : p,
+          ),
+        },
+      })),
+    true,
+  );
 }
 
 /** The active project's output dir (always set post-migration; fallback derived). */
@@ -346,29 +589,36 @@ export async function createProject(input: {
 }): Promise<DomainState> {
   const name = input.name.trim();
   if (!name) throw new Error('project name is required');
-  return updateDoc((s) => {
-    const id = uniqueSlug(name, s.projects.map((r) => r.project.id));
-    const record: ProjectRecord = {
-      project: {
-        id,
-        name,
-        body: '',
-        outputDir: input.outputDir?.trim() || defaultProjectDir(outputRoot(), name),
-      },
-      theme: { name: id, prompts: [] },
-    };
-    return { ...s, projects: [...s.projects, record], activeProjectId: id };
-  });
+  return updateAndMirror(() =>
+    updateDoc((s) => {
+      const id = uniqueSlug(name, s.projects.map((r) => r.project.id));
+      const repoRoot = activeBrand(s).repoRoot;
+      const record: ProjectRecord = {
+        project: {
+          id,
+          name,
+          body: '',
+          outputDir: input.outputDir?.trim() || defaultProjectDir(outputRoot(), name),
+          // Born in the repo when there is one (WP2).
+          ...(repoRoot ? { sourcePath: projectDir(repoRoot, id) } : {}),
+        },
+        theme: { name: id, prompts: [] },
+      };
+      return { ...s, projects: [...s.projects, record], activeProjectId: id };
+    }),
+  );
 }
 
-/** Activate a saved project by id. */
+/** Activate a saved project by id — and read it back off disk (WP2). */
 export async function switchProject(id: string): Promise<DomainState> {
   const current = await persisted();
   if (!current.projects.some((r) => r.project.id === id)) {
     throw new Error(`unknown project: ${id}`);
   }
   // Re-check inside the closure — the validated read above may be stale.
-  return updateDoc((s) =>
+  await updateDoc((s) =>
     s.projects.some((r) => r.project.id === id) ? { ...s, activeProjectId: id } : s,
   );
+  await hydrateActive();
+  return getDomain();
 }

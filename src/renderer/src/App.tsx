@@ -39,6 +39,8 @@ export default function App(): JSX.Element {
     saveTemplate,
     createTemplate,
     switchTemplate,
+    chooseRepoRoot,
+    attachRepo,
     copyText,
     createProject,
     switchProject,
@@ -334,6 +336,8 @@ export default function App(): JSX.Element {
             onSaveBrand={saveBrand}
             onCreateBrand={(name) => void createBrand(name)}
             onSwitchBrand={(id) => void switchBrand(id)}
+            onChooseRepo={chooseRepoRoot}
+            onAttachRepo={(root) => void attachRepo(root)}
             onSaveTemplate={saveTemplate}
             onCreateTemplate={(name) => void createTemplate(name)}
             onSwitchTemplate={(id) => void switchTemplate(id)}
@@ -832,6 +836,8 @@ function ContextPanel(props: {
   onSaveBrand: (patch: { name?: string; body?: string }) => Promise<boolean>;
   onCreateBrand: (name: string) => void;
   onSwitchBrand: (id: string) => void;
+  onChooseRepo: () => Promise<string | null>;
+  onAttachRepo: (root: string) => void;
   onSaveTemplate: (patch: {
     name?: string;
     body?: string;
@@ -917,6 +923,8 @@ function ContextPanel(props: {
           onSave={props.onSaveBrand}
           onCreate={props.onCreateBrand}
           onSwitch={props.onSwitchBrand}
+          onChooseRepo={props.onChooseRepo}
+          onAttachRepo={props.onAttachRepo}
         />
       )}
 
@@ -1172,6 +1180,8 @@ function BrandCard(props: {
   onSave: (patch: { name?: string; body?: string }) => Promise<boolean>;
   onCreate: (name: string) => void;
   onSwitch: (id: string) => void;
+  onChooseRepo: () => Promise<string | null>;
+  onAttachRepo: (root: string) => void;
 }): JSX.Element {
   const { brand, brands, activeBrandId } = props.domain;
   const name = useAutosave(brand.name, (v) => props.onSave({ name: v }));
@@ -1179,6 +1189,10 @@ function BrandCard(props: {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const dirty = name.state !== 'saved' || body.state !== 'saved';
+  // A brand SYNCED from a repo's brand/DESIGN.md is read-only here (WP2). The
+  // canonical style library is the `brand` skill; a second editable copy is
+  // exactly the drift v-aitldr's "do NOT edit here" rule exists to prevent.
+  const synced = Boolean(brand.sourcePath);
 
   return (
     <div className="rounded-lg border border-edge bg-cream p-2.5">
@@ -1263,10 +1277,40 @@ function BrandCard(props: {
         value={body.value}
         onChange={(e) => body.onChange(e.target.value)}
         onBlur={body.flush}
-        disabled={props.locked}
+        disabled={props.locked || synced}
         placeholder="Brand.md — the fixed tone…"
         className="mt-2 h-20 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber disabled:opacity-60"
       />
+
+      {/* ── the brand REPO (WP2) — where this brand's files actually live ── */}
+      <div className="mt-2 border-t border-edge pt-2">
+        <div className="font-mono text-[10px] text-muted">
+          repo — <b className="text-brown">files on disk are the source of truth</b>
+        </div>
+        <button
+          type="button"
+          disabled={props.locked}
+          onClick={() => {
+            void props.onChooseRepo().then((root) => {
+              if (root) props.onAttachRepo(root);
+            });
+          }}
+          title={
+            brand.repoRoot
+              ? `attached to ${brand.repoRoot} — pick again to re-point`
+              : 'pick this brand’s repo, e.g. ~/dev/image-projects/i-appydave'
+          }
+          className="mt-1 w-full truncate rounded-md border border-edge bg-cream px-2.5 py-1.5 text-left font-mono text-[10px] text-muted hover:border-amber disabled:opacity-60"
+        >
+          {brand.repoRoot ?? 'attach a brand repo…  (~/dev/image-projects/i-<brand>)'}
+        </button>
+        {synced && (
+          <p className="mt-1 font-mono text-[10px] leading-relaxed text-amber">
+            brand text is SYNCED from <code>brand/DESIGN.md</code> — edit it at the source (the{' '}
+            <code>brand</code> skill), not here.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

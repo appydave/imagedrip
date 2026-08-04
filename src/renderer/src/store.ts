@@ -46,6 +46,11 @@ interface AppState {
   createTemplate: (name: string) => Promise<void>;
   /** Point the active project at a template — null means "no template". */
   switchTemplate: (id: string | null) => Promise<void>;
+
+  /** WP2 — pick a brand repo folder; null if cancelled. */
+  chooseRepoRoot: () => Promise<string | null>;
+  /** WP2 — attach the active brand to a repo (import what's there, publish what isn't). */
+  attachRepo: (root: string) => Promise<void>;
   copyPrimer: () => Promise<void>;
   copyNextPrompt: () => Promise<void>;
   copyText: (text: string, label: string) => Promise<void>;
@@ -199,6 +204,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ domain: await window.imagedrip.templates.switch(id) });
     } catch {
       set({ flash: 'template is locked while a run is live' });
+    }
+  },
+
+  chooseRepoRoot: () => window.imagedrip.repo.chooseRoot(),
+  attachRepo: async (root) => {
+    try {
+      // The repo can bring in projects and templates that were not here before,
+      // so the run history has to be re-read alongside the domain.
+      set({ domain: await window.imagedrip.repo.attach(root), runs: null, runView: null });
+      void get().loadRuns();
+      set({ flash: 'repo attached — files on disk are now the source of truth' });
+    } catch (err) {
+      set({ flash: err instanceof Error ? err.message : 'repo attach failed' });
     }
   },
   copyPrimer: async () => {

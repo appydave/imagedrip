@@ -18,6 +18,7 @@ import type { SnagInput, UatCounts, VerdictInput } from '@shared/live-uat';
 import { createConsole } from './create-console.js';
 import { readCounts, revealStore, writeSnag, writeVerdict } from './live-uat-store.js';
 import {
+  attachRepo,
   composePrimer,
   createBrand,
   createProject,
@@ -368,6 +369,31 @@ const desktop = createConsole({
       handle: (id) => {
         if (runner?.running) throw new Error('brand is locked while a run is live');
         return switchBrand(id);
+      },
+    });
+
+    // ── ImageDrip brand repo (v3 WP2) — the source of truth moves to disk ──
+    ipc.register<void, string | null>({
+      channel: IPC.repoChooseRoot,
+      handle: async () => {
+        if (!hostWindow) return null;
+        const res = await dialog.showOpenDialog(hostWindow, {
+          title: 'Choose the brand repo (e.g. ~/dev/image-projects/i-appydave)',
+          properties: ['openDirectory', 'createDirectory'],
+        });
+        return res.canceled ? null : (res.filePaths[0] ?? null);
+      },
+    });
+    ipc.register<string, DomainState>({
+      channel: IPC.repoAttach,
+      input: z.string().min(1),
+      handle: async (root) => {
+        // Attaching repoints where projects are read from and written to —
+        // never yank that out from under a live run.
+        if (runner?.running) throw new Error('stop the run before attaching a repo');
+        const state = await attachRepo(root);
+        await ensureOutputRoot();
+        return state;
       },
     });
 
