@@ -267,7 +267,12 @@ export interface ImagedripApi {
     get(): Promise<DomainState>;
     /** Import a prompt list (WP3): `add` appends after the existing queue;
      *  `replace` drops queued items — harvested prompts always survive. */
-    importPrompts(input: { text: string; mode: 'replace' | 'add' | 'clear' }): Promise<DomainState>;
+    importPrompts(input: {
+      text: string;
+      mode: 'replace' | 'add' | 'clear';
+      /** How to cut the draft into prompts. Explicit, never inferred. */
+      format?: 'lines' | 'blocks';
+    }): Promise<DomainState>;
     /** Persist an edit to the active project (body and/or name — WP2 autosave). */
     saveProject(patch: { name?: string; body?: string; outputDir?: string }): Promise<DomainState>;
     /** Persist an edit to the active brand. Refused while a run is live (WP2). */

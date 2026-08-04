@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RunManifest, RunStatus, RunSummary, Rect } from '@shared/ipc';
-import { compose, type DomainState } from '@shared/domain';
+import { compose, parsePromptList, type DomainState } from '@shared/domain';
 import { useAppStore } from './store';
 import { FlagButton, UatToggle, VerdictBar } from './FlagButton';
 import { Modal, Popover } from './Popover';
@@ -369,7 +369,7 @@ export default function App(): JSX.Element {
               dialIn={mode === 'dial-in'}
               injectBusy={isRunning || isPaused}
               onInject={(id) => void injectPrompt(id)}
-              onImport={(t, m) => void importPrompts(t, m)}
+              onImport={(t, m, f) => void importPrompts(t, m, f)}
             />
             <HarvestedLane
               items={harvested.map((p) => ({
@@ -1519,21 +1519,22 @@ function QueuedLane(props: {
   dialIn: boolean;
   injectBusy: boolean;
   onInject: (promptId: string) => void;
-  onImport: (text: string, mode: 'replace' | 'add' | 'clear') => void;
+  onImport: (text: string, mode: 'replace' | 'add' | 'clear', format: 'lines' | 'blocks') => void;
 }): JSX.Element {
   const [importing, setImporting] = useState(false);
   const [draft, setDraft] = useState('');
   // Replace discards queued prompts — it warns first (WP3). Two-step inline.
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  // An EXPLICIT choice, never sniffed from the draft: a one-per-line list
+  // containing a stray `---` would otherwise be silently read as two prompts.
+  const [format, setFormat] = useState<'lines' | 'blocks'>('lines');
 
-  const incoming = draft
-    .split(/\r?\n/)
-    .filter((l) => l.trim() && !l.trim().startsWith('#')).length;
+  const incoming = parsePromptList(draft, 0, format).length;
   const queuedN = props.prompts.length;
 
   const doImport = (mode: 'replace' | 'add' | 'clear'): void => {
-    props.onImport(draft, mode);
+    props.onImport(draft, mode, format);
     setDraft('');
     setImporting(false);
     setConfirmReplace(false);
@@ -1567,10 +1568,35 @@ function QueuedLane(props: {
 
       {importing && (
         <div className="mb-2.5 flex flex-col gap-2">
+          <div className="flex overflow-hidden rounded-md border border-edge font-display text-[11px]">
+            {(
+              [
+                { key: 'lines' as const, label: 'One per line', hint: 'blank lines and # skipped' },
+                { key: 'blocks' as const, label: '--- blocks', hint: 'multi-line prompts, kept verbatim' },
+              ]
+            ).map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setFormat(f.key)}
+                title={f.hint}
+                className={
+                  'flex-1 px-2 py-1 leading-tight ' +
+                  (format === f.key ? 'bg-yellow font-semibold text-brown' : 'text-muted hover:bg-linen')
+                }
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={'one prompt per line\nor:  subject | prompt body\n# lines are comments'}
+            placeholder={
+              format === 'lines'
+                ? 'one prompt per line\nor:  subject | prompt body\n# lines are comments'
+                : 'a multi-line prompt\ncan span as many lines as it likes\n---\nsubject | the next one\nalso multi-line'
+            }
             className="h-28 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] outline-none focus:border-amber"
           />
           {queuedN === 0 ? (

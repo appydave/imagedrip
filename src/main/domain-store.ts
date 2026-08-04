@@ -6,6 +6,7 @@ import {
   compose,
   mergePrompts,
   type DomainState,
+  type ImportFormat,
   type ImportMode,
   type Prompt,
 } from '../shared/domain.js';
@@ -125,10 +126,14 @@ export async function getDomain(): Promise<DomainState> {
 
 /** Import a prompt list into the active theme (WP3): `add` appends after the
  *  existing queue; `replace` drops queued items but ALWAYS keeps harvested. */
-export async function importPrompts(text: string, mode: ImportMode): Promise<DomainState> {
+export async function importPrompts(
+  text: string,
+  mode: ImportMode,
+  format: ImportFormat = 'lines',
+): Promise<DomainState> {
   return updateActive((rec) => ({
     ...rec,
-    theme: { ...rec.theme, prompts: mergePrompts(rec.theme.prompts, text, mode) },
+    theme: { ...rec.theme, prompts: mergePrompts(rec.theme.prompts, text, mode, format) },
   }));
 }
 

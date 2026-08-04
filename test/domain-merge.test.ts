@@ -103,3 +103,52 @@ describe('mergePrompts — clear', () => {
     expect(mergePrompts([], '', 'clear')).toEqual([]);
   });
 });
+
+/**
+ * `---` blocks (multi-line prompts). The format is an EXPLICIT choice at import
+ * time — never inferred — because a one-per-line list containing a stray `---`
+ * would otherwise be silently misread as two enormous prompts.
+ */
+describe('parsePromptList — blocks format', () => {
+  it('keeps newlines inside a prompt', () => {
+    const text = 'a tall glass\nwith a mint sprig\n---\na second prompt';
+    const out = parsePromptList(text, 0, 'blocks');
+    expect(out).toHaveLength(2);
+    expect(out[0].text).toBe('a tall glass\nwith a mint sprig');
+    expect(out[1].text).toBe('a second prompt');
+  });
+
+  it('splits the subject off the first line only — the rest stays in the body', () => {
+    const out = parsePromptList('green | a tall glass\nwith a mint sprig', 0, 'blocks');
+    expect(out[0].subject).toBe('green');
+    expect(out[0].text).toBe('a tall glass\nwith a mint sprig');
+  });
+
+  it('keeps # lines verbatim — in a multi-line prompt they are content', () => {
+    const out = parsePromptList('a prompt\n# not a comment here', 0, 'blocks');
+    expect(out).toHaveLength(1);
+    expect(out[0].text).toBe('a prompt\n# not a comment here');
+  });
+
+  it('ignores blank blocks from leading/trailing or doubled separators', () => {
+    expect(parsePromptList('---\na\n---\n---\nb\n---', 0, 'blocks')).toHaveLength(2);
+  });
+
+  it('the SAME text parses differently per format — which is why it is explicit', () => {
+    const text = 'one\ntwo\n---\nthree';
+    // In lines mode the separator is just another line, so it becomes a junk
+    // 4th prompt that would be fed to ChatGPT verbatim. That is precisely the
+    // misread the explicit choice exists to prevent.
+    const asLines = parsePromptList(text, 0, 'lines');
+    expect(asLines).toHaveLength(4);
+    expect(asLines[2].text).toBe('---');
+    expect(parsePromptList(text, 0, 'blocks')).toHaveLength(2);
+  });
+
+  it('merges into an existing queue with continuing ids', () => {
+    const existing: Prompt[] = [{ id: 'a-1', subject: 'a', text: 'a', status: 'queued' }];
+    const out = mergePrompts(existing, 'multi\nline\n---\nsecond', 'add', 'blocks');
+    expect(out).toHaveLength(3);
+    expect(out[1].text).toBe('multi\nline');
+  });
+});

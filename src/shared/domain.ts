@@ -127,29 +127,63 @@ export function compose(brand: Brand, project: Project): string {
  * Deterministic ids (no Date/random) so a re-import of the same list is stable.
  * `startIndex` continues the id suffix after an existing queue (WP3 Add-to-queue).
  */
-export function parsePromptList(text: string, startIndex = 0): Prompt[] {
+export function parsePromptList(text: string, startIndex = 0, format: ImportFormat = 'lines'): Prompt[] {
   const out: Prompt[] = [];
   let i = startIndex;
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
+  for (const chunk of splitChunks(text, format)) {
+    const first = chunk.split(/\r?\n/, 1)[0];
     i += 1;
     let subject: string;
     let body: string;
-    if (line.includes('|')) {
-      const [first, ...rest] = line.split('|');
-      subject = first.trim();
-      body = rest.join('|').trim() || subject;
+    // `subject | body` splits the label off the FIRST line only; in blocks mode
+    // the rest of the block still belongs to the body.
+    if (first.includes('|')) {
+      const cut = first.indexOf('|');
+      subject = first.slice(0, cut).trim();
+      const restOfFirst = first.slice(cut + 1).trim();
+      const remainder = chunk.slice(first.length).replace(/^\r?\n/, '');
+      body = [restOfFirst, remainder].filter(Boolean).join('\n') || subject;
     } else {
-      body = line;
-      subject = line.split(/\s+/).slice(0, 3).join(' ');
+      body = chunk;
+      subject = first.split(/\s+/).slice(0, 3).join(' ');
     }
     out.push({ id: `${slugify(subject)}-${i}`, subject, text: body, status: 'queued' });
   }
   return out;
 }
 
+/**
+ * Split the draft into one chunk per prompt.
+ *
+ * `lines`  — one prompt per line. Blank lines and `#` comments are skipped.
+ * `blocks` — prompts separated by a line containing only `---`. Everything
+ *            between separators is the prompt VERBATIM, including blank lines
+ *            and any line starting with `#`. Comment-stripping is deliberately
+ *            not applied here: in a multi-line prompt a `#` line is far more
+ *            likely to be content than an annotation, and silently deleting a
+ *            line from someone's prompt is worse than not supporting comments.
+ */
+function splitChunks(text: string, format: ImportFormat): string[] {
+  if (format === 'blocks') {
+    return text
+      .split(/^[ \t]*---[ \t]*$/m)
+      .map((b) => b.replace(/^(\r?\n)+/, '').replace(/\s+$/, ''))
+      .filter(Boolean);
+  }
+  return text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('#'));
+}
+
 export type ImportMode = 'replace' | 'add' | 'clear';
+
+/**
+ * How a draft is cut into prompts. An EXPLICIT choice at import time, never
+ * inferred from content — a one-per-line list that happens to contain a stray
+ * `---` would be silently misread as two giant prompts.
+ */
+export type ImportFormat = 'lines' | 'blocks';
 
 /**
  * mergePrompts (WP3) — the explicit import semantics:
@@ -163,12 +197,17 @@ export type ImportMode = 'replace' | 'add' | 'clear';
  * Ids stay deterministic: the suffix continues from the kept count, and any
  * residual collision with a kept id bumps the suffix until free.
  */
-export function mergePrompts(existing: Prompt[], text: string, mode: ImportMode): Prompt[] {
+export function mergePrompts(
+  existing: Prompt[],
+  text: string,
+  mode: ImportMode,
+  format: ImportFormat = 'lines',
+): Prompt[] {
   const kept = mode === 'add' ? existing : existing.filter((p) => p.status === 'harvested');
   // Clear ignores the draft entirely — it is not an import with no content.
   if (mode === 'clear') return kept;
   const taken = new Set(kept.map((p) => p.id));
-  const incoming = parsePromptList(text, kept.length).map((p) => {
+  const incoming = parsePromptList(text, kept.length, format).map((p) => {
     let id = p.id;
     const m = /^(.*)-(\d+)$/.exec(id);
     if (m) {

@@ -312,10 +312,17 @@ const desktop = createConsole({
       channel: IPC.domainGet,
       handle: () => getDomain(),
     });
-    ipc.register<{ text: string; mode: 'replace' | 'add' | 'clear' }, DomainState>({
+    ipc.register<
+      { text: string; mode: 'replace' | 'add' | 'clear'; format?: 'lines' | 'blocks' },
+      DomainState
+    >({
       channel: IPC.domainImportPrompts,
-      input: z.object({ text: z.string(), mode: z.enum(['replace', 'add', 'clear']) }),
-      handle: ({ text, mode }) => importPrompts(text, mode),
+      input: z.object({
+        text: z.string(),
+        mode: z.enum(['replace', 'add', 'clear']),
+        format: z.enum(['lines', 'blocks']).optional(),
+      }),
+      handle: ({ text, mode, format }) => importPrompts(text, mode, format ?? 'lines'),
     });
     ipc.register<{ name?: string; body?: string; outputDir?: string }, DomainState>({
       channel: IPC.domainSaveProject,

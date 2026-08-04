@@ -26,6 +26,7 @@ polish) not started.
 |---|---|---|
 | **Using the app** | **[user-guide.md](user-guide.md)** | Nothing else. It's self-contained. |
 | **New to the project and want to understand it** | [../README.md](../README.md) → [imagedrip-plan.md](imagedrip-plan.md) | [ux-and-workflow.md](ux-and-workflow.md) |
+| **Touching either of the timers** | **[two-clocks.md](two-clocks.md)** | Then `src/main/stall-budget.ts` / `src/main/cadence.ts` |
 | **Picking up the build right now** | **[requirements-v2-usability.md](requirements-v2-usability.md)** + [working-rules.md](working-rules.md) | The "Current state" block at the end of working-rules is the live progress marker. |
 | **Understanding how v1 was built** | [build-handover.md](build-handover.md) | [specs/](#specifications) |
 | **Fixing a broken ChatGPT integration** | [specs/webview-harness-spec.md](specs/webview-harness-spec.md) §4 | [../probe/README.md](../probe/README.md) |
@@ -49,6 +50,7 @@ polish) not started.
 | [imagedrip-plan.md](imagedrip-plan.md) | **The Northstar.** Origin, the no-API constraint, the layered Brand/Project/Prompt model, the locked architecture (Approach C), security and ToS risk, cost rationale, v1 scope, locked decisions, open questions. |
 | [requirements-v2-usability.md](requirements-v2-usability.md) | **The current build.** v2 Usability & Project Identity — every finding from a live UAT pass traced to the code that caused it, split into seven work packages with acceptance criteria. |
 | [ux-and-workflow.md](ux-and-workflow.md) | The intended end-to-end workflow (setup → dial-in → lock → automation), the cockpit layout, and the v1 build order. |
+| [two-clocks.md](two-clocks.md) | **How ImageDrip paces itself.** The Stall Budget (is it dead?) vs the Cadence (how long does a human pause?) — two timers, two questions, two statistics. Includes why the adaptive budget was briefly *worse* than the constant it replaced. **Read before touching either timer.** |
 
 ### Specifications
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DomainState, ImportMode } from '@shared/domain';
+import type { DomainState, ImportFormat, ImportMode } from '@shared/domain';
 import type { RunManifest, RunStatus, RunSummary } from '@shared/ipc';
 import type { UatCounts, Verdict, VerdictInput } from '@shared/live-uat';
 
@@ -28,7 +28,7 @@ interface AppState {
 
   init: () => Promise<void>;
   refresh: () => Promise<void>;
-  importPrompts: (text: string, mode: ImportMode) => Promise<void>;
+  importPrompts: (text: string, mode: ImportMode, format?: ImportFormat) => Promise<void>;
   /** Autosave path (WP2) — resolves true on success, false when refused. */
   saveProject: (patch: { name?: string; body?: string; outputDir?: string }) => Promise<boolean>;
   /** Autosave path (WP2) — false when the run-lock refused the edit. */
@@ -116,9 +116,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   refresh: async () => {
     set({ domain: await window.imagedrip.domain.get() });
   },
-  importPrompts: async (text, mode) => {
+  importPrompts: async (text, mode, format) => {
     const before = get().domain?.theme.prompts.filter((p) => p.status === 'queued').length ?? 0;
-    const domain = await window.imagedrip.domain.importPrompts({ text, mode });
+    const domain = await window.imagedrip.domain.importPrompts({ text, mode, format });
     const after = domain.theme.prompts.filter((p) => p.status === 'queued').length;
     set({
       domain,
