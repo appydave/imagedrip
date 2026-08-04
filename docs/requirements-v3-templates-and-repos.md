@@ -1,7 +1,7 @@
 ---
 doc: requirements
 project: imagedrip
-status: proposed — not started
+status: approved — WP1–WP3 ready to build; WP4–WP5 follow-on
 created: 2026-08-04
 purpose: split Template out of Project, and move the source of truth onto disk in per-brand repos
 ---
@@ -274,18 +274,29 @@ both, and confirm the manifests carry identical template text with different sub
 
 ---
 
-## 6. Open questions
+## 6. Decisions
 
-1. **Naming** — `image-projects/i-<brand>` (symmetric with `v-`) or `imagedrip-projects/imgdrip-<brand>` (David's stated convention)?
-2. **GitHub org** — new `appydave-image-projects`, matching `appydave-video-projects`?
-3. **Do generated images go in git?** The `v-aitldr` golden rule says small→git, and David
-   wants them kept. Confirm before the repos grow.
-4. **Shared templates** — symlink from `i-shared`, or copy-on-create and allow drift?
-5. **Is Template per-brand or global?** `character-sheet` is universal; `nail-art-tile` is
-   not. Proposal: global in `i-shared`, brand-specific in the brand repo, and the app merges
-   both lists.
-6. **Does Project keep its own outputDir override**, or is it always derived from the repo
-   layout? Deriving is cleaner; an override is an escape hatch.
+Settled 2026-08-04.
+
+1. **Naming — `image-projects/i-<brand>`.** ✅ Decided. Symmetric with `video-projects/v-<brand>`,
+   so the two estates read as siblings.
+2. **Template scope — `i-shared` first, brand-specific layered on top.** ✅ Decided. The app
+   merges both lists, `i-shared` providing the universals (`character-sheet`, `storyboard`)
+   and the brand repo adding its own. A brand-local template with the same id **overrides**
+   the shared one — last-most-specific wins, the same rule CSS and CLAUDE.md files use.
+3. **GitHub org — `appydave-image-projects`.** Default, mirroring `appydave-video-projects`.
+   Trivially changed before the first push.
+4. **Shared templates are COPIED on create, never symlinked.** Rationale: a symlink breaks
+   across machines and in git, and worse — a shared template that silently changes under a
+   finished project makes old runs unreproducible. The copy records the source id and a
+   version so drift is *visible* rather than prevented. This matches the provenance ethos
+   already in the run manifest, which copies the exact primer rather than pointing at it.
+5. **Generated images go in git.** Follows the `v-aitldr` golden rule (small & reusable →
+   git) and David's stated intent to keep them. Revisit only if a repo outgrows comfort;
+   the escape hatch is `runs/**/*.png` in `.gitignore` plus S3, exactly as `v-aitldr` does
+   for renders.
+6. **outputDir stays as an escape hatch.** Derived from the repo layout by default; the
+   per-project override built in v2 remains for one-off destinations.
 
 ---
 
