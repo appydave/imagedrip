@@ -83,7 +83,31 @@ to repeat one.
   asks `git rev-parse --is-inside-work-tree` (walks ancestors) instead of looking for
   `<dir>/.git`, and additionally declines to init inside a brand repo root, which is WP5's job.
   **Not done: WP4 (`library.json`) and WP5 (scaffold a new brand repo, git init, private flag).**
-  `~/dev/image-projects/i-*` exist but are deliberately NOT git repos yet — do not init them.
+
+  **⚠️ KNOWN GAP in shipped WP2 — fix before pointing the app at a real repo.**
+  `attachRepo` (`src/main/domain-store.ts`) publishes **every** unsourced project and template
+  into whichever repo you attach, stamped with the **active** brand. Projects carry no `brandId`,
+  so a blanket publish has no information to route with. Concretely: with `ai-tldr` active,
+  attaching `i-aitldr` would write the Beauty & Joy–flavoured `smoothies` project into the AITLDR
+  repo and then keep mirroring every later edit there. **Agreed fix (2026-08-05, not yet built):**
+  attach becomes IMPORT-ONLY (read repo, set `repoRoot`, write `_template/` scaffolds), plus an
+  explicit per-record "Publish to repo" action on the PROJECT and TEMPLATE cards. The deeper fix
+  is a `Project.brandId`; §3's `project.json { brand, template }` already anticipates it.
+
+  **Brand repos + images (decided 2026-08-05, not yet executed).** `~/dev/image-projects/i-*`
+  are still NOT git repos. When they are initialised, do it **with a `.gitignore` excluding run
+  images** — pattern must be `**/runs/**/*.png` (a bare `runs/**` anchors to the repo root and
+  would not match `projects/<p>/runs/`). Measured on the first real runs: ~2 MB per PNG, and git
+  cannot delta already-compressed PNG, so 15 images produced a 30 MB working tree **and** a 30 MB
+  `.git`; ~4 MB all-in per image means one 20-image run is ~80 MB. This is §6 decision 5's own
+  escape hatch applied up front, because history is append-only: un-ignoring later costs one
+  deleted line, un-committing later means rewriting every commit. Manifests and provenance are
+  small text and stay in git, so runs remain fully described.
+
+  **Leave `smoothies` where it is** — `~/Pictures/ImageDrip/smoothies`, already its own git repo
+  with 51 commits and no remote. Publishing it into a brand repo would split its images from its
+  files, bake an absolute machine-specific `outputDir` into a committed `project.json`, and put a
+  nested `.git` inside a brand repo. Start fresh projects in the repos instead.
 - **Live UAT built (2026-08-03, `docs/live-uat.md`)** — the acceptance pass now has a capture
   layer. ⚑ toggle in the top bar (off by default, persisted); ⚑ on every cockpit region raises a
   screen-anchored `Snag`; harvested tiles are multi-selectable and take an `ImageVerdict` carrying
