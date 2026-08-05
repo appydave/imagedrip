@@ -4,6 +4,8 @@
   "description": "Generate image batches by driving your own logged-in ChatGPT session — no paid image API.",
   "private": true,
   "type": "module",
+  "_packageManager_why": "This repo is npm-only — package-lock.json is the committed lockfile. Declared so npm/pnpm/yarn refuse the wrong tool instead of half-installing: pnpm 10+ blocks postinstall by default, and Electron's postinstall is what downloads the Electron binary, so `pnpm install` yields a package with no Electron in it. See docs/kdd/learnings/blocked-postinstall-leaves-a-hollow-package.md",
+  "packageManager": "npm@11.11.0",
   "main": "./out/main/index.js",
   "author": "David Cruwys",
   "license": "MIT",
