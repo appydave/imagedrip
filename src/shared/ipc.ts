@@ -13,6 +13,15 @@ export const IPC = {
   counterGet: 'counter:get',
   counterIncrement: 'counter:increment',
 
+  /**
+   * ── ImageDrip: what the app is currently pointed at (v4 §9.3) ──
+   * The one channel with no renderer client: it exists for the control surface,
+   * so an agent can resolve "the last lot" before it writes anything. Registered
+   * here rather than only as an HTTP route so `/v1/verbs` and `/v1/context`
+   * cannot describe two different things.
+   */
+  contextGet: 'imagedrip:context:get',
+
   // ── ImageDrip: renderer → main domain (Brand/Project/Theme) — human path ──
   domainGet: 'imagedrip:domain:get',
   domainImportPrompts: 'imagedrip:domain:import-prompts',

@@ -16,6 +16,8 @@ import {
 import type { DomainState } from '@shared/domain';
 import type { SnagInput, UatCounts, VerdictInput } from '@shared/live-uat';
 import { createConsole } from './create-console.js';
+import { createControlSurface, type ControlSurface } from './control-surface.js';
+import { buildContext, type ContextMode, type ContextResult } from './context-snapshot.js';
 import { isInside, isInsideWorkTree } from './git-scope.js';
 import { readCounts, revealStore, writeSnag, writeVerdict } from './live-uat-store.js';
 import {
@@ -62,6 +64,21 @@ let hostWindow: BrowserWindow | null = null;
 let harness: WebviewHarness | null = null;
 let runner: BatchRunner | null = null;
 let logger: Logger | null = null;
+
+// ── v4 WP1: what `context.get` needs that no existing channel can answer ──
+//
+// `lastInteractionAt` is stamped from REAL input events on the window, not from
+// IPC traffic. The distinction is the whole point: the renderer autosaves and
+// re-reads the domain on its own, so IPC would stay warm forever with nobody in
+// the room — and "nobody in the room" is exactly the state the expiry exists to
+// detect (v4 §9.3).
+let lastInteractionAt = 0;
+// Which mode the most recent run record was opened in. Taken from the runner's
+// own `recorder.start({ mode })` call, so it is observed rather than guessed.
+let lastRunMode: ContextMode = 'dial-in';
+// Phase of the last status snapshot this launch; null until a run has happened.
+let lastRunPhase: string | null = null;
+let control: ControlSurface | null = null;
 
 const rectSchema = z.object({
   x: z.number(),
@@ -226,7 +243,19 @@ async function ensureOutputRoot(): Promise<string> {
 }
 
 function pushRunStatus(s: RunStatus): void {
+  lastRunPhase = s.phase;
   if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.runStatus, s);
+}
+
+/** `context.get` (v4 §9.3) — never throws; a stale answer is `{active:false, hint}`. */
+async function getContext(): Promise<ContextResult> {
+  return buildContext({
+    now: Date.now(),
+    lastInteractionAt,
+    domain: await getDomain(),
+    mode: lastRunMode,
+    runPhase: lastRunPhase,
+  });
 }
 
 function getHarness(): WebviewHarness {
@@ -264,6 +293,9 @@ function getRunner(): BatchRunner {
     recorder: {
       // Route the run into the ACTIVE project before anything is written.
       start: async ({ primer, prompts, mode }) => {
+        // The runner tells us which mode it opened this record in — the only
+        // place main can observe it, so `context.get` reports rather than guesses.
+        lastRunMode = mode === 'auto' ? 'automation' : 'dial-in';
         await ensureOutputRoot();
         const s = await getDomain();
         return rec.start({
@@ -340,6 +372,16 @@ const desktop = createConsole({
     ipc.register<void, number>({
       channel: IPC.counterIncrement,
       handle: async () => (await counter().update((s) => ({ count: s.count + 1 }))).count,
+    });
+
+    // ── v4 §9.3: what is the app pointed at right now? ──
+    // No renderer client — this exists so an agent on the control surface can
+    // resolve "the last lot" before writing. It must NEVER throw: staleness is
+    // an answer (`{active:false, hint}`), because an error invites a retry
+    // while a hint tells the agent what the human has to do.
+    ipc.register<void, ContextResult>({
+      channel: IPC.contextGet,
+      handle: () => getContext(),
     });
 
     // ── ImageDrip domain (window.imagedrip.domain.*) — human path, no network ──
@@ -650,10 +692,37 @@ const desktop = createConsole({
     });
   },
 
-  onReady({ windows, logger: log }) {
+  onReady({ windows, logger: log, ipc }) {
     logger = log;
     hostWindow = windows.create({ width: 1200, height: 820 });
     log.info('window opened');
+
+    // Real human input on the window — the clock `context.get` expires against.
+    lastInteractionAt = Date.now();
+    hostWindow.webContents.on('input-event', () => {
+      lastInteractionAt = Date.now();
+    });
+
+    // ── v4 WP1: the control surface (docs/requirements-v4-resident-chat.md §9.2) ──
+    // Started here, after `registerIpc` has run, so the registry it mirrors is
+    // fully populated. Loopback only, bearer-authed, and it publishes its port
+    // and token together in one 0600 file so a client discovers both in one read.
+    control = createControlSurface({
+      defs: () => ipc.list(),
+      userDataDir: app.getPath('userData'),
+      version: app.getVersion(),
+      isRunning: () => runner?.running ?? false,
+      logger: log,
+    });
+    void control
+      .start()
+      .then(({ port }) => log.info({ port }, 'control surface ready'))
+      .catch((err) => {
+        // A busy port must not take the app down — the window is the product;
+        // the control surface is an accessory to it.
+        log.warn({ err: String(err) }, 'control surface failed to start');
+        control = null;
+      });
 
     // Migrate the domain document (v1 → multi-project) and point the harvest
     // author at the active project's output dir before anything runs.
@@ -669,8 +738,23 @@ const desktop = createConsole({
     } else {
       log.warn({ shortcut: STOP }, 'STOP shortcut registration failed');
     }
-    app.on('will-quit', () => globalShortcut.unregisterAll());
+    app.on('will-quit', () => {
+      globalShortcut.unregisterAll();
+      // `will-quit` does not await async work, and a stale control.json is worse
+      // than none — it advertises a port and token that no longer exist. The
+      // lifecycle hook below is the orderly path; this is the one that actually
+      // fires on a macOS Cmd-Q.
+      control?.stopSync();
+      control = null;
+    });
   },
+});
+
+// Orderly teardown: `create-console.ts` already stops the IPC router and the
+// process supervisor here; the control surface joins them.
+desktop.lifecycle.onStop(async () => {
+  await control?.stop();
+  control = null;
 });
 
 /**
