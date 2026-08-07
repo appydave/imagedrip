@@ -1838,7 +1838,13 @@ function ListPromptCard(props: {
 
 /* ── QUEUED lane — what's still to run this theme ─────────────────── */
 function QueuedLane(props: {
-  prompts: { id: string; subject: string }[];
+  /**
+   * `text` is here because the lane must be able to SHOW the prompt. It used to
+   * take `{ id, subject }` only, and that narrowing is precisely why the body
+   * was unreachable: a blocks-format prompt is a ~25-char subject on ~700 chars
+   * of text, so the type was quietly withholding most of what gets sent.
+   */
+  prompts: { id: string; subject: string; text: string }[];
   /** Dial-in (WP4): rows reveal a manual inject action on hover. */
   dialIn: boolean;
   injectBusy: boolean;
@@ -1856,6 +1862,8 @@ function QueuedLane(props: {
   // Replace discards queued prompts — it warns first (WP3). Two-step inline.
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  /** Which prompt's body is open. One at a time — the lane is narrow. */
+  const [openPrompt, setOpenPrompt] = useState<string | null>(null);
   // An EXPLICIT choice, never sniffed from the draft: a one-per-line list
   // containing a stray `---` would otherwise be silently read as two prompts.
   const [format, setFormat] = useState<'lines' | 'blocks'>(props.defaultFormat);
@@ -2021,9 +2029,32 @@ function QueuedLane(props: {
         {props.prompts.map((p, i) => (
           <div
             key={p.id}
-            className="group flex items-center justify-between rounded-md border border-edge bg-cream px-2.5 py-2 text-[13px]"
+            className="group rounded-md border border-edge bg-cream px-2.5 py-2 text-[13px]"
           >
-            <span className="truncate">{p.subject}</span>
+          <div className="flex items-center justify-between">
+            {/* The row used to render `subject` and nothing else, which was
+                invisible while a prompt WAS its subject ("avocado"). With the
+                blocks format a subject is a ~25-char label on ~700 chars of
+                body, so most of what gets sent to a paid session could not be
+                read anywhere in the app. Click to open it. */}
+            <button
+              type="button"
+              onClick={() => setOpenPrompt(openPrompt === p.id ? null : p.id)}
+              title={openPrompt === p.id ? 'hide the prompt text' : 'show the full prompt text'}
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-amber"
+            >
+              <span className="flex-shrink-0 font-mono text-[9px] text-muted">
+                {openPrompt === p.id ? '▾' : '▸'}
+              </span>
+              <span className="truncate">{p.subject}</span>
+              {/* Say there IS more, and how much — a disclosure nobody can see
+                  is the same as no disclosure. */}
+              {p.text.trim() !== p.subject.trim() && (
+                <span className="flex-shrink-0 font-mono text-[9px] text-muted">
+                  {p.text.length}c
+                </span>
+              )}
+            </button>
             {props.dialIn ? (
               <>
                 <span className="font-mono text-[10px] text-gold group-hover:hidden">
@@ -2044,6 +2075,15 @@ function QueuedLane(props: {
                 {String(i + 1).padStart(2, '0')}
               </span>
             )}
+          </div>
+          {openPrompt === p.id && (
+            // `whitespace-pre-wrap` because these are multi-line blocks — the
+            // line structure IS the prompt, and collapsing it would show
+            // something other than what gets sent.
+            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-edge pt-2 font-mono text-[11px] leading-relaxed text-brown">
+              {p.text}
+            </pre>
+          )}
           </div>
         ))}
         {props.prompts.length === 0 && (

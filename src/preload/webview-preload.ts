@@ -141,3 +141,23 @@ ipcRenderer.on(WEBVIEW.probeEngine, () => {
     at: Date.now(),
   });
 });
+
+/**
+ * On request from main, report what the composer currently holds — the
+ * post-condition `feed` checks itself against. Read-only, like `probeEngine`:
+ * nothing is typed, submitted, or requested.
+ *
+ * `innerText` rather than `textContent`: the composer is a contenteditable
+ * whose placeholder is often a real child node, and `textContent` would return
+ * the placeholder for an EMPTY composer — reporting text where there is none,
+ * which is exactly the false pass this check exists to prevent.
+ */
+ipcRenderer.on(WEBVIEW.readComposer, () => {
+  const el = document.querySelector<HTMLElement>(S.promptInput);
+  report({
+    type: 'composer-state',
+    present: Boolean(el),
+    text: (el?.innerText ?? '').trim(),
+    hasAttachment: Boolean(document.querySelector(S.composerAttachment)),
+  });
+});

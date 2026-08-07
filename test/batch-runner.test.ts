@@ -31,6 +31,8 @@ interface Fake {
   feeds: string[];
   harvests: string[];
   stallCaps: number[];
+  /** Every status the runner pushed — how a test sees phase and note. */
+  statuses: RunStatus[];
   newConversations: () => number;
   imageDone: (url: string) => void;
 }
@@ -38,7 +40,7 @@ interface Fake {
 function makeFake(
   prompts: Prompt[] = PROMPTS,
   primer = 'PRIMER',
-  opts: { feedDelayMs?: number } = {},
+  opts: { feedDelayMs?: number; failFeedFrom?: number } = {},
 ): Fake {
   const feeds: string[] = [];
   const harvests: string[] = [];
@@ -60,6 +62,11 @@ function makeFake(
     },
     feed: async (text: string) => {
       if (opts.feedDelayMs) await new Promise((r) => setTimeout(r, opts.feedDelayMs));
+      // `feed` VERIFIES delivery and throws when the prompt never reached the
+      // chat (2026-08-07). `failFeedFrom` reproduces that from the Nth call.
+      if (opts.failFeedFrom !== undefined && feeds.length >= opts.failFeedFrom) {
+        throw new Error('feed: the prompt is still sitting in the composer — Enter did not submit it.');
+      }
       feeds.push(text);
     },
     newConversation: async () => {
@@ -71,12 +78,15 @@ function makeFake(
     },
   } as unknown as WebviewHarness;
 
+  const statuses: RunStatus[] = [];
   const runner = new BatchRunner({
     harness,
     getPrimer: async () => primer,
     getQueue: async () => prompts,
     markHarvested: async () => {},
-    emit: (_s: RunStatus) => {},
+    emit: (s: RunStatus) => {
+      statuses.push(s);
+    },
   });
 
   return {
@@ -84,6 +94,7 @@ function makeFake(
     feeds,
     harvests,
     stallCaps,
+    statuses,
     newConversations: () => newConv,
     imageDone: (url) => imageCb?.({ imageUrl: url, at: Date.now() }),
   };
@@ -306,5 +317,70 @@ describe('BatchRunner double-feed guard', () => {
 
     // The latch must not wedge the run — the next prompt still feeds.
     expect(f.feeds).toEqual(['a kangaroo', 'a koala']);
+  });
+});
+
+/**
+ * A feed that cannot prove it landed must HALT the run visibly.
+ *
+ * Live failure, 2026-08-07: the primer pasted without submitting, the next
+ * prompt never reached the chat at all, and the cockpit sat on "awaiting
+ * image" against an empty composer until the stall cap. `feed` verified
+ * nothing, so a missed click, a stolen focus, a swallowed paste and an ignored
+ * Enter were indistinguishable from success.
+ *
+ * `feed` now throws when its post-conditions fail. These pin what the RUNNER
+ * must do with that throw — because an uncaught one would escape `feedNext` as
+ * an unhandled rejection and strand the run in `feeding`, with no `awaiting`
+ * and therefore no stall timer to ever surface it. That is strictly worse than
+ * the hang the verification was added to end.
+ */
+describe('a feed that fails to deliver', () => {
+  it('pauses the run and says why, instead of pretending it was fed', async () => {
+    // Primer feeds (call 0); the first PROMPT feed (call 1) fails.
+    const f = makeFake(PROMPTS, 'PRIMER', { failFeedFrom: 1 });
+    await f.runner.start({ ...FAST, entry: 'fresh' });
+    await settle();
+
+    const last = f.statuses[f.statuses.length - 1];
+    expect(last.phase).toBe('paused');
+    expect(last.note).toMatch(/feed failed/i);
+    // The operator gets the actual cause, not a generic failure.
+    expect(last.note).toMatch(/composer/i);
+  });
+
+  it('never enters awaiting for a prompt that was never delivered', async () => {
+    // This is the whole bug: `awaiting` is a claim that a prompt is in flight.
+    // Making it for an undelivered prompt is what produced a silent 6-minute
+    // wait on an empty chat.
+    const f = makeFake(PROMPTS, 'PRIMER', { failFeedFrom: 1 });
+    await f.runner.start({ ...FAST, entry: 'fresh' });
+    await settle();
+    expect(f.statuses.some((s) => s.phase === 'awaiting')).toBe(false);
+  });
+
+  it('leaves the queue intact so the operator can resume after fixing it', async () => {
+    // Pause, not stop: the cause is usually recoverable at the window.
+    const f = makeFake(PROMPTS, 'PRIMER', { failFeedFrom: 1 });
+    await f.runner.start({ ...FAST, entry: 'fresh' });
+    await settle();
+    const last = f.statuses[f.statuses.length - 1];
+    expect(last.harvested).toBe(0);
+    expect(last.total).toBe(PROMPTS.length);
+    expect(f.runner.running).toBe(true); // paused, not torn down
+  });
+
+  it('halts mid-run too, keeping what was already harvested', async () => {
+    // Feeds: 0 = primer, 1 = kangaroo (ok), 2 = koala (fails).
+    const f = makeFake(PROMPTS, 'PRIMER', { failFeedFrom: 2 });
+    await f.runner.start({ ...FAST, entry: 'fresh' });
+    await settle();
+    f.imageDone('https://img/kangaroo.png');
+    await settle();
+
+    const last = f.statuses[f.statuses.length - 1];
+    expect(last.phase).toBe('paused');
+    expect(last.note).toMatch(/feed failed/i);
+    expect(f.harvests).toHaveLength(1); // the good image survived
   });
 });

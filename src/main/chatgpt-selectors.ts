@@ -24,6 +24,12 @@ export interface ChatGPTSelectors {
   rateLimitBanner: string;
   /** Content-policy refusal marker (optional — best-effort). */
   refusalMarker?: string;
+  /**
+   * A "pasted as file" chip in the composer area. ChatGPT converts a large
+   * paste into an attachment rather than inline text, so this is how `feed`
+   * tells "the paste landed as a file" from "the paste went nowhere".
+   */
+  composerAttachment: string;
   /** The submit key. If ChatGPT ever needs Cmd+Enter, flip it here. */
   submitKey: 'Return' | 'Cmd+Return';
   /** New-chat URL, navigated before each batch. */
@@ -66,6 +72,14 @@ export const CHATGPT_SELECTORS: ChatGPTSelectors = {
   // text gate (rateLimitPhrases) in the preload.
   rateLimitBanner: '[role="alert"], [role="status"]',
   refusalMarker: '[data-message-author-role="assistant"]',
+
+  // ⚠️ UNVERIFIED, same status as rateLimitBanner — no large paste was observed
+  // converting to a chip during Probe C. Deliberately BROAD: a false positive
+  // only means `feed` accepts a paste it could not see as text, which is the
+  // behaviour it had before the check existed. A false NEGATIVE would reject a
+  // good feed, so err toward matching.
+  composerAttachment:
+    '[data-testid*="attachment" i], [class*="attachment" i], [data-testid*="file-chip" i]',
 
   submitKey: 'Return',
   newChatUrl: 'https://chatgpt.com/',

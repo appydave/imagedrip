@@ -6,6 +6,7 @@ import type { FileAuthor } from './file-author.js';
 import { harvestImage } from './image-harvest.js';
 import {
   WEBVIEW,
+  type ComposerState,
   type EngineProbeReport,
   type Point,
   type Rect,
@@ -67,6 +68,21 @@ const LOCATE_TIMEOUT_MS = 2000;
  */
 const PROBE_TIMEOUT_MS = 1500;
 
+/** One composer read; short, because it is polled rather than waited on. */
+const COMPOSER_TIMEOUT_MS = 1000;
+/** Gap between polls — a few frames, not a busy loop. */
+const COMPOSER_POLL_MS = 150;
+/**
+ * How long a paste or a submit gets to show up in the composer.
+ *
+ * Generous on purpose. Clearing the composer is ChatGPT's acknowledgement that
+ * it took the message, and on a slow connection that lags the keystroke. The
+ * cost of being too impatient is a false "Enter did not submit" on a feed that
+ * actually worked — which would halt a healthy run, the exact failure the
+ * stall budget exists to avoid repeating here.
+ */
+const COMPOSER_SETTLE_MS = 5000;
+
 export class WebviewHarness {
   private readonly opts: WebviewHarnessOptions;
   private readonly logger?: Logger;
@@ -94,6 +110,8 @@ export class WebviewHarness {
    * into its paste-into-current-focus branch — the guard causing the bug.
    */
   private pendingProbe: ((probe: EngineProbeReport | null) => void) | null = null;
+  /** Third slot, by the same argument as `pendingProbe` — never share. */
+  private pendingComposer: ((state: ComposerState | null) => void) | null = null;
 
   constructor(options: WebviewHarnessOptions) {
     this.opts = options;
@@ -205,7 +223,34 @@ export class WebviewHarness {
 
   /**
    * feed — submit one prompt via synthesized, human-signature input (spec §3):
-   * clipboard → real mouse click on the composer → Cmd/Ctrl+V → Enter.
+   * clipboard → real mouse click on the composer → paste → Enter.
+   *
+   * ── It now VERIFIES, and that is the point (2026-08-07) ────────────────
+   *
+   * This used to do all five steps and check none of them. `locateInput`
+   * returning null only warned; `paste()` and `submit()` act on whatever holds
+   * FOCUS, so a missed click sent both somewhere harmless; and it logged "fed
+   * prompt" unconditionally before arming the stall. Every distinct failure —
+   * rect not found, click missed, focus stolen, paste swallowed, Enter ignored
+   * — collapsed into ONE observable: the runner entered `awaiting` and hung
+   * until the stall cap fired. Absence and success were indistinguishable.
+   *
+   * Observed live: a 3.5k-char primer pasted but did not submit, and the next
+   * prompt never appeared in the chat at all, while the cockpit reported
+   * "awaiting image" against an empty composer.
+   *
+   * Two post-conditions replace the guesswork:
+   *
+   *   after paste   the composer must hold text, OR show an attachment chip —
+   *                 ChatGPT converts a large paste into a "Pasted text" file,
+   *                 so an empty composer is not proof of failure by itself.
+   *   after submit  the composer must be EMPTY. A cleared composer is the only
+   *                 honest signal that the message actually went; it is exactly
+   *                 what "pasted but no Enter" fails to produce.
+   *
+   * The click is still best-effort rather than fatal: if `locateInput` misses
+   * but focus happens to be right, the paste lands and the checks pass. It is
+   * the verification, not the click, that makes this safe.
    */
   async feed(prompt: string): Promise<void> {
     const view = this.view;
@@ -218,11 +263,67 @@ export class WebviewHarness {
     else this.logger?.warn('feed: composer rect not found — pasting into current focus');
 
     this.paste();
+    const pasted = await this.awaitComposer((s) => s.text.length > 0 || s.hasAttachment);
+    if (!pasted) {
+      throw new Error(
+        'feed: the prompt never reached the composer — the paste did not land. ' +
+          'The click may have missed it (was the ChatGPT panel just resized?), or ' +
+          'something else holds focus.',
+      );
+    }
+
     this.submit();
+    const sent = await this.awaitComposer((s) => s.text.length === 0 && !s.hasAttachment);
+    if (!sent) {
+      throw new Error(
+        'feed: the prompt is still sitting in the composer — Enter did not submit it. ' +
+          'This is the "pasted but not sent" symptom; nothing was posted to the chat.',
+      );
+    }
 
     this.feedAt = Date.now();
     this.armStall();
-    this.logger?.info({ chars: prompt.length }, 'fed prompt');
+    this.logger?.info({ chars: prompt.length }, 'fed prompt (verified sent)');
+  }
+
+  /**
+   * Poll the composer until `ok` holds, or give up.
+   *
+   * Polled rather than read once: both transitions are asynchronous in the
+   * page. A paste settles a frame or two after the editing command, and after
+   * Enter ChatGPT clears the composer only once it has accepted the message —
+   * so a single immediate read would fail a feed that was merely still in
+   * flight. A composer that cannot be read at all counts as failure: the check
+   * is worthless if "no answer" is treated as "fine".
+   */
+  private async awaitComposer(ok: (s: ComposerState) => boolean): Promise<boolean> {
+    const deadline = Date.now() + COMPOSER_SETTLE_MS;
+    for (;;) {
+      const state = await this.readComposer();
+      if (state?.present && ok(state)) return true;
+      if (Date.now() >= deadline) {
+        this.logger?.warn({ state }, 'feed: composer post-condition not met');
+        return false;
+      }
+      await new Promise((r) => setTimeout(r, COMPOSER_POLL_MS));
+    }
+  }
+
+  /** Read the composer's current contents. Null when the page does not answer. */
+  private readComposer(): Promise<ComposerState | null> {
+    const view = this.view;
+    if (!view) return Promise.resolve(null);
+    return new Promise<ComposerState | null>((resolve) => {
+      let done = false;
+      const finish = (state: ComposerState | null) => {
+        if (done) return;
+        done = true;
+        resolve(state);
+      };
+      this.pendingComposer = finish;
+      view.webContents.send(WEBVIEW.readComposer);
+      setTimeout(() => finish(null), COMPOSER_TIMEOUT_MS);
+    });
   }
 
   onImageDone(cb: ImageDoneCb): void {
@@ -282,6 +383,12 @@ export class WebviewHarness {
           const { type: _type, ...probe } = raw;
           this.pendingProbe?.(probe);
           this.pendingProbe = null;
+          break;
+        }
+        case 'composer-state': {
+          const { type: _type, ...state } = raw;
+          this.pendingComposer?.(state);
+          this.pendingComposer = null;
           break;
         }
         case 'image-done':

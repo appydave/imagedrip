@@ -132,6 +132,20 @@ export const WEBVIEW = {
    * worse than no guard, so readiness gets its own channel and its own slot.
    */
   probeEngine: 'imagedrip:probe-engine',
+  /**
+   * main → preload: "what is in the composer right now?" — read-only.
+   *
+   * The post-condition for `feed` (2026-08-07). `feed` used to verify nothing:
+   * a missed click, a stolen focus, a swallowed paste and an ignored Enter all
+   * produced the same observable — the runner entered `awaiting` and hung until
+   * the stall cap. Reading the composer back is what tells those apart.
+   *
+   * Its OWN slot, for the same reason `probeEngine` has one: a read arriving
+   * mid-`feed` must never steal `locateInput`'s single-slot resolution, which
+   * would drop `feed` into the very paste-into-whatever-has-focus branch this
+   * exists to detect.
+   */
+  readComposer: 'imagedrip:read-composer',
 } as const;
 
 export interface Rect {
@@ -155,7 +169,25 @@ export type WebviewInbound =
   | { type: 'rate-limit'; text: string; at: number }
   | { type: 'refused'; at: number }
   | { type: 'input-rect'; rect: Point | null }
-  | ({ type: 'engine-probe' } & EngineProbeReport);
+  | ({ type: 'engine-probe' } & EngineProbeReport)
+  | ({ type: 'composer-state' } & ComposerState);
+
+/**
+ * What the composer holds — the evidence `feed` checks itself against.
+ *
+ * `hasAttachment` is not a detail: ChatGPT turns a sufficiently large paste
+ * into a "Pasted text" file chip instead of inline text, so a successful paste
+ * of a 3.5k-char primer can leave `text` EMPTY. Without this flag the paste
+ * check would reject the very case that motivated it.
+ */
+export interface ComposerState {
+  /** Is the composer element on the page at all? */
+  present: boolean;
+  /** Its current text content, trimmed. */
+  text: string;
+  /** A pasted-as-file chip is showing — the paste landed, just not as text. */
+  hasAttachment: boolean;
+}
 
 /**
  * What the preload observes about the live ChatGPT page, without sending

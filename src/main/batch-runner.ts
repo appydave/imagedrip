@@ -441,6 +441,24 @@ export class BatchRunner {
     this.feeding = true;
     try {
       await this.feedGuarded(prompt.text);
+    } catch (err) {
+      // `feed` now VERIFIES delivery and throws when the prompt did not reach
+      // the chat. Without this catch that throw escapes as an unhandled
+      // rejection and the run stops in `feeding` — no `awaiting`, so no stall
+      // timer, so nothing ever surfaces it. That would be strictly worse than
+      // the silent hang the verification was added to end.
+      //
+      // Pause rather than stop: the queue is intact and the cause is usually
+      // recoverable at the window (focus the composer, undo a resize), so the
+      // operator can Resume. Same shape as `onStall`.
+      this.manualPaused = true;
+      this.clearTimers();
+      this.phase = 'paused';
+      this.note = `feed failed — ${err instanceof Error ? err.message : String(err)}`;
+      this.recordSafe((r) => r.pause(this.note ?? 'feed failed'));
+      this.emit();
+      this.logger?.error({ err: String(err), subject: prompt.subject }, 'feed failed — pausing');
+      return;
     } finally {
       // Released even on a throw — a stuck latch would wedge the run forever,
       // which is worse than the double-feed it prevents.
