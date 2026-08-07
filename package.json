@@ -12,6 +12,8 @@
   "scripts": {
     "dev": "electron-vite dev",
     "dev:watch": "electron-vite dev -w",
+    "dev:stop": "node scripts/dev-stop.mjs",
+    "dev:clean": "node scripts/dev-stop.mjs && npm run dev:watch",
     "start": "electron-vite preview",
     "build": "electron-vite build",
     "package": "electron-vite build && electron-builder",
