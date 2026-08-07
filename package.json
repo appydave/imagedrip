@@ -11,6 +11,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:watch": "electron-vite dev -w",
     "start": "electron-vite preview",
     "build": "electron-vite build",
     "package": "electron-vite build && electron-builder",
