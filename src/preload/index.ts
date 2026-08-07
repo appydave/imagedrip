@@ -51,7 +51,7 @@ const imagedrip: ImagedripApi = {
   brands: {
     create: (input: { name: string }): Promise<DomainState> =>
       ipcRenderer.invoke(IPC.brandCreate, input),
-    switch: (id: string): Promise<DomainState> => ipcRenderer.invoke(IPC.brandSwitch, id),
+    switch: (id: string | null): Promise<DomainState> => ipcRenderer.invoke(IPC.brandSwitch, id),
   },
   repo: {
     chooseRoot: (): Promise<string | null> => ipcRenderer.invoke(IPC.repoChooseRoot),

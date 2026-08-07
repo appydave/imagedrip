@@ -114,6 +114,11 @@ export const GATED_VERBS: readonly string[] = [
   // reset of an entire queue is its own channel and gated on its own.
   'domain.reset-run',
   'project.choose-output-dir',
+  // A7 — forgetting a record. Nothing leaves the disk, but a deleted project
+  // takes its whole prompt queue with it and there is no undo inside the app.
+  'brand.delete',
+  'template.delete',
+  'project.delete',
 ];
 
 /**
@@ -163,17 +168,25 @@ export const VERB_DOCS: Readonly<Record<string, string>> = {
     'DESTRUCTIVE and confirm-first: re-queues every prompt so the theme can run again. Ask first, every time.',
   'brand.create': 'Create and activate a new brand. Refused with 409 while a run is live.',
   'brand.switch':
-    'Activate a saved brand by id (from domain.get -> brands). Refused with 409 while a run is live.',
+    'Activate a saved brand by id (from domain.get -> brands), or null for NO brand. null is a real choice, not an absence: the primer then composes Template + Project only, which is what you want when the work has no house style — do not leave a project on the seeded demo brand just because something has to be selected. Refused with 409 while a run is live.',
+  'brand.delete':
+    'DESTRUCTIVE and confirm-first: forgets a brand. Ask first, every time. It removes NOTHING from disk — with a repo attached the brand text lives in brand/DESIGN.md and re-attaching imports it back. If the deleted brand was active the selection becomes none, so the next primer carries no house style: say so when you confirm.',
   'template.create':
-    'Create a template — the ARTIFACT KIND (character sheet, storyboard, catalogue tile), reusable across brands and projects. Give importFormat so imports cut correctly. Then use template.save to write its body, listPrompt and negatives, and template.switch to point the active project at it. Refused with 409 while a run is live.',
+    'Create a template — the ARTIFACT KIND (character sheet, storyboard, catalogue tile), reusable across brands and projects. Give importFormat so imports cut correctly. Then use template.save to write its body, listPrompt and negatives, and template.switch to point the active project at it. Refused with 409 while a run is live.\n\nMIGRATING AN OLD PROJECT — reach for this when a project body is doing two jobs at once, i.e. it describes both a REUSABLE RECIPE ("a 5-view turnaround, 6 expressions") and a SUBJECT ("Filipino national heroes"). That is the pre-v3 shape and it is why such a project cannot be pointed at a new subject without copy-paste. There is no migrate verb and none is needed; the sequence is: domain.compose-primer to see the current text verbatim, template.create for the recipe, template.save to write the recipe part into its body (and any hard rules into negatives), template.switch to point the project at it, then domain.save-project with the SUBJECT part only. Verify with domain.compose-primer: the primer should read the same as before, just assembled from three layers instead of one. Propose the split to the user before writing — you are rewriting text they authored.',
   'template.switch':
     'Point the ACTIVE project at a template by id, or null for none. Refused with 409 while a run is live.',
+  'template.delete':
+    'DESTRUCTIVE and confirm-first: forgets a template. Ask first, every time. Refused with 422 while any project still points at it, naming them — switch those to null with template.switch first. Removes nothing from disk; with a repo attached the recipe lives in templates/<id>/ and re-attaching imports it back.',
   'template.save':
     'Write the active template: body (the recipe), negatives (hard constraints — prefer putting rules here rather than repeating them in every prompt), listPrompt, importFormat, name. Refused with 409 while a run is live.',
   'project.create':
     'Create and activate a project — the SUBJECT layer. outputDir is optional and defaults to ~/Pictures/ImageDrip/<slug>; pass it when the user names a destination.',
   'project.switch':
     'Activate a saved project by id. Refused with 409 while a run is live, because it repoints where images are written.',
+  'project.delete':
+    'DESTRUCTIVE and confirm-first: forgets a project AND its prompt queue. Ask first, every time, and say how many prompts go with it (read domain.get first). Refused with 422 for the last remaining project — something must always be active. Deleting the active one activates another. It removes NOTHING from disk: harvested images, run folders and manifests all stay where they are, and with a repo attached projects/<id>/ is still in git.',
+  'theme.rename':
+    "Rename the ACTIVE project's theme. Not cosmetic: the theme name is slugged into every FUTURE run folder (2026-08-03-1446-<theme>) and is what runs.list shows. It defaults to the project id, so a long-lived project names every batch after itself — rename it to what is actually being generated before starting a run, not after. Past runs keep the name they ran under, which is correct. Refused with 409 while a run is live.",
   'project.choose-output-dir':
     'Confirm-first and INTERACTIVE: opens a native folder picker in front of the user. It cannot succeed headlessly and it needs a human at the window. To set a destination you already know, use domain.save-project with outputDir instead.',
   'project.reveal-output-dir': "Open the active project's output folder in Finder.",

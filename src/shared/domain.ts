@@ -142,7 +142,14 @@ export interface Run {
  * `main/domain-migrate.ts`); this view keeps the UI's shape stable.
  */
 export interface DomainState {
-  brand: Brand;
+  /**
+   * The active brand, or null when none is selected. Null is a first-class
+   * state for exactly the reason it is for Template: the app ships with a demo
+   * brand ("Beauty & Joy") that most real projects have nothing to do with, and
+   * before this there was no way to say so — every primer carried SOMEBODY's
+   * look whether or not it was wanted. `(none)` composes Template + Project.
+   */
+  brand: Brand | null;
   /**
    * The template the ACTIVE project points at, or null when it points at none.
    * Null is a first-class state, not a missing value: a project with no template
@@ -151,7 +158,7 @@ export interface DomainState {
   template: Template | null;
   project: Project;
   theme: Theme;
-  activeBrandId: string;
+  activeBrandId: string | null;
   brands: BrandSummary[];
   /** Which template the active project points at (mirrors `project.templateId`). */
   activeTemplateId: string | null;
@@ -202,14 +209,19 @@ export function templateFragment(template: Template | null | undefined): string 
  * not a happy accident of the join; it is the reason the fragment is filtered
  * rather than always joined, and `test/domain-compose.test.ts` holds it in place.
  *
+ * A null BRAND works by the same mechanism, and is the point of `(none)`: some
+ * work has no house style, and until the brand could be dropped the primer
+ * always carried one — usually the seeded demo brand, chosen by nobody. The
+ * layer drops out cleanly; the other two compose exactly as they would alone.
+ *
  * Short prompts inherit this; they are NOT re-baked.
  */
 export function compose(
-  brand: Brand,
+  brand: Brand | null | undefined,
   template: Template | null | undefined,
   project: Project,
 ): string {
-  return [brand.body.trim(), templateFragment(template), project.body.trim()]
+  return [brand?.body.trim() ?? '', templateFragment(template), project.body.trim()]
     .filter(Boolean)
     .join('\n\n');
 }

@@ -59,7 +59,8 @@ export interface ImageProducer {
   promptText: string;
   entry?: 'continue' | 'fresh';
   mode?: 'auto' | 'dial-in';
-  brandId: string;
+  /** Null when the image was made with no brand selected — a real producer state. */
+  brandId: string | null;
   projectId: string;
   generationMs?: number;
 }
@@ -106,4 +107,22 @@ export interface VerdictInput {
 export interface UatCounts {
   snags: number;
   verdicts: number;
+}
+
+/**
+ * Is the Live UAT gate on? (A4 — the default flipped to ON.)
+ *
+ * It shipped OFF, on the reasoning that a capture tool should never nag. The
+ * evidence says the reasoning was wrong: `live-uat/` did not exist at all as of
+ * 2026-08-07 — ZERO snags and ZERO verdicts since the feature was built on
+ * 2026-08-03. A capture surface nobody switches on captures nothing, and the ⚑
+ * is a small inert glyph until it is clicked, so "on" costs a little ink and
+ * "off" cost the entire corpus.
+ *
+ * An EXPLICIT off still wins. Someone who turned it off made a decision, and
+ * silently re-enabling it on the next launch would be the nag this was trying
+ * not to be. Only the ABSENT preference changes meaning.
+ */
+export function uatEnabled(stored: string | null): boolean {
+  return stored !== 'off';
 }

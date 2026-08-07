@@ -33,7 +33,8 @@ export type ContextMode = 'dial-in' | 'automation';
 
 export interface ActiveContext {
   active: true;
-  brand: { id: string; name: string };
+  /** Null when the user has selected "(none)" — the primer carries no house style. */
+  brand: { id: string; name: string } | null;
   template: { id: string; name: string } | null;
   project: { id: string; name: string; outputDir: string | null };
   mode: ContextMode;
@@ -95,7 +96,7 @@ export function buildContext(input: BuildContextInput): ContextResult {
 
   return {
     active: true,
-    brand: { id: domain.brand.id, name: domain.brand.name },
+    brand: domain.brand ? { id: domain.brand.id, name: domain.brand.name } : null,
     template: domain.template ? { id: domain.template.id, name: domain.template.name } : null,
     project: {
       id: domain.project.id,

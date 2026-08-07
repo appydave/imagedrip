@@ -18,9 +18,20 @@ describe('computeStallMs', () => {
   it("clears David's worked example — ~2min average pads to about 3min", () => {
     // "2 minutes, 2 minutes 10, 1 minute 50, and 2 minutes 13 … the average is
     // 2 minutes, and we can set our padding to 3 minutes, right, or 2 minutes 30"
-    const budget = computeStallMs([s(120), s(130), s(110), s(133)]);
+    //
+    // Six samples, not four: past CONFIDENT_SAMPLES the bootstrap floor lifts
+    // and the DERIVATION is what is being measured here. Below it the answer is
+    // the floor for every input, which tests the floor rather than the maths.
+    const budget = computeStallMs([s(120), s(130), s(110), s(133), s(125), s(118)]);
     expect(budget).toBeGreaterThanOrEqual(s(150)); // at least 2m30
     expect(budget).toBeLessThanOrEqual(s(240)); // and not absurdly patient
+  });
+
+  it('stays at the bootstrap floor until there are enough samples to tighten', () => {
+    // The same four samples BELOW CONFIDENT_SAMPLES: the derivation would give
+    // ~3m30, but four timings are not yet a distribution, so the conservative
+    // floor stands. This is the boundary the test above deliberately clears.
+    expect(computeStallMs([s(120), s(130), s(110), s(133)])).toBe(BOOTSTRAP_STALL_MS);
   });
 
   it('clears the SLOWEST sample, not just the average', () => {
@@ -62,8 +73,33 @@ describe('computeStallMs', () => {
 
     it('still widens past bootstrap once a genuinely slow image lands', () => {
       // Widening never waits for confidence — one slow image is evidence enough.
-      expect(computeStallMs([s(0.9), s(86.7), s(153.7)])).toBeGreaterThan(s(153.7));
       expect(computeStallMs([s(300), s(300)])).toBeGreaterThan(BOOTSTRAP_STALL_MS);
+      expect(computeStallMs([s(0.9), s(86.7), s(153.7)])).toBeGreaterThan(s(153.7));
+    });
+  });
+
+  /**
+   * REGRESSION — run 2026-08-03-1446-smoothies (A3b).
+   *
+   * Dragonite recorded 0s — a mis-attributed DOM src, correctly discarded by
+   * MIN_PLAUSIBLE_MS — so the run had NO valid samples and was still on the
+   * bootstrap budget when a genuine 300s generation was in flight. The bootstrap
+   * was 240s, and it fired: the guess that the derived cap replaced survived in
+   * the one place the derivation does not reach.
+   */
+  describe('regression: the bootstrap that stalled a 300s image', () => {
+    it('clears the slowest generation actually observed', () => {
+      expect(BOOTSTRAP_STALL_MS).toBeGreaterThan(s(300));
+    });
+
+    it('is still on bootstrap after the 0s sample is discarded — and now survives it', () => {
+      const budget = computeStallMs([0]);
+      expect(budget).toBe(BOOTSTRAP_STALL_MS);
+      expect(budget).toBeGreaterThan(s(300));
+    });
+
+    it('stays under the ceiling, so a dead generation still ends the wait', () => {
+      expect(BOOTSTRAP_STALL_MS).toBeLessThan(15 * 60 * 1000);
     });
   });
 

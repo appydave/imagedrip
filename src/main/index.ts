@@ -20,6 +20,7 @@ import { createControlSurface, type ControlSurface } from './control-surface.js'
 import { buildContext, type ContextMode, type ContextResult } from './context-snapshot.js';
 import { buildEngineReadiness, type EngineReadiness } from './engine-readiness.js';
 import { isInside, isInsideWorkTree } from './git-scope.js';
+import { flushRunOnQuit } from './quit-flush.js';
 import { readCounts, revealStore, writeSnag, writeVerdict } from './live-uat-store.js';
 import {
   attachRepo,
@@ -27,11 +28,15 @@ import {
   createBrand,
   createProject,
   createTemplate,
+  deleteBrand,
+  deleteProject,
+  deleteTemplate,
   getActiveOutputDir,
   getDomain,
   getQueue,
   importPrompts,
   markHarvested,
+  renameTheme,
   resetRun,
   saveBrand,
   saveProject,
@@ -110,6 +115,39 @@ function legacyHarvestRoot(): string {
 // repointing the root here re-routes every subsequent harvest.
 let outputAuthor: SwappableFileAuthor | null = null;
 let recorder: RunRecorder | null = null;
+
+/**
+ * ── A2: every manifest write the runner has asked for, chained ──
+ *
+ * `BatchRunner` fires its recorder hooks and forgets them (`recordSafe`, and
+ * `finishRun`'s `void`) — deliberately, so a slow disk can never wedge a live
+ * run. That is right for the run and wrong for a QUIT: the last thing a live run
+ * does on the way out is write `outcome`, and an un-awaited write dies with the
+ * process. Both existing runs on disk have no `outcome` for exactly this reason.
+ *
+ * Main owns the adapter that hands those hooks to the runner, so this is where
+ * the promises can be kept without touching the runner's fire-and-forget
+ * discipline: the hooks still return immediately, and `before-quit` has
+ * something to await.
+ */
+let recorderWork: Promise<void> = Promise.resolve();
+
+/** Chain a recorder write onto `recorderWork`, returning it unchanged. */
+function tracked<T>(p: Promise<T>): Promise<T> {
+  recorderWork = recorderWork
+    .catch(() => undefined)
+    .then(() => p.then(() => undefined, () => undefined));
+  return p;
+}
+
+/**
+ * How long a quit will wait for the manifest to land.
+ *
+ * Bounded on purpose: a wedged write must not trap the user in an app that will
+ * not close. Two seconds is far more than a small JSON write needs and far less
+ * than a person will tolerate.
+ */
+const QUIT_FLUSH_MS = 2000;
 
 function getOutputAuthor(): SwappableFileAuthor {
   outputAuthor ??= new SwappableFileAuthor(legacyHarvestRoot());
@@ -223,7 +261,7 @@ async function ensureOutputRoot(): Promise<string> {
   if (await isInsideWorkTree(dir)) {
     logger?.info({ dir }, 'output dir is inside an existing git work tree — not initialising');
   } else {
-    const repoRoot = (await getDomain()).brand.repoRoot;
+    const repoRoot = (await getDomain()).brand?.repoRoot;
     if (repoRoot && isInside(repoRoot, dir)) {
       logger?.info(
         { dir, repoRoot },
@@ -318,20 +356,22 @@ function getRunner(): BatchRunner {
         lastRunMode = mode === 'auto' ? 'automation' : 'dial-in';
         await ensureOutputRoot();
         const s = await getDomain();
-        return rec.start({
-          projectName: s.project.name,
-          themeName: s.theme.name,
-          primer,
-          prompts,
-          mode,
-        });
+        return tracked(
+          rec.start({
+            projectName: s.project.name,
+            themeName: s.theme.name,
+            primer,
+            prompts,
+            mode,
+          }),
+        );
       },
-      addPrompt: (p) => rec.addPrompt(p),
-      harvest: (id, file, ms, url) => rec.harvest(id, file, ms, url),
-      refusal: (id) => rec.refusal(id),
-      reprime: (after) => rec.reprime(after),
-      pause: (reason) => rec.pause(reason),
-      finish: (outcome) => rec.finish(outcome),
+      addPrompt: (p) => tracked(rec.addPrompt(p)),
+      harvest: (id, file, ms, url) => tracked(rec.harvest(id, file, ms, url)),
+      refusal: (id) => tracked(rec.refusal(id)),
+      reprime: (after) => tracked(rec.reprime(after)),
+      pause: (reason) => tracked(rec.pause(reason)),
+      finish: (outcome) => tracked(rec.finish(outcome)),
     },
     logger: logger ?? undefined,
   });
@@ -456,12 +496,56 @@ const desktop = createConsole({
         return createBrand(input);
       },
     });
-    ipc.register<string, DomainState>({
+    // `null` is a real argument, not a missing one — it selects "(none)".
+    ipc.register<string | null, DomainState>({
       channel: IPC.brandSwitch,
-      input: z.string().min(1),
+      input: z.string().min(1).nullable(),
       handle: (id) => {
         if (runner?.running) throw new Error('brand is locked while a run is live');
         return switchBrand(id);
+      },
+    });
+
+    // ── A5 / A7: verb-only surface (no renderer client — see @shared/ipc) ──
+    //
+    // Run-locked exactly as brand/template/project switching is. Renaming the
+    // theme mid-run would repoint the run-id source while a manifest already
+    // carries the old name; deleting anything mid-run is worse.
+    ipc.register<string, DomainState>({
+      channel: IPC.themeRename,
+      input: z.string().min(1),
+      handle: (name) => {
+        if (runner?.running) throw new Error('stop the run before renaming the theme');
+        return renameTheme(name);
+      },
+    });
+    ipc.register<string, DomainState>({
+      channel: IPC.brandDelete,
+      input: z.string().min(1),
+      handle: (id) => {
+        if (runner?.running) throw new Error('brand is locked while a run is live');
+        return deleteBrand(id);
+      },
+    });
+    ipc.register<string, DomainState>({
+      channel: IPC.templateDelete,
+      input: z.string().min(1),
+      handle: (id) => {
+        if (runner?.running) throw new Error('template is locked while a run is live');
+        return deleteTemplate(id);
+      },
+    });
+    ipc.register<string, DomainState>({
+      channel: IPC.projectDelete,
+      input: z.string().min(1),
+      handle: async (id) => {
+        if (runner?.running) throw new Error('stop the run before deleting a project');
+        // Deleting the ACTIVE project repoints the harvest root, same as a
+        // switch — close any open dial-in record before it moves.
+        runner?.closeManualRun();
+        const state = await deleteProject(id);
+        await ensureOutputRoot();
+        return state;
       },
     });
 
@@ -806,5 +890,35 @@ if (!app.requestSingleInstanceLock()) {
     if (hostWindow.isMinimized()) hostWindow.restore();
     hostWindow.focus();
   });
+
+  /**
+   * A2 — quitting with a run open still writes its `outcome`.
+   *
+   * `before-quit` rather than `will-quit` because it is the only quit hook that
+   * fires early enough to be deferred: `preventDefault()` here buys the time for
+   * the manifest write, then the second `app.quit()` runs the whole sequence
+   * again — including `will-quit`, which stays exactly as it was.
+   *
+   * Registered at module scope, not in `onReady`: `create-console` re-runs
+   * `onReady` on macOS `activate`, and a second handler would double-close.
+   */
+  let quitting = false;
+  app.on('before-quit', (event) => {
+    if (quitting) return; // the re-entrant quit below — let it through
+    quitting = true;
+    event.preventDefault();
+    void flushRunOnQuit({
+      stopRun: () => runner?.stop(),
+      closeManualRun: () => runner?.closeManualRun(),
+      pending: () => recorderWork,
+      timeoutMs: QUIT_FLUSH_MS,
+    }).then((outcome) => {
+      if (outcome === 'timed-out') {
+        logger?.warn({ ms: QUIT_FLUSH_MS }, 'run manifest did not flush before quit');
+      }
+      app.quit();
+    });
+  });
+
   void desktop.start();
 }

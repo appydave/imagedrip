@@ -71,11 +71,20 @@ describe('gating — v4 §6.2', () => {
     expect(isGated('project.choose-output-dir')).toBe(true);
   });
 
+  it('gates every delete — there is no undo inside the app (A7)', () => {
+    expect(isGated('brand.delete')).toBe(true);
+    expect(isGated('template.delete')).toBe(true);
+    expect(isGated('project.delete')).toBe(true);
+  });
+
   it('leaves configuration free, or the chat is useless', () => {
     expect(isGated('domain.get')).toBe(false);
     expect(isGated('domain.import-prompts')).toBe(false);
     expect(isGated('template.create')).toBe(false);
     expect(isGated('project.create')).toBe(false);
+    // A rename is not destructive: it changes what FUTURE run folders are
+    // called and touches no existing one.
+    expect(isGated('theme.rename')).toBe(false);
   });
 
   it('every gated verb says CONFIRM-FIRST in its description', () => {
@@ -102,6 +111,35 @@ describe('descriptions', () => {
   it('documents the interactive verb as unable to succeed headlessly', () => {
     expect(describeVerb('project.choose-output-dir')).toMatch(/headlessly/);
     expect(VERB_DOCS['project.choose-output-dir']).toBeTruthy();
+  });
+
+  it('says a delete removes nothing from disk — the fear that stops it being used', () => {
+    // An agent that thinks project.delete erases harvested images will refuse
+    // to offer it; one that thinks it erases nothing at all will oversell it.
+    for (const verb of ['brand.delete', 'template.delete', 'project.delete']) {
+      expect(describeVerb(verb)).toMatch(/removes nothing from disk/i);
+    }
+    expect(describeVerb('project.delete')).toMatch(/prompt queue/i);
+  });
+
+  it('tells an agent when to reach for a template MIGRATION (A6)', () => {
+    // The capability already existed — create + save + switch + save-project —
+    // but nothing said WHEN, so it was never the answer to "this project can't
+    // be pointed at a new subject".
+    const doc = describeVerb('template.create');
+    expect(doc).toMatch(/migrat/i);
+    expect(doc).toMatch(/domain\.save-project/);
+    expect(doc).toMatch(/domain\.compose-primer/);
+  });
+
+  it('documents brand.switch(null) as a real choice, not an absence (A1)', () => {
+    expect(describeVerb('brand.switch')).toMatch(/null/);
+    expect(describeVerb('brand.switch')).toMatch(/no house style|Template \+ Project/i);
+  });
+
+  it('explains that a theme rename decides FUTURE run folder names (A5)', () => {
+    expect(describeVerb('theme.rename')).toMatch(/run folder/i);
+    expect(describeVerb('theme.rename')).toMatch(/before starting a run/i);
   });
 });
 

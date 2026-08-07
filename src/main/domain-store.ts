@@ -5,6 +5,7 @@ import { createStore, type Store } from '@appydave/core';
 import {
   compose,
   mergePrompts,
+  type Brand,
   type DomainState,
   type ImportFormat,
   type ImportMode,
@@ -101,8 +102,16 @@ function activeRecord(s: PersistedDomain): ProjectRecord {
   return s.projects.find((r) => r.project.id === s.activeProjectId) ?? s.projects[0];
 }
 
-function activeBrand(s: PersistedDomain): (typeof s.brands)[number] {
-  return s.brands.find((b) => b.id === s.activeBrandId) ?? s.brands[0];
+/**
+ * The ACTIVE brand — null when "(none)" is selected, and null when the selected
+ * id no longer exists. Mirrors `activeTemplate` deliberately, including the
+ * refusal to substitute: falling back to `brands[0]` meant a stale or deleted id
+ * silently put SOMEBODY ELSE'S look into the primer, and a wrong brand is worse
+ * than a missing one — a missing one is visible in the card as `(none)`.
+ */
+function activeBrand(s: PersistedDomain): Brand | null {
+  if (!s.activeBrandId) return null;
+  return s.brands.find((b) => b.id === s.activeBrandId) ?? null;
 }
 
 /**
@@ -127,7 +136,7 @@ function view(s: PersistedDomain): DomainState {
     template,
     project: rec.project,
     theme: rec.theme,
-    activeBrandId: brand.id,
+    activeBrandId: brand?.id ?? null,
     brands: s.brands.map((b) => ({ id: b.id, name: b.name })),
     activeTemplateId: template?.id ?? null,
     templates: s.templates.map((t) => ({ id: t.id, name: t.name })),
@@ -168,7 +177,9 @@ async function mirrorActive(quiet = false): Promise<void> {
     const rec = activeRecord(s);
     const template = activeTemplate(s);
     if (rec.project.sourcePath) {
-      await writeProject(repoRootOf(rec.project.sourcePath), rec, activeBrand(s).id);
+      // `brandId` is optional on writeProject — with "(none)" the project.json
+      // simply carries no `brand` key, which is what a brand-less project IS.
+      await writeProject(repoRootOf(rec.project.sourcePath), rec, activeBrand(s)?.id);
     }
     if (template?.sourcePath) {
       await writeTemplate(repoRootOf(template.sourcePath), template);
@@ -204,7 +215,7 @@ async function hydrateActive(): Promise<void> {
   const brand = activeBrand(s);
   const template = activeTemplate(s);
 
-  const brandBody = brand.sourcePath ? await readFileQuietly(brand.sourcePath) : null;
+  const brandBody = brand?.sourcePath ? await readFileQuietly(brand.sourcePath) : null;
   const freshTemplate = template?.sourcePath ? await readTemplate(template.sourcePath) : null;
   const freshProject = rec.project.sourcePath
     ? await readProject(repoRootOf(rec.project.sourcePath), rec.project.sourcePath)
@@ -215,7 +226,7 @@ async function hydrateActive(): Promise<void> {
   await updateDoc((doc) => ({
     ...doc,
     brands: doc.brands.map((b) =>
-      b.id === brand.id && brandBody !== null ? { ...b, body: brandBody } : b,
+      brand && b.id === brand.id && brandBody !== null ? { ...b, body: brandBody } : b,
     ),
     templates: doc.templates.map((t) =>
       freshTemplate && t.id === freshTemplate.id ? { ...t, ...freshTemplate } : t,
@@ -254,12 +265,17 @@ async function readFileQuietly(path: string): Promise<string | null> {
  * It does NOT git-init the repo — see `ensureScaffolds`.
  */
 export async function attachRepo(root: string): Promise<DomainState> {
+  // A repo is attached to a BRAND — it is that brand's `repoRoot`. With "(none)"
+  // there is nothing to attach it to, so refuse loudly rather than pick one.
+  if (!activeBrand(await persisted())) {
+    throw new Error('no brand selected — pick or create a brand before attaching its repo');
+  }
   const contents = await readRepo(root);
   await ensureScaffolds(root);
 
   // 1. Import — disk wins on a matching id, unknown ids are added.
   await updateDoc((s) => {
-    const activeBrandId = activeBrand(s).id;
+    const activeBrandId = activeBrand(s)?.id;
     const templates = [...s.templates];
     for (const t of contents.templates) {
       const i = templates.findIndex((x) => x.id === t.id);
@@ -292,7 +308,7 @@ export async function attachRepo(root: string): Promise<DomainState> {
   // 2. Publish — write out whatever is still only in domain.json, then record
   //    the sourcePaths those writes established.
   const s = await persisted();
-  const brandId = activeBrand(s).id;
+  const brandId = activeBrand(s)?.id;
   const published = new Map<string, string>();
   for (const t of s.templates) {
     if (!t.sourcePath) published.set(`t:${t.id}`, await writeTemplate(root, t));
@@ -384,16 +400,17 @@ export async function saveProject(patch: {
  */
 export async function saveBrand(patch: { name?: string; body?: string }): Promise<DomainState> {
   const name = patch.name?.trim();
-  if (patch.body !== undefined) {
-    const current = activeBrand(await persisted());
-    if (current.sourcePath) {
-      throw new Error(
-        `brand body is synced from ${current.sourcePath} — edit it at the source, not here`,
-      );
-    }
+  const current = activeBrand(await persisted());
+  // With "(none)" there is no record to edit. Refusing is the honest answer:
+  // silently doing nothing would look like a save that landed.
+  if (!current) throw new Error('no brand selected — pick or create one first');
+  if (patch.body !== undefined && current.sourcePath) {
+    throw new Error(
+      `brand body is synced from ${current.sourcePath} — edit it at the source, not here`,
+    );
   }
   return updateDoc((s) => {
-    const activeId = activeBrand(s).id;
+    const activeId = activeBrand(s)?.id;
     return {
       ...s,
       brands: s.brands.map((b) =>
@@ -419,12 +436,19 @@ export async function createBrand(input: { name: string }): Promise<DomainState>
   });
 }
 
-/** Activate a saved brand by id — and read it back off disk (WP2). */
-export async function switchBrand(id: string): Promise<DomainState> {
-  const current = await persisted();
-  if (!current.brands.some((b) => b.id === id)) throw new Error(`unknown brand: ${id}`);
+/**
+ * Activate a saved brand by id — or NONE (`null`), which composes a primer of
+ * Template + Project only. Reads the newly-active brand back off disk (WP2).
+ */
+export async function switchBrand(id: string | null): Promise<DomainState> {
+  if (id !== null) {
+    const current = await persisted();
+    if (!current.brands.some((b) => b.id === id)) throw new Error(`unknown brand: ${id}`);
+  }
   // Re-check inside the closure — the validated read above may be stale.
-  await updateDoc((s) => (s.brands.some((b) => b.id === id) ? { ...s, activeBrandId: id } : s));
+  await updateDoc((s) =>
+    id === null || s.brands.some((b) => b.id === id) ? { ...s, activeBrandId: id } : s,
+  );
   await hydrateActive();
   return getDomain();
 }
@@ -481,7 +505,7 @@ export async function createTemplate(input: {
       const activeId = activeRecord(s).project.id;
       // Born in the repo when there is one (WP2): a template that only ever
       // existed in domain.json is the exact loss this work package prevents.
-      const repoRoot = activeBrand(s).repoRoot;
+      const repoRoot = activeBrand(s)?.repoRoot;
       return {
         ...s,
         templates: [
@@ -532,6 +556,109 @@ export async function switchTemplate(id: string | null): Promise<DomainState> {
 export async function composePrimer(): Promise<string> {
   const s = await persisted();
   return compose(activeBrand(s), activeTemplate(s), activeRecord(s).project);
+}
+
+/**
+ * Rename the ACTIVE project's theme (A5).
+ *
+ * The theme name is not decoration: `makeRunId` slugs it into every run folder
+ * (`2026-08-03-1446-smoothies`), and `runs.list` shows it. It has been fixed to
+ * the project id since creation, so every batch of a long-lived project lands in
+ * folders named after the project rather than after what was actually generated
+ * — "smoothies" whether the queue was fruit or Australian animals.
+ *
+ * Verb-only, deliberately: the CONTEXT rail is already five sections deep, and a
+ * sixth control for a field edited once or twice a project is not worth the
+ * pixels. `runs.list` still shows the old name on old runs, which is correct —
+ * a run folder records what it was called when it ran.
+ */
+export async function renameTheme(name: string): Promise<DomainState> {
+  const next = name.trim();
+  if (!next) throw new Error('theme name is required');
+  return updateAndMirror(() =>
+    updateActive((rec) => ({ ...rec, theme: { ...rec.theme, name: next } })),
+  );
+}
+
+/* ── A7: deletes ──────────────────────────────────────────────────────
+ *
+ * All three remove a record from `domain.json` and NOTHING from disk. With a
+ * repo attached the files under `projects/<id>/` and `templates/<id>/` are the
+ * source of truth and are tracked in git; deleting them here would destroy
+ * committed work from a confirm dialog, and the app is not the right place to
+ * delete something git is holding. Re-attaching the repo imports it all back —
+ * which is exactly the property that makes forgetting safe.
+ *
+ * Each refuses rather than cascading a silent change into a primer. That is the
+ * same rule `activeTemplate` follows for a dangling pointer: a wrong recipe is
+ * worse than a missing one, and worst of all is one that changed without saying.
+ */
+
+/**
+ * Forget a brand. If it was the active one the selection becomes `(none)` —
+ * which A1 made expressible, and is the only honest answer: substituting the
+ * next brand in the list would put an unchosen look into the next primer.
+ */
+export async function deleteBrand(id: string): Promise<DomainState> {
+  const current = await persisted();
+  if (!current.brands.some((b) => b.id === id)) throw new Error(`unknown brand: ${id}`);
+  return updateDoc((s) => ({
+    ...s,
+    brands: s.brands.filter((b) => b.id !== id),
+    activeBrandId: s.activeBrandId === id ? null : s.activeBrandId,
+  }));
+}
+
+/**
+ * Forget a template. Refused while any project still points at it, naming them:
+ * clearing those pointers would silently drop the recipe — and its `negatives`,
+ * which are hard constraints — out of primers nobody was editing at the time.
+ */
+export async function deleteTemplate(id: string): Promise<DomainState> {
+  const current = await persisted();
+  if (!current.templates.some((t) => t.id === id)) throw new Error(`unknown template: ${id}`);
+  const users = current.projects
+    .filter((r) => r.project.templateId === id)
+    .map((r) => r.project.id);
+  if (users.length > 0) {
+    throw new Error(
+      `template ${id} is still used by ${users.join(', ')} — switch each project to (none) first`,
+    );
+  }
+  return updateDoc((s) => ({ ...s, templates: s.templates.filter((t) => t.id !== id) }));
+}
+
+/**
+ * Forget a project, and its queue with it. Refused for the LAST project: the
+ * cockpit has no "no project" state — `DomainState.project` is non-null
+ * everywhere — so an empty list is a crash, not a blank slate.
+ *
+ * Deleting the ACTIVE project activates the first one left. That is a
+ * substitution, unlike the brand case, and it is the right one here: something
+ * has to be active, and the alternative is a broken window.
+ */
+export async function deleteProject(id: string): Promise<DomainState> {
+  const current = await persisted();
+  if (!current.projects.some((r) => r.project.id === id)) {
+    throw new Error(`unknown project: ${id}`);
+  }
+  if (current.projects.length < 2) {
+    throw new Error('cannot delete the last project — create another one first');
+  }
+  await updateDoc((s) => {
+    const projects = s.projects.filter((r) => r.project.id !== id);
+    // Guard again inside the closure: the validated read above may be stale.
+    if (projects.length === 0) return s;
+    return {
+      ...s,
+      projects,
+      activeProjectId:
+        s.activeProjectId === id ? projects[0].project.id : s.activeProjectId,
+    };
+  });
+  // The newly-active project is read back off disk, exactly as switchProject does.
+  await hydrateActive();
+  return getDomain();
 }
 
 /** The active theme prompts, in order — the run queue snapshot source. */
@@ -593,7 +720,7 @@ export async function createProject(input: {
   return updateAndMirror(() =>
     updateDoc((s) => {
       const id = uniqueSlug(name, s.projects.map((r) => r.project.id));
-      const repoRoot = activeBrand(s).repoRoot;
+      const repoRoot = activeBrand(s)?.repoRoot;
       const record: ProjectRecord = {
         project: {
           id,

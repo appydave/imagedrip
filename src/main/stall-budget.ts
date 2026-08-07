@@ -20,8 +20,32 @@
  * image, which is roughly half of them.
  */
 
-/** No samples yet: assume a slow model rather than interrupt a healthy run. */
-export const BOOTSTRAP_STALL_MS = 4 * 60 * 1000;
+/** Headroom over the slowest seen — the cap must clear the known worst case. */
+const MAX_FACTOR = 1.3;
+
+/**
+ * The slowest generation ImageDrip has actually observed.
+ *
+ * Run `2026-08-03-1446-smoothies`: normal images landed at 57–116s, and one took
+ * 300s. That single sample is the evidence the bootstrap has to survive.
+ */
+const OBSERVED_SLOWEST_MS = 300 * 1000;
+
+/**
+ * No samples yet: assume a slow model rather than interrupt a healthy run.
+ *
+ * This was 4 minutes, and 4 minutes was too impatient — which is the SAME
+ * failure the derived cap below was built to end, surviving in the one place the
+ * derivation does not reach. In `2026-08-03-1446-smoothies` the run's only prior
+ * timing was Dragonite's 0s, a mis-attributed DOM src that `MIN_PLAUSIBLE_MS`
+ * correctly discards; with no valid samples the budget was still bootstrap when
+ * a genuine 300s generation was in flight, and it fired at 240s.
+ *
+ * So it is no longer chosen either: it is the worst case actually seen, with the
+ * same headroom the computed cap gives its own worst case. A slower generation
+ * than any yet observed raises `OBSERVED_SLOWEST_MS`, and this follows.
+ */
+export const BOOTSTRAP_STALL_MS = Math.round(OBSERVED_SLOWEST_MS * MAX_FACTOR);
 
 /**
  * Below this, it was not a generation.
@@ -51,8 +75,6 @@ const MAX_STALL_MS = 15 * 60 * 1000;
 
 /** Headroom over the mean — covers ordinary run-to-run variance. */
 const MEAN_FACTOR = 1.75;
-/** Headroom over the slowest seen — the cap must clear the known worst case. */
-const MAX_FACTOR = 1.3;
 
 /**
  * The stall cap implied by the generation times observed so far.

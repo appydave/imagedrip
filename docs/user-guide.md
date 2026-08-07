@@ -444,15 +444,32 @@ Honest list of what doesn't work yet, and what hasn't been proven.
 
 | Limit | Detail |
 |---|---|
-| **ChatGPT panel is narrow and fixed** | It can't be widened or resized. Signing in and reading replies in it is cramped. (WP6) |
 | **No account switcher** | One hard-coded session. If Google auto-picks the wrong account, you have to sign out inside the panel and back in. (WP6) |
 | **Design polish pass** | The cockpit is functional, not finished. (WP7) |
 | **Project copy-back** | Project.md is saved inside ImageDrip; it isn't copied back out to a source file elsewhere. |
 | **Reference images** | Attaching a reference image per prompt is in the data model but not implemented. |
 | **Other providers** | ChatGPT only. DZINE / Higgsfield are planned behind the same model. |
-| **Prompt intake via API/MCP** | Import or paste a list; there's no programmatic intake. |
 | **Packaging** | Runs from source; there's no signed `.app` installer. |
-| **Run tuning** | Cadence and chunk size are fixed defaults with no settings UI. |
+| **No settings screen for run tuning** | Cadence, chunk size and the settle delays have no controls on the rail. They are **not** unreachable — see below. |
+
+### Fixed since this list was written
+
+Two rows sat here describing the app as less capable than it is. Both are gone,
+and both are worth naming, because an honest limits list that *understates* the
+app costs you the feature just as surely as one that overstates it.
+
+| Was listed as | Actually |
+|---|---|
+| *"ChatGPT panel is narrow and fixed — it can't be widened or resized"* | The panel has **S / M / L** buttons (380 / 560 / 820px) above it **and a draggable edge**, and it remembers the width you leave it at. So does the CONTEXT rail on the left. |
+| *"Prompt intake via API/MCP — there's no programmatic intake"* | There is. ImageDrip runs a loopback control surface, and an operator chat can read the domain and write prompts straight into the queue. See [`requirements-v4-resident-chat.md`](requirements-v4-resident-chat.md). |
+
+**On run tuning:** there is no settings *screen*, and there is deliberately not
+going to be one — the rail is already the most crowded surface in the app. Every
+`RunConfig` field (`chunkSize`, `cadenceBaseMs`, `cadenceJitterMs`,
+`primerSettleMs`, `loadSettleMs`) is accepted by the `run.start` verb, so
+"run it with a 30-second cadence and re-prime every 12" is something you ask the
+chat for. The same goes for renaming a theme (`theme.rename`) and removing a
+brand, project or template (`brand.delete`, `project.delete`, `template.delete`).
 
 ### Built but not yet proven
 

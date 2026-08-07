@@ -318,7 +318,8 @@ export default function App(): JSX.Element {
           ) : null}
         </span>
 
-        {/* Live UAT gate (docs/live-uat.md) — off by default, never a nag. */}
+        {/* Live UAT gate (docs/live-uat.md) — ON by default (A4): off shipped
+            zero captures in four days. Switching it off is remembered. */}
         <UatToggle />
       </header>
 
@@ -835,7 +836,7 @@ function ContextPanel(props: {
   onSaveProject: (patch: { name?: string; body?: string; outputDir?: string }) => Promise<boolean>;
   onSaveBrand: (patch: { name?: string; body?: string }) => Promise<boolean>;
   onCreateBrand: (name: string) => void;
-  onSwitchBrand: (id: string) => void;
+  onSwitchBrand: (id: string | null) => void;
   onChooseRepo: () => Promise<string | null>;
   onAttachRepo: (root: string) => void;
   onSaveTemplate: (patch: {
@@ -917,7 +918,7 @@ function ContextPanel(props: {
 
       {d && (
         <BrandCard
-          key={d.activeBrandId}
+          key={d.activeBrandId ?? 'none'}
           domain={d}
           locked={props.isRunning}
           onSave={props.onSaveBrand}
@@ -1179,20 +1180,20 @@ function BrandCard(props: {
   locked: boolean;
   onSave: (patch: { name?: string; body?: string }) => Promise<boolean>;
   onCreate: (name: string) => void;
-  onSwitch: (id: string) => void;
+  onSwitch: (id: string | null) => void;
   onChooseRepo: () => Promise<string | null>;
   onAttachRepo: (root: string) => void;
 }): JSX.Element {
   const { brand, brands, activeBrandId } = props.domain;
-  const name = useAutosave(brand.name, (v) => props.onSave({ name: v }));
-  const body = useAutosave(brand.body, (v) => props.onSave({ body: v }));
+  const name = useAutosave(brand?.name ?? '', (v) => props.onSave({ name: v }));
+  const body = useAutosave(brand?.body ?? '', (v) => props.onSave({ body: v }));
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const dirty = name.state !== 'saved' || body.state !== 'saved';
   // A brand SYNCED from a repo's brand/DESIGN.md is read-only here (WP2). The
   // canonical style library is the `brand` skill; a second editable copy is
   // exactly the drift v-aitldr's "do NOT edit here" rule exists to prevent.
-  const synced = Boolean(brand.sourcePath);
+  const synced = Boolean(brand?.sourcePath);
 
   return (
     <div className="rounded-lg border border-edge bg-cream p-2.5">
@@ -1201,20 +1202,24 @@ function BrandCard(props: {
           sure what I'm looking at… I don't know what field it's going into." */}
       <CardHeading step={1} title="BRAND" hint="the fixed look — locks during runs" />
       <div className="flex items-center justify-between gap-2">
-        {props.locked ? (
-          <div className="font-display text-sm font-semibold">{brand.name} 🔒</div>
+        {brand ? (
+          props.locked ? (
+            <div className="font-display text-sm font-semibold">{brand.name} 🔒</div>
+          ) : (
+            <input
+              value={name.value}
+              onChange={(e) => name.onChange(e.target.value)}
+              onBlur={name.flush}
+              className="w-full rounded-md border border-transparent bg-transparent font-display text-sm font-semibold text-brown outline-none hover:border-edge focus:border-amber"
+            />
+          )
         ) : (
-          <input
-            value={name.value}
-            onChange={(e) => name.onChange(e.target.value)}
-            onBlur={name.flush}
-            className="w-full rounded-md border border-transparent bg-transparent font-display text-sm font-semibold text-brown outline-none hover:border-edge focus:border-amber"
-          />
+          <div className="font-display text-sm font-semibold text-muted">(no brand)</div>
         )}
         <FlagButton
           region="context-brand"
           snapshot={() =>
-            `brand="${brand.name}" (${brands.length} brands) locked=${props.locked} body=${brand.body.length}ch`
+            `brand="${brand?.name ?? '(none)'}" (${brands.length} brands) locked=${props.locked} body=${brand?.body.length ?? 0}ch`
           }
         />
         {!props.locked && (
@@ -1233,18 +1238,29 @@ function BrandCard(props: {
         ) : (
           <span>brand · editable (locks during runs)</span>
         )}
-        {!props.locked && <SaveDot state={dirty ? (name.state === 'saving' || body.state === 'saving' ? 'saving' : 'dirty') : 'saved'} />}
+        {!props.locked && brand && <SaveDot state={dirty ? (name.state === 'saving' || body.state === 'saving' ? 'saving' : 'dirty') : 'saved'} />}
       </div>
       {/* Always rendered. Hiding it below 2 brands meant nothing said that more
           than one brand was even possible — snag-2: "I'm assuming I can have
-          other ones. I'm not sure where the list of this would go." */}
+          other ones. I'm not sure where the list of this would go."
+
+          It is also never DISABLED any more. It used to be, below two brands —
+          which locked a fresh install into the seeded demo brand with no way
+          out: every primer carried "Beauty & Joy" whether or not the work had
+          anything to do with it. "(none)" is the way out, and a disabled select
+          cannot reach it. */}
       <select
-        value={activeBrandId}
-        disabled={props.locked || brands.length < 2}
-        onChange={(e) => props.onSwitch(e.target.value)}
-        title={brands.length < 2 ? 'only one brand so far — ＋ new adds another' : 'switch brand'}
+        value={activeBrandId ?? ''}
+        disabled={props.locked}
+        onChange={(e) => props.onSwitch(e.target.value || null)}
+        title={
+          brands.length === 0
+            ? 'no brands yet — ＋ new creates one'
+            : 'switch brand, or (none) for no house style'
+        }
         className="mt-1.5 w-full rounded-md border border-edge bg-cream px-1.5 py-1 font-display text-xs text-brown outline-none focus:border-amber disabled:opacity-60"
       >
+        <option value="">(none — primer is Template + Project)</option>
         {brands.map((b) => (
           <option key={b.id} value={b.id}>
             {b.name}
@@ -1273,44 +1289,56 @@ function BrandCard(props: {
           </button>
         </div>
       )}
-      <textarea
-        value={body.value}
-        onChange={(e) => body.onChange(e.target.value)}
-        onBlur={body.flush}
-        disabled={props.locked || synced}
-        placeholder="Brand.md — the fixed tone…"
-        className="mt-2 h-20 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber disabled:opacity-60"
-      />
+      {/* Everything below edits a brand RECORD, so with "(none)" there is
+          nothing to point it at — main refuses both saveBrand and repo.attach.
+          Showing disabled controls would offer an edit that cannot land. */}
+      {brand ? (
+        <>
+          <textarea
+            value={body.value}
+            onChange={(e) => body.onChange(e.target.value)}
+            onBlur={body.flush}
+            disabled={props.locked || synced}
+            placeholder="Brand.md — the fixed tone…"
+            className="mt-2 h-20 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber disabled:opacity-60"
+          />
 
-      {/* ── the brand REPO (WP2) — where this brand's files actually live ── */}
-      <div className="mt-2 border-t border-edge pt-2">
-        <div className="font-mono text-[10px] text-muted">
-          repo — <b className="text-brown">files on disk are the source of truth</b>
-        </div>
-        <button
-          type="button"
-          disabled={props.locked}
-          onClick={() => {
-            void props.onChooseRepo().then((root) => {
-              if (root) props.onAttachRepo(root);
-            });
-          }}
-          title={
-            brand.repoRoot
-              ? `attached to ${brand.repoRoot} — pick again to re-point`
-              : 'pick this brand’s repo, e.g. ~/dev/image-projects/i-appydave'
-          }
-          className="mt-1 w-full truncate rounded-md border border-edge bg-cream px-2.5 py-1.5 text-left font-mono text-[10px] text-muted hover:border-amber disabled:opacity-60"
-        >
-          {brand.repoRoot ?? 'attach a brand repo…  (~/dev/image-projects/i-<brand>)'}
-        </button>
-        {synced && (
-          <p className="mt-1 font-mono text-[10px] leading-relaxed text-amber">
-            brand text is SYNCED from <code>brand/DESIGN.md</code> — edit it at the source (the{' '}
-            <code>brand</code> skill), not here.
-          </p>
-        )}
-      </div>
+          {/* ── the brand REPO (WP2) — where this brand's files actually live ── */}
+          <div className="mt-2 border-t border-edge pt-2">
+            <div className="font-mono text-[10px] text-muted">
+              repo — <b className="text-brown">files on disk are the source of truth</b>
+            </div>
+            <button
+              type="button"
+              disabled={props.locked}
+              onClick={() => {
+                void props.onChooseRepo().then((root) => {
+                  if (root) props.onAttachRepo(root);
+                });
+              }}
+              title={
+                brand.repoRoot
+                  ? `attached to ${brand.repoRoot} — pick again to re-point`
+                  : 'pick this brand’s repo, e.g. ~/dev/image-projects/i-appydave'
+              }
+              className="mt-1 w-full truncate rounded-md border border-edge bg-cream px-2.5 py-1.5 text-left font-mono text-[10px] text-muted hover:border-amber disabled:opacity-60"
+            >
+              {brand.repoRoot ?? 'attach a brand repo…  (~/dev/image-projects/i-<brand>)'}
+            </button>
+            {synced && (
+              <p className="mt-1 font-mono text-[10px] leading-relaxed text-amber">
+                brand text is SYNCED from <code>brand/DESIGN.md</code> — edit it at the source (the{' '}
+                <code>brand</code> skill), not here.
+              </p>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted">
+          no house style — the primer is just the Template and the Project. Pick a brand above,
+          or ＋ new, to add one back.
+        </p>
+      )}
     </div>
   );
 }

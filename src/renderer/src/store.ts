@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { DomainState, ImportFormat, ImportMode } from '@shared/domain';
 import type { RunManifest, RunStatus, RunSummary } from '@shared/ipc';
-import type { UatCounts, Verdict, VerdictInput } from '@shared/live-uat';
+import { uatEnabled, type UatCounts, type Verdict, type VerdictInput } from '@shared/live-uat';
 
 export type Mode = 'dial-in' | 'auto';
 
@@ -34,7 +34,8 @@ interface AppState {
   /** Autosave path (WP2) — false when the run-lock refused the edit. */
   saveBrand: (patch: { name?: string; body?: string }) => Promise<boolean>;
   createBrand: (name: string) => Promise<void>;
-  switchBrand: (id: string) => Promise<void>;
+  /** `null` selects "(none)" — a primer with no house style. */
+  switchBrand: (id: string | null) => Promise<void>;
   /** Autosave path for the TEMPLATE card — false when the run-lock refused it. */
   saveTemplate: (patch: {
     name?: string;
@@ -78,7 +79,7 @@ interface AppState {
   setCtx: (open: boolean) => void;
   setMode: (mode: Mode) => void;
 
-  /** Live UAT gate (docs/live-uat.md). Off by default; persisted across restarts. */
+  /** Live UAT gate (docs/live-uat.md). ON by default (A4); persisted across restarts. */
   uat: boolean;
   uatCounts: UatCounts | null;
   setUat: (on: boolean) => void;
@@ -316,7 +317,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ── Live UAT (docs/live-uat.md) — capture only. These calls must never be
   // able to change what the app does; the feedback channel is separate from the
   // decision channel by construction (they don't touch domain.json).
-  uat: localStorage.getItem(UAT_KEY) === 'on',
+  uat: uatEnabled(localStorage.getItem(UAT_KEY)),
   uatCounts: null,
   setUat: (on) => {
     localStorage.setItem(UAT_KEY, on ? 'on' : 'off');

@@ -34,6 +34,24 @@ export const IPC = {
   brandCreate: 'imagedrip:brand:create',
   brandSwitch: 'imagedrip:brand:switch',
 
+  /**
+   * ── A5 / A7: verb-only channels — no renderer client, by design ──
+   *
+   * Registered here rather than as HTTP-only routes for the same reason
+   * `contextGet` is: the control surface MIRRORS this registry, so a route that
+   * bypassed it would be a second write path with its own validation to drift.
+   * The CONTEXT rail is already five sections deep and these are rare edits —
+   * the chat is the right surface for them, not a sixth card.
+   */
+  /** Rename the ACTIVE project's theme — it names every future run folder. */
+  themeRename: 'imagedrip:theme:rename',
+  /** Forget a brand. Confirm-first; removes nothing from disk. */
+  brandDelete: 'imagedrip:brand:delete',
+  /** Forget a template. Confirm-first; refused while a project points at it. */
+  templateDelete: 'imagedrip:template:delete',
+  /** Forget a project and its queue. Confirm-first; refused for the last one. */
+  projectDelete: 'imagedrip:project:delete',
+
   // ── ImageDrip: the brand repo (v3 WP2) — files on disk are the source of truth ──
   /** Native folder picker for a brand repo root (`~/dev/image-projects/i-<brand>`). */
   repoChooseRoot: 'imagedrip:repo:choose-root',
@@ -350,7 +368,8 @@ export interface ImagedripApi {
   /** Brand identity (WP2). Brand is LOCKED while a run is live — a run-state lock. */
   brands: {
     create(input: { name: string }): Promise<DomainState>;
-    switch(id: string): Promise<DomainState>;
+    /** Activate a saved brand — `null` means "no brand"; the primer is Template + Project. */
+    switch(id: string | null): Promise<DomainState>;
   };
   /**
    * The brand repo (v3 WP2) — `~/dev/image-projects/i-<brand>`. Attaching moves

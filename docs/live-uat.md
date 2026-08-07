@@ -216,16 +216,25 @@ by construction; the build must keep them that way (a Live UAT write must never 
 Fields that exist in the data or the runtime with **no editor in the UI**. Snags
 landing here are the strongest signal about which editor to build next.
 
+**"No editor in the UI" is not the same as "unreachable".** Since v4 the control
+surface publishes the IPC registry as verbs, so a field an agent can set over the
+chat is *reachable* — it just has no rail control. Only genuinely unreachable
+fields belong in this table; a row for something the chat already does sends the
+next session off to build a settings panel nobody needs.
+
 | Field | Where it lives | Why it stings |
 |---|---|---|
-| `RunConfig.primerSettleMs` / `loadSettleMs` | `shared/ipc.ts` | These were bumped **in source** to fix the paste-without-enter symptom. David cannot tune the fix that fixed his bug. |
-| `RunConfig.cadenceBaseMs` / `cadenceJitterMs` | `shared/ipc.ts` | The human-pacing dial — the ToS mitigation — has no UI. |
-| `RunConfig.chunkSize` | `shared/ipc.ts` | Re-prime frequency is the main lever against style drift. Hard-coded from the UI's point of view. |
 | `Project.sourcePath` | `shared/domain.ts` | Dial-in copy-back is modelled and never wired or exposed. |
 | `Prompt.refImage` | `shared/domain.ts` | Declared, deferred, no control. |
-| `Theme.name` | `shared/domain.ts` | Defaults to the project id; no rename. Run folders inherit it. |
-| brand / project **delete** | `domain-store.ts` | Create and switch exist. Nothing can ever be removed. |
-| ChatGPT panel width | `App.tsx` | WP6, not started — the known worst ergonomic complaint. |
+
+### Closed — and how (2026-08-07)
+
+| Was | Closed by |
+|---|---|
+| All five `RunConfig` fields (`chunkSize`, `cadenceBaseMs`, `cadenceJitterMs`, `primerSettleMs`, `loadSettleMs`) | **A8 — already reachable, nothing built.** `run.start` takes the whole `RunConfig`, and it is published on `/v1/verbs`. "Run it with a 30-second cadence" works today. A settings UI would be a second way to say the same thing, on the rail that is already the most crowded surface in the app. |
+| `Theme.name` | **A5 — the `theme.rename` verb.** Verb-only for the same reason: the CONTEXT rail is five sections deep and this is edited once or twice a project. |
+| brand / project / template **delete** | **A7 — `brand.delete`, `project.delete`, `template.delete`.** Gated (confirm-first), verb-only. Each forgets a record and removes nothing from disk. |
+| ChatGPT panel width | **Already built.** The panel has S/M/L buttons *and* a draggable edge (`useResizable.tsx`). This row outlived the fix — see A9. |
 
 ---
 

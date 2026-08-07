@@ -35,7 +35,16 @@ export interface ProjectRecord {
 export interface PersistedDomain {
   version: 4;
   brands: Brand[];
-  activeBrandId: string;
+  /**
+   * Which brand is active, or null for "(none)" — the primer then composes
+   * Template + Project only.
+   *
+   * Deliberately NOT a version bump: `string | null` is a WIDENING of the v4
+   * field, so every document already on disk stays valid v4 and nothing has to
+   * be rewritten. A bump here would take a `.bak` and re-write David's real
+   * store to record a change that alters no byte of it.
+   */
+  activeBrandId: string | null;
   /** The template LIBRARY — shared across brands and projects (§2). */
   templates: Template[];
   projects: ProjectRecord[];

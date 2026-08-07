@@ -139,6 +139,56 @@ describe('compose — BACK-COMPAT: an empty Template changes nothing', () => {
   });
 });
 
+describe('compose — a NULL brand drops the LOOK layer and nothing else', () => {
+  /** The exact two-part composition a brand-less project must produce. */
+  function templateAndProject(t: Template, p: Project): string {
+    return [t.body.trim(), p.body.trim()].filter(Boolean).join('\n\n');
+  }
+
+  it('is byte-identical to Template + Project', () => {
+    expect(compose(null, template, project)).toBe(templateAndProject(template, project));
+  });
+
+  it('is byte-identical with an UNDEFINED brand', () => {
+    expect(compose(undefined, template, project)).toBe(templateAndProject(template, project));
+  });
+
+  it('is byte-identical with an EMPTY brand record — same mechanism, not a special case', () => {
+    const empty: Brand = { id: 'e', name: 'empty', body: '' };
+    expect(compose(empty, template, project)).toBe(templateAndProject(template, project));
+    expect(compose({ ...empty, body: '  \n\t ' }, template, project)).toBe(
+      templateAndProject(template, project),
+    );
+  });
+
+  it('still carries the template’s negatives — dropping the brand drops ONLY the brand', () => {
+    // The hard constraints belong to the recipe, so losing the house style must
+    // never lose them: that is the failure mode a null brand could plausibly
+    // introduce, and it is exactly the one Challenge DV cannot afford.
+    const withNegatives: Template = { ...template, negatives: 'no faces' };
+    expect(compose(null, withNegatives, project)).toBe(
+      [template.body, `${NEGATIVES_HEADING}\nno faces`, project.body].join('\n\n'),
+    );
+  });
+
+  it('leaves the Project alone when BOTH brand and template are none', () => {
+    // The floor of the composition: with nothing above it, the primer is the
+    // subject verbatim — no stray separators from the dropped layers.
+    expect(compose(null, null, project)).toBe(project.body);
+  });
+
+  it('holds across every shape of template and project body', () => {
+    const bodies = ['', '   ', 'some text', 'multi\nline\ntext'];
+    for (const t of bodies) {
+      for (const p of bodies) {
+        const tt = { ...template, body: t };
+        const pp = { ...project, body: p };
+        expect(compose(null, tt, pp)).toBe(templateAndProject(tt, pp));
+      }
+    }
+  });
+});
+
 describe('templateFragment', () => {
   it('is empty for null, undefined and an empty record', () => {
     expect(templateFragment(null)).toBe('');
