@@ -4,7 +4,9 @@ import {
   describeVerb,
   isExposed,
   isGated,
+  requiresEngine,
   toVerb,
+  ENGINE_REQUIRED_VERBS,
   GATED_VERBS,
   NEVER_EXPOSED,
   VERB_DOCS,
@@ -160,5 +162,62 @@ describe('toToolInputSchema', () => {
     const { schema, wrapped } = toToolInputSchema(undefined);
     expect(wrapped).toBe(false);
     expect(schema).toEqual({ type: 'object', properties: {} });
+  });
+});
+
+/**
+ * Which verbs require a signed-in engine.
+ *
+ * The asymmetry here is the whole design: verbs that FEED the engine are gated,
+ * verbs that STOP it never are. Gating stop would make a run un-stoppable in
+ * precisely the situation the gate exists for — a batch mid-flight against a
+ * page that is not the composer.
+ */
+describe('requiresEngine', () => {
+  it('gates the verbs that feed the engine', () => {
+    expect(requiresEngine('run.start')).toBe(true);
+    expect(requiresEngine('run.resume')).toBe(true);
+  });
+
+  it('NEVER gates the verbs that halt a run', () => {
+    expect(requiresEngine('run.stop')).toBe(false);
+    expect(requiresEngine('run.pause')).toBe(false);
+  });
+
+  it('leaves read-only and config verbs reachable on a signed-out machine', () => {
+    // A machine that has never signed in can still be configured and have
+    // prompts written into its queue — that is most of the value of reaching
+    // the app from a chat, and over-gating would throw it away.
+    for (const verb of [
+      'context.get',
+      'domain.get',
+      'domain.import-prompts',
+      'template.save',
+      'project.create',
+      'run.chat-state',
+      'runs.manifest',
+    ]) {
+      expect(requiresEngine(verb)).toBe(false);
+    }
+  });
+
+  it('is false for an unknown verb — the list is explicit, never inferred', () => {
+    expect(requiresEngine('nonsense.verb')).toBe(false);
+  });
+
+  it('every engine-required verb is also confirm-first', () => {
+    // Feeding a live paid session should never be reachable without a human
+    // yes, independent of whether the engine happens to be up.
+    for (const verb of ENGINE_REQUIRED_VERBS) {
+      expect(GATED_VERBS).toContain(verb);
+    }
+  });
+
+  it('documents the precondition on every gated verb it applies to', () => {
+    // An agent reads these to decide its next move; a gate it cannot see in the
+    // docs becomes a surprise 409 mid-plan.
+    for (const verb of ENGINE_REQUIRED_VERBS) {
+      expect(VERB_DOCS[verb]).toMatch(/engine/i);
+    }
   });
 });

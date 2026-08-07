@@ -130,9 +130,16 @@ export function toTool(verb) {
   const gate = verb.gated
     ? 'CONFIRM-FIRST — you must ask the user and get an explicit yes before calling this. Never call it on your own initiative. '
     : '';
+  // Same principle as the confirm-first banner: a restatement of the surface's
+  // own flag, in the one place an agent is guaranteed to read. Without it the
+  // precondition is only discoverable by tripping it, and by then the agent has
+  // usually already told the user their batch is starting.
+  const engine = verb.requiresEngine
+    ? 'REQUIRES A SIGNED-IN ENGINE — call imagedrip_context_get first and check engine.ready. If it is false, relay engine.hint to the user and STOP; a human must sign in to ChatGPT by hand in the app on that machine, and no tool call can do it for them. '
+    : '';
   return {
     name: toolName(verb.verb),
-    description: `${gate}${verb.description} (ImageDrip verb: ${verb.verb})`,
+    description: `${gate}${engine}${verb.description} (ImageDrip verb: ${verb.verb})`,
     inputSchema: verb.inputSchema ?? { type: 'object', properties: {} },
   };
 }
@@ -169,9 +176,15 @@ export function toToolResult(res) {
     };
   }
   const label =
-    res.status === 409
-      ? 'REFUSED by ImageDrip (this is a rule, not a bug — report it to the user; do not work around it)'
-      : res.status === 422
+    res.status === 409 && res.body?.error === 'engine_not_ready'
+      ? // Distinguished from an ordinary refusal because the resolution differs:
+        // a run-state lock clears itself when the run ends, but this one clears
+        // only when a HUMAN acts. Telling the agent to wait and retry would
+        // leave it polling a condition no amount of waiting can change.
+        'BLOCKED — the ChatGPT engine is not ready. A HUMAN must fix this; retrying will not. Relay the message below to the user verbatim and stop'
+      : res.status === 409
+        ? 'REFUSED by ImageDrip (this is a rule, not a bug — report it to the user; do not work around it)'
+        : res.status === 422
         ? 'INVALID INPUT — correct the payload from the issues below and retry'
         : res.status === 404
           ? 'NO SUCH VERB — this capability does not exist in ImageDrip. Tell the user it cannot be done'

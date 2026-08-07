@@ -103,6 +103,17 @@ export const WEBVIEW = {
   inbound: 'imagedrip:webview',
   /** main → preload: "report the composer input rect for a synthesized click". */
   locateInput: 'imagedrip:locate-input',
+  /**
+   * main → preload: "is this page able to accept a prompt?" — read-only.
+   *
+   * Deliberately NOT a second caller of `locateInput`. The harness resolves that
+   * one through a single-slot `pendingRect` callback, so a readiness probe
+   * arriving mid-`feed` would steal the in-flight resolution and leave `feed`
+   * to time out with `rect === null` — which is precisely the branch that pastes
+   * into whatever holds focus. A guard that can cause the bug it prevents is
+   * worse than no guard, so readiness gets its own channel and its own slot.
+   */
+  probeEngine: 'imagedrip:probe-engine',
 } as const;
 
 export interface Rect {
@@ -125,7 +136,26 @@ export type WebviewInbound =
   | { type: 'image-done'; imageUrl: string; at: number }
   | { type: 'rate-limit'; text: string; at: number }
   | { type: 'refused'; at: number }
-  | { type: 'input-rect'; rect: Point | null };
+  | { type: 'input-rect'; rect: Point | null }
+  | ({ type: 'engine-probe' } & EngineProbeReport);
+
+/**
+ * What the preload observes about the live ChatGPT page, without sending
+ * anything to it. Declared here so the preload and `engine-readiness.ts` share
+ * ONE shape — the readiness verdict is derived from exactly these fields and
+ * there is no second declaration to drift.
+ */
+export interface EngineProbeReport {
+  /** Is the composer (`promptInput`) present? The one signal meaning "can accept a prompt". */
+  composer: boolean;
+  /** A log-in / sign-up affordance is visible — separates signed-out from still-loading. */
+  loginAffordance: boolean;
+  /** `document.readyState`. */
+  readyState: string;
+  /** Current page URL; `/auth/*` is a second signed-out tell. */
+  url: string;
+  at: number;
+}
 
 /** Harness events pushed to the renderer on `IPC.harnessEvent`. */
 export type HarnessEvent =

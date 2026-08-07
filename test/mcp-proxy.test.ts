@@ -227,3 +227,58 @@ describe('pure helpers', () => {
     expect(out.content[0].text).toMatch(/NO SUCH VERB/);
   });
 });
+
+/**
+ * The engine precondition, as an agent actually encounters it.
+ *
+ * Two distinct moments matter: BEFORE planning (the tool description tells it to
+ * check readiness) and AFTER a refusal (the result tells it a human, not a
+ * retry, is what resolves this).
+ */
+describe('engine precondition in the MCP surface', () => {
+  it('warns on the tool description of an engine-requiring verb', () => {
+    const t = toTool({
+      verb: 'run.start',
+      description: 'Begins feeding a live session.',
+      gated: true,
+      requiresEngine: true,
+      inputSchema: {},
+    });
+    expect(t.description).toMatch(/REQUIRES A SIGNED-IN ENGINE/);
+    expect(t.description).toMatch(/context_get/);
+    expect(t.description).toMatch(/engine\.ready/);
+  });
+
+  it('adds nothing to a verb that does not need the engine', () => {
+    const t = toTool({
+      verb: 'domain.get',
+      description: 'The whole domain document.',
+      gated: false,
+      requiresEngine: false,
+      inputSchema: {},
+    });
+    expect(t.description).not.toMatch(/SIGNED-IN ENGINE/);
+  });
+
+  it('labels an engine refusal as human-fixable, not retryable', () => {
+    // The distinction that stops a polling loop: a run-state lock clears itself
+    // when the run ends, but a missing login never clears on its own.
+    const out = toToolResult({
+      status: 409,
+      body: { error: 'engine_not_ready', verb: 'run.start', message: 'sign in by hand' },
+    });
+    expect(out.isError).toBe(true);
+    expect(out.content[0].text).toMatch(/A HUMAN must fix this; retrying will not/);
+    expect(out.content[0].text).toMatch(/sign in by hand/);
+  });
+
+  it('still labels an ordinary 409 refusal the original way', () => {
+    const out = toToolResult({
+      status: 409,
+      body: { error: 'refused', verb: 'brand.switch', message: 'locked while a run is live' },
+    });
+    expect(out.isError).toBe(true);
+    expect(out.content[0].text).toMatch(/REFUSED by ImageDrip/);
+    expect(out.content[0].text).not.toMatch(/A HUMAN must fix this/);
+  });
+});

@@ -18,6 +18,7 @@ import type { SnagInput, UatCounts, VerdictInput } from '@shared/live-uat';
 import { createConsole } from './create-console.js';
 import { createControlSurface, type ControlSurface } from './control-surface.js';
 import { buildContext, type ContextMode, type ContextResult } from './context-snapshot.js';
+import { buildEngineReadiness, type EngineReadiness } from './engine-readiness.js';
 import { isInside, isInsideWorkTree } from './git-scope.js';
 import { readCounts, revealStore, writeSnag, writeVerdict } from './live-uat-store.js';
 import {
@@ -247,6 +248,24 @@ function pushRunStatus(s: RunStatus): void {
   if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.runStatus, s);
 }
 
+/**
+ * Is the image engine able to accept a prompt? Never throws — an unreachable or
+ * signed-out engine is an ANSWER carrying the manual fix, by the same argument
+ * that makes a stale context an answer.
+ *
+ * Note it probes `harness` directly rather than `getHarness()`: the getter
+ * CREATES a harness, and a readiness check must observe the world, not change
+ * it. With no harness the honest verdict is `detached`.
+ */
+async function getEngineReadiness(): Promise<EngineReadiness> {
+  const probe = harness ? await harness.probeEngine() : null;
+  return buildEngineReadiness({
+    now: Date.now(),
+    attached: harness?.isAttached ?? false,
+    probe,
+  });
+}
+
 /** `context.get` (v4 §9.3) — never throws; a stale answer is `{active:false, hint}`. */
 async function getContext(): Promise<ContextResult> {
   return buildContext({
@@ -255,6 +274,7 @@ async function getContext(): Promise<ContextResult> {
     domain: await getDomain(),
     mode: lastRunMode,
     runPhase: lastRunPhase,
+    engine: await getEngineReadiness(),
   });
 }
 
@@ -712,6 +732,9 @@ const desktop = createConsole({
       userDataDir: app.getPath('userData'),
       version: app.getVersion(),
       isRunning: () => runner?.running ?? false,
+      // The seam the human path gets for free: a person sees the login wall in
+      // the pane, an HTTP caller sees nothing. This is what gives them parity.
+      engineReadiness: () => getEngineReadiness(),
       logger: log,
     });
     void control

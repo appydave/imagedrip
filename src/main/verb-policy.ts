@@ -40,6 +40,13 @@ export interface VerbInfo {
    * destroys work. Declared so an agent can see it; never auto-invoked.
    */
   gated: boolean;
+  /**
+   * Refused unless the ChatGPT engine is signed in and able to accept a prompt.
+   * Published so an agent can see the precondition in `/v1/verbs` rather than
+   * only discovering it from a 409 — and so it knows to read `context.get`'s
+   * `engine` before promising the user a batch.
+   */
+  requiresEngine: boolean;
   /** When to call it, and when not to. */
   description: string;
 }
@@ -71,6 +78,31 @@ export const NEVER_EXPOSED: readonly string[] = [
   'imagedrip:run:inject-primer',
   'imagedrip:run:inject-prompt',
 ];
+
+/**
+ * Verbs that FEED the engine, and therefore require a signed-in one.
+ *
+ * The manual ChatGPT sign-in is the system's one human-only precondition, and a
+ * human running the app sees a login wall and knows. An agent calling over the
+ * control surface sees nothing — so these fail fast at the call, carrying the
+ * hint, rather than starting and discovering it downstream. Downstream here is
+ * not a clean error: `WebviewHarness.feed` pastes into whatever holds focus when
+ * it cannot find the composer, which on a signed-out page is the login form.
+ *
+ * `run.stop` and `run.pause` are deliberately ABSENT, and that is not an
+ * oversight. They halt the engine rather than feed it, and gating them would
+ * make a run un-stoppable in exactly the situation where stopping matters most —
+ * a batch mid-flight against a page that is not the composer. A guard that can
+ * trap the user inside the failure is worse than no guard.
+ *
+ * `run.chat-state` is read-only and stays reachable, so a caller can inspect a
+ * broken engine without being allowed to feed it.
+ */
+export const ENGINE_REQUIRED_VERBS: readonly string[] = ['run.start', 'run.resume'];
+
+export function requiresEngine(verb: string): boolean {
+  return ENGINE_REQUIRED_VERBS.includes(verb);
+}
 
 /** Confirm-first verbs (v4 §6.2), in dot-form. */
 export const GATED_VERBS: readonly string[] = [
@@ -150,12 +182,14 @@ export const VERB_DOCS: Readonly<Record<string, string>> = {
     'The full record of one run: the exact primer as posted, every prompt with its outcome and timing, re-primes and pauses. This is the provenance source — quote it rather than recomposing a primer, which would attribute an image to text it was never generated from.',
   'runs.reveal': "Open one run's folder in Finder.",
   'run.start':
-    'CONFIRM-FIRST — never call this on your own initiative. It begins feeding a live, logged-in ChatGPT session at a human cadence. Ask the user explicitly and get a yes for THIS run. It also requires the app to be open and signed in; it cannot work headlessly.',
-  'run.stop': 'CONFIRM-FIRST. Halts an in-flight batch the user is paying for. Ask first.',
-  'run.pause': 'CONFIRM-FIRST. Interrupts an in-flight batch. Ask first.',
-  'run.resume': 'CONFIRM-FIRST. Resumes a paused batch. Ask first.',
+    'CONFIRM-FIRST — never call this on your own initiative. It begins feeding a live, logged-in ChatGPT session at a human cadence. Ask the user explicitly and get a yes for THIS run. It also REQUIRES a signed-in engine: check context.get -> engine.ready first, and if it is false relay engine.hint to the user rather than calling this and hoping. Calling against an unready engine is refused with 409 and that same hint.',
+  'run.stop':
+    'CONFIRM-FIRST. Halts an in-flight batch the user is paying for. Ask first. Always reachable, even when the engine is unready — stopping must never be blocked by the condition you are stopping because of.',
+  'run.pause': 'CONFIRM-FIRST. Interrupts an in-flight batch. Ask first. Always reachable.',
+  'run.resume':
+    'CONFIRM-FIRST. Resumes a paused batch. Ask first. Like run.start, requires a signed-in engine and is refused with 409 + hint otherwise.',
   'run.chat-state':
-    'Read-only: is the live conversation already primed? Decides whether a run should continue in this chat or start a fresh one. Safe to call.',
+    'Read-only: is the live conversation already primed? Decides whether a run should continue in this chat or start a fresh one. Safe to call. Note it reports the RUNNER\'s view, not the browser\'s — for "is the engine signed in and usable at all", read context.get -> engine.',
   'harvest.thumb': 'Read one harvested image as a data URL, by path relative to the harvest root.',
   'uat.snag': 'Record a Live UAT note about cockpit friction. Capture only — changes nothing.',
   'uat.verdict': 'Record a judgment on harvested images. Capture only — changes nothing.',

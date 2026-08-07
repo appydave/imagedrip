@@ -4,7 +4,13 @@ import type { Logger } from '@appydave/core';
 import type { ChatGPTSelectors } from './chatgpt-selectors.js';
 import type { FileAuthor } from './file-author.js';
 import { harvestImage } from './image-harvest.js';
-import { WEBVIEW, type Point, type Rect, type WebviewInbound } from '../shared/ipc.js';
+import {
+  WEBVIEW,
+  type EngineProbeReport,
+  type Point,
+  type Rect,
+  type WebviewInbound,
+} from '../shared/ipc.js';
 
 /**
  * WebviewHarness (spec §API) — embed a real, logged-in ChatGPT in a
@@ -54,6 +60,12 @@ const DEFAULT_URL = 'https://chatgpt.com/';
  */
 const DEFAULT_STALL_MS = 6 * 60 * 1000;
 const LOCATE_TIMEOUT_MS = 2000;
+/**
+ * Readiness must answer fast enough to sit in front of every `context.get`, and
+ * a silent page is itself an answer (`indeterminate`) rather than something to
+ * keep waiting on — so this is deliberately shorter than the locate timeout.
+ */
+const PROBE_TIMEOUT_MS = 1500;
 
 export class WebviewHarness {
   private readonly opts: WebviewHarnessOptions;
@@ -76,6 +88,12 @@ export class WebviewHarness {
   private feedAt = 0;
   private stallTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingRect: ((rect: Point | null) => void) | null = null;
+  /**
+   * Readiness gets its OWN slot, separate from `pendingRect`. Sharing one would
+   * mean a probe arriving mid-`feed` steals the rect resolution and drops `feed`
+   * into its paste-into-current-focus branch — the guard causing the bug.
+   */
+  private pendingProbe: ((probe: EngineProbeReport | null) => void) | null = null;
 
   constructor(options: WebviewHarnessOptions) {
     this.opts = options;
@@ -260,6 +278,12 @@ export class WebviewHarness {
           this.pendingRect?.(raw.rect);
           this.pendingRect = null;
           break;
+        case 'engine-probe': {
+          const { type: _type, ...probe } = raw;
+          this.pendingProbe?.(probe);
+          this.pendingProbe = null;
+          break;
+        }
         case 'image-done':
           if (raw.imageUrl && raw.imageUrl !== this.lastImageUrl) {
             this.lastImageUrl = raw.imageUrl;
@@ -277,6 +301,36 @@ export class WebviewHarness {
           this.refusedCb?.({ at: raw.at });
           break;
       }
+    });
+  }
+
+  /** Is a ChatGPT view attached at all? Distinguishes "no engine" from "signed out". */
+  get isAttached(): boolean {
+    return this.view !== null;
+  }
+
+  /**
+   * Ask the page whether it could accept a prompt — read-only, sends nothing.
+   *
+   * Resolves null when no view is attached or the preload does not answer in
+   * time. Null means UNKNOWN, never "fine": `buildEngineReadiness` turns it into
+   * an `indeterminate` verdict that blocks a run, because the alternative is
+   * feeding a page nobody has confirmed.
+   */
+  probeEngine(): Promise<EngineProbeReport | null> {
+    const view = this.view;
+    if (!view) return Promise.resolve(null);
+    return new Promise<EngineProbeReport | null>((resolve) => {
+      let done = false;
+      const finish = (probe: EngineProbeReport | null) => {
+        if (done) return;
+        done = true;
+        this.pendingProbe = null;
+        resolve(probe);
+      };
+      this.pendingProbe = finish;
+      view.webContents.send(WEBVIEW.probeEngine);
+      setTimeout(() => finish(null), PROBE_TIMEOUT_MS);
     });
   }
 

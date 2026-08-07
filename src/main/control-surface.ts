@@ -39,7 +39,15 @@ import { promises as fs, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Logger } from '@appydave/core';
 import type { HandlerDef } from './ipc-router.js';
-import { describeVerb, isExposed, isGated, toVerb, type VerbInfo } from './verb-policy.js';
+import {
+  describeVerb,
+  isExposed,
+  isGated,
+  requiresEngine,
+  toVerb,
+  type VerbInfo,
+} from './verb-policy.js';
+import type { EngineReadiness } from './engine-readiness.js';
 import { toToolInputSchema } from './zod-to-json-schema.js';
 
 /** Loopback only. Never a wildcard bind — this surface is for this machine. */
@@ -56,6 +64,14 @@ export const CONTEXT_CHANNEL = 'imagedrip:context:get';
 /** Refuse absurd bodies rather than buffering them. Prompt lists are text, not blobs. */
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
+/**
+ * Used when no readiness probe is wired at all. It still refuses: an unchecked
+ * engine and a broken engine are indistinguishable from here, and only one of
+ * those two guesses can type prompts into a login form.
+ */
+const UNKNOWN_ENGINE_MESSAGE =
+  'The ChatGPT engine could not be checked from this process, so a run is refused rather than started blind. Ask the user to open ImageDrip on this machine and confirm the right-hand pane shows a signed-in ChatGPT.';
+
 export interface ControlSurfaceOptions {
   /** Live view of the IPC registry — read per request, so late registrations appear. */
   defs: () => ReadonlyMap<string, HandlerDef<unknown, unknown>>;
@@ -65,6 +81,16 @@ export interface ControlSurfaceOptions {
   version: string;
   /** Is a batch live? Reported by `/v1/health` so a client can see the gate before it trips. */
   isRunning: () => boolean;
+  /**
+   * Can the ChatGPT engine accept a prompt? Consulted before every
+   * engine-requiring verb (`ENGINE_REQUIRED_VERBS`).
+   *
+   * Optional so the surface stays constructible in tests and in any host that
+   * has no webview — but when it is omitted the engine is treated as UNKNOWN
+   * and those verbs are refused, never waved through. A missing check is not
+   * evidence of a working engine.
+   */
+  engineReadiness?: () => Promise<EngineReadiness>;
   /** Explicit port; otherwise `IMAGEDRIP_CONTROL_PORT`, otherwise 7180. `0` = OS-assigned. */
   port?: number;
   logger?: Logger;
@@ -160,6 +186,7 @@ export function listVerbs(defs: ReadonlyMap<string, HandlerDef<unknown, unknown>
       inputSchema: schema,
       payloadWrapped: wrapped,
       gated: isGated(verb),
+      requiresEngine: requiresEngine(verb),
       description: describeVerb(verb),
     });
   }
@@ -212,6 +239,32 @@ export function createControlSurface(options: ControlSurfaceOptions): ControlSur
     } catch (err) {
       json(res, 422, { error: 'invalid_input', verb, issues: issuesOf(err) });
       return;
+    }
+
+    // The engine gate. Placed AFTER the schema parse deliberately: it preserves
+    // the documented 422-before-409 split exactly, and it means a malformed
+    // payload does not pay for a live DOM probe to be told it was malformed.
+    //
+    // 409 rather than a new code, because this IS the existing category — "you
+    // may not do that right now" — and an agent already knows not to improvise
+    // around a 409. The hint travels in `message`, where a client that only
+    // knows the old shape still surfaces it verbatim.
+    if (requiresEngine(verb)) {
+      const readiness = await options.engineReadiness?.();
+      if (!readiness?.ready) {
+        const message = readiness?.hint ?? UNKNOWN_ENGINE_MESSAGE;
+        options.logger?.info(
+          { verb, state: readiness?.state ?? 'unknown' },
+          'control surface refused: engine not ready',
+        );
+        json(res, 409, {
+          error: 'engine_not_ready',
+          verb,
+          message,
+          engine: readiness ?? { ready: false, state: 'indeterminate', hint: message },
+        });
+        return;
+      }
     }
 
     let result: unknown;

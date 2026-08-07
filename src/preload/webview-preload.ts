@@ -101,3 +101,43 @@ ipcRenderer.on(WEBVIEW.locateInput, () => {
     rect: r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null,
   });
 });
+
+/**
+ * Phrases that mark a logged-OUT ChatGPT. Matched against button/link text only,
+ * never the whole document: "log in" appears in plenty of signed-in copy
+ * (footers, help text), and a false "signed-out" would block a run that would
+ * have worked. Anchoring to actionable elements is what keeps it specific.
+ */
+const LOGIN_AFFORDANCE_PHRASES = ['log in', 'sign up', 'log_in', 'sign in'];
+
+function hasLoginAffordance(): boolean {
+  const nodes = document.querySelectorAll('button, a, [role="button"]');
+  for (const node of Array.from(nodes)) {
+    const t = textOf(node).trim();
+    // Bound the length: a whole signed-in page rendered into one <a> would
+    // otherwise match on an incidental "sign in" buried in body copy.
+    if (t.length > 40) continue;
+    if (LOGIN_AFFORDANCE_PHRASES.some((p) => t.includes(p))) return true;
+  }
+  // The dedicated auth routes are a second, independent tell.
+  return location.pathname.startsWith('/auth/');
+}
+
+/**
+ * On request from main, report whether this page could accept a prompt — WITHOUT
+ * sending one. Pure observation: a `querySelector` for the composer plus a look
+ * for a login affordance. Nothing is typed, submitted, or requested over the
+ * network, so a readiness check costs no quota and leaves no trace in the chat.
+ *
+ * Main decides what the answer MEANS (`engine-readiness.ts`); this only reports.
+ */
+ipcRenderer.on(WEBVIEW.probeEngine, () => {
+  report({
+    type: 'engine-probe',
+    composer: Boolean(document.querySelector(S.promptInput)),
+    loginAffordance: hasLoginAffordance(),
+    readyState: document.readyState,
+    url: location.href,
+    at: Date.now(),
+  });
+});

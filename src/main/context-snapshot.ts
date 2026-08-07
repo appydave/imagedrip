@@ -23,6 +23,7 @@
  */
 
 import type { DomainState } from '@shared/domain';
+import type { EngineReadiness } from './engine-readiness.js';
 
 /** ~5 minutes of no human interaction and the answer stops being trustworthy. */
 export const CONTEXT_TTL_MS = 5 * 60 * 1000;
@@ -39,11 +40,22 @@ export interface ActiveContext {
   run: { status: string; queued: number; harvested: number } | null;
   /** ISO — when this snapshot stops being trustworthy. */
   expiresAt: string;
+  /**
+   * Can the image engine actually accept a prompt right now?
+   *
+   * Present on BOTH branches, and that is the point: an operator chat asking
+   * for the state of the app must learn the engine is unusable BEFORE it
+   * promises the user a batch. Discovering it at `run.start` is already too
+   * late — by then the promise has been made.
+   */
+  engine: EngineReadiness;
 }
 
 export interface StaleContext {
   active: false;
   hint: string;
+  /** Reported even when the selection is stale — the two are independent problems. */
+  engine: EngineReadiness;
 }
 
 export type ContextResult = ActiveContext | StaleContext;
@@ -59,6 +71,8 @@ export interface BuildContextInput {
   mode: ContextMode;
   /** The phase of the most recent run status this launch, or null if no run has happened. */
   runPhase: string | null;
+  /** The engine verdict from `buildEngineReadiness` — passed in, never derived here. */
+  engine: EngineReadiness;
   ttlMs?: number;
 }
 
@@ -73,7 +87,7 @@ export function buildContext(input: BuildContextInput): ContextResult {
   // That is stale by the same argument: there is no evidence the selection on
   // screen is the selection the user means.
   if (!input.lastInteractionAt || input.now >= expiresAt) {
-    return { active: false, hint: STALE_HINT };
+    return { active: false, hint: STALE_HINT, engine: input.engine };
   }
 
   const { domain } = input;
@@ -98,5 +112,6 @@ export function buildContext(input: BuildContextInput): ContextResult {
             harvested: prompts.filter((p) => p.status === 'harvested').length,
           },
     expiresAt: new Date(expiresAt).toISOString(),
+    engine: input.engine,
   };
 }

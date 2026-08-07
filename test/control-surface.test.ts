@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { promises as fs, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from '@appydave/core';
 import type { HandlerDef } from '../src/main/ipc-router';
 import { createControlSurface, listVerbs, type ControlSurface } from '../src/main/control-surface';
+import { SIGNED_OUT_HINT, type EngineReadiness } from '../src/main/engine-readiness';
 
 /**
  * The control surface against a real loopback server on an OS-assigned port.
@@ -59,8 +60,24 @@ def<string, void>({
   input: z.string().min(1),
   handle: () => undefined,
 });
+// The run verbs record whether they were REACHED, so a gate test can prove the
+// refusal happened at the call rather than inside the handler.
+let runStartReached = false;
 def<void, void>({
   channel: 'imagedrip:run:start',
+  handle: () => {
+    runStartReached = true;
+  },
+});
+let runStopReached = false;
+def<void, void>({
+  channel: 'imagedrip:run:stop',
+  handle: () => {
+    runStopReached = true;
+  },
+});
+def<void, void>({
+  channel: 'imagedrip:run:resume',
   handle: () => undefined,
 });
 def<void, void>({
@@ -85,12 +102,17 @@ async function call(
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
+// Flipped per-test to drive the engine gate. Defaults to ready so every
+// pre-existing expectation keeps its original meaning.
+let engine: EngineReadiness = { ready: true, state: 'ready', checkedAt: '2027-01-15T00:00:00Z' };
+
 beforeAll(async () => {
   surface = createControlSurface({
     defs: () => defs,
     userDataDir: userData,
     version: '0.1.0-test',
     isRunning: () => running,
+    engineReadiness: async () => engine,
     port: 0, // OS-assigned — tests must never fight the real app for 7180
   });
   const info = await surface.start();
@@ -284,5 +306,172 @@ describe('teardown', () => {
     await expect(fs.stat(s.controlFilePath)).resolves.toBeTruthy();
     await s.stop();
     await expect(fs.stat(s.controlFilePath)).rejects.toThrow();
+  });
+});
+
+/**
+ * The engine gate.
+ *
+ * The manual ChatGPT sign-in is the system's one human-only precondition, and
+ * before v4 it was self-announcing: you opened the app and saw a login wall.
+ * The control surface removed that feedback, so a run could be started by a
+ * caller who had no way to know. And an unguarded start does not fail cleanly —
+ * `WebviewHarness.feed` pastes into whatever holds focus when it cannot find the
+ * composer, which on a signed-out page is the login form.
+ *
+ * These pin the gate's three load-bearing properties: it refuses BEFORE the
+ * handler, it refuses when readiness is merely UNKNOWN, and it never blocks the
+ * verbs that stop a run.
+ */
+describe('engine gate', () => {
+  const signedOut: EngineReadiness = {
+    ready: false,
+    state: 'signed-out',
+    hint: SIGNED_OUT_HINT,
+    checkedAt: '2027-01-15T00:00:00Z',
+  };
+  const ready: EngineReadiness = { ready: true, state: 'ready', checkedAt: '2027-01-15T00:00:00Z' };
+
+  afterEach(() => {
+    engine = ready;
+    runStartReached = false;
+    runStopReached = false;
+  });
+
+  it('refuses run.start with 409 when the engine is signed out', async () => {
+    engine = signedOut;
+    const res = await call('/v1/call/run.start', { method: 'POST' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('engine_not_ready');
+  });
+
+  it('refuses BEFORE the handler — the run never starts', async () => {
+    // The point of the whole exercise. A refusal that arrives after
+    // `getRunner().start()` has begun feeding is not a guard, it is a log line.
+    engine = signedOut;
+    await call('/v1/call/run.start', { method: 'POST' });
+    expect(runStartReached).toBe(false);
+  });
+
+  it('carries the actionable hint verbatim, in `message`', async () => {
+    // `message` is where a 409's wording already lives, so a client written
+    // against the old shape still surfaces this without knowing about engines.
+    engine = signedOut;
+    const res = await call('/v1/call/run.start', { method: 'POST' });
+    expect(res.body.message).toBe(SIGNED_OUT_HINT);
+    expect(res.body.engine.state).toBe('signed-out');
+  });
+
+  it('refuses run.resume too — resuming feeds the engine just as start does', async () => {
+    engine = signedOut;
+    const res = await call('/v1/call/run.resume', { method: 'POST' });
+    expect(res.status).toBe(409);
+  });
+
+  it('refuses when readiness is INDETERMINATE, not only when signed out', async () => {
+    engine = {
+      ready: false,
+      state: 'indeterminate',
+      hint: 'could not tell',
+      checkedAt: '2027-01-15T00:00:00Z',
+    };
+    const res = await call('/v1/call/run.start', { method: 'POST' });
+    expect(res.status).toBe(409);
+    expect(runStartReached).toBe(false);
+  });
+
+  it('allows run.start when the engine is ready', async () => {
+    engine = ready;
+    const res = await call('/v1/call/run.start', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(runStartReached).toBe(true);
+  });
+
+  it('NEVER gates run.stop — a bad engine must not trap a live run', async () => {
+    // Gating stop would make a batch un-stoppable in exactly the situation
+    // where stopping matters most: mid-flight against a page that is not the
+    // composer. The guard must not be able to trap the user inside the failure.
+    engine = signedOut;
+    const res = await call('/v1/call/run.stop', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(runStopReached).toBe(true);
+  });
+
+  it('does not gate ordinary config verbs on the engine', async () => {
+    // Prompt generation and configuration are exactly what still WORKS on a
+    // machine that has never signed in — over-gating would remove the main
+    // reason to reach the app from a chat at all.
+    engine = signedOut;
+    const res = await call('/v1/call/domain.get', { method: 'POST' });
+    expect(res.status).toBe(200);
+  });
+
+  it('still answers 422 for a bad payload before consulting the engine', async () => {
+    // The documented 409/422 split survives: "you sent garbage" is still
+    // distinguishable from "you may not do that right now".
+    engine = signedOut;
+    const res = await call('/v1/call/domain.import-prompts', {
+      method: 'POST',
+      body: JSON.stringify({ text: 5, mode: 'nope' }),
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it('publishes requiresEngine in /v1/verbs so the precondition is discoverable', async () => {
+    const res = await call('/v1/verbs');
+    const byVerb = new Map(res.body.verbs.map((v: any) => [v.verb, v]));
+    expect((byVerb.get('run.start') as any).requiresEngine).toBe(true);
+    expect((byVerb.get('run.stop') as any).requiresEngine).toBe(false);
+    expect((byVerb.get('domain.get') as any).requiresEngine).toBe(false);
+  });
+});
+
+describe('engine gate — fail closed', () => {
+  /**
+   * A surface built with NO readiness probe at all. An unchecked engine and a
+   * broken engine are indistinguishable from here, and only one of those two
+   * guesses can type prompts into a login form — so the absence of a check must
+   * refuse, never wave through.
+   */
+  let bare: ControlSurface;
+  let bareBase: string;
+  let bareToken: string;
+
+  beforeAll(async () => {
+    bare = createControlSurface({
+      defs: () => defs,
+      userDataDir: mkdtempSync(join(tmpdir(), 'imagedrip-control-bare-')),
+      version: '0.1.0-test',
+      isRunning: () => false,
+      port: 0,
+    });
+    const info = await bare.start();
+    bareToken = info.token;
+    bareBase = `http://127.0.0.1:${info.port}`;
+  });
+
+  afterAll(async () => {
+    await bare.stop();
+  });
+
+  it('refuses run.start when no readiness probe is wired', async () => {
+    runStartReached = false;
+    const res = await fetch(`${bareBase}/v1/call/run.start`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${bareToken}` },
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe('engine_not_ready');
+    expect(body.message.length).toBeGreaterThan(0);
+    expect(runStartReached).toBe(false);
+  });
+
+  it('still serves config verbs with no probe wired', async () => {
+    const res = await fetch(`${bareBase}/v1/call/domain.get`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${bareToken}` },
+    });
+    expect(res.status).toBe(200);
   });
 });
