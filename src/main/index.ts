@@ -259,7 +259,12 @@ async function ensureOutputRoot(): Promise<string> {
   await fs.mkdir(dir, { recursive: true });
 
   if (await isInsideWorkTree(dir)) {
-    logger?.info({ dir }, 'output dir is inside an existing git work tree — not initialising');
+    // Almost always ImageDrip's OWN repo, from the `git init` below on a
+    // previous launch — so say that. "inside an existing git work tree" read
+    // like the folder had been swallowed by somebody else's repository, which
+    // is alarming and wrong. Debug, not info: this is the no-op branch of a
+    // check that runs on many operations, and it was spamming the console.
+    logger?.debug({ dir }, 'output dir is already a git work tree (ImageDrip’s own, unless nested) — nothing to do');
   } else {
     const repoRoot = (await getDomain()).brand?.repoRoot;
     if (repoRoot && isInside(repoRoot, dir)) {

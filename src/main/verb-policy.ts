@@ -119,6 +119,10 @@ export const GATED_VERBS: readonly string[] = [
   'brand.delete',
   'template.delete',
   'project.delete',
+  // Attaching a repo WRITES into it — see `repo.attach`'s description and the
+  // known gap at the bottom of `docs/working-rules.md`. It is the only verb here
+  // that can put files into a repository the user did not expect to be touched.
+  'repo.attach',
 ];
 
 /**
@@ -179,6 +183,8 @@ export const VERB_DOCS: Readonly<Record<string, string>> = {
     'DESTRUCTIVE and confirm-first: forgets a template. Ask first, every time. Refused with 422 while any project still points at it, naming them — switch those to null with template.switch first. Removes nothing from disk; with a repo attached the recipe lives in templates/<id>/ and re-attaching imports it back.',
   'template.save':
     'Write the active template: body (the recipe), negatives (hard constraints — prefer putting rules here rather than repeating them in every prompt), listPrompt, importFormat, name. Refused with 409 while a run is live.',
+  'repo.attach':
+    'CONFIRM-FIRST, and currently CARRIES A KNOWN DEFECT — do not call it on your own initiative, and warn the user before they ask for it. Attaching is two directions, not one: it imports what is in the repo AND publishes everything in domain.json that has no sourcePath yet, stamped with whichever brand is ACTIVE. Projects carry no brandId, so a blanket publish has nothing to route with: attaching an AITLDR repo while a Beauty & Joy project is unsourced writes that project into the AITLDR repo and keeps mirroring every later edit there. The agreed fix (import-only + an explicit per-record publish) is not built. Until it is, treat this as unsafe against any repo the user cares about, and say so. See docs/working-rules.md.',
   'project.create':
     'Create and activate a project — the SUBJECT layer. outputDir is optional and defaults to ~/Pictures/ImageDrip/<slug>; pass it when the user names a destination.',
   'project.switch':

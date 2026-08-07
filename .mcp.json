@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "imagedrip": {
+      "command": "node",
+      "args": ["./scripts/imagedrip-mcp.mjs"]
+    }
+  }
+}
