@@ -62,3 +62,37 @@ export type ChatEvent =
   | ChatToolUseEvent
   | ChatToolResultEvent
   | ChatUsageEvent;
+
+/**
+ * ── D1 · the human gate (decided 2026-08-08) ──
+ *
+ * `gated: true` on a published verb is METADATA — advisory to the model, and
+ * nothing intercepts the call. AC-5 requires that *"Start the run must ask
+ * before feeding the live session, every time"*, and a gate the model can
+ * decline to honour is not a gate.
+ *
+ * So a gated verb arriving from the PANE is held in main until a human answers.
+ * Requests from any other client (a terminal session, `curl`, `chat:probe`)
+ * keep today's advisory behaviour — which is what keeps the headless probe
+ * headless, and what keeps *"agents are first-class operators"* true: an agent
+ * driving the control surface directly is not a human sitting in front of a
+ * confirm it cannot answer.
+ */
+export interface ChatGateRequest {
+  /** Correlates the renderer's answer with the held request. */
+  id: string;
+  /** Dot-form verb, e.g. `run.start`. */
+  verb: string;
+  /** One line a human can actually decide on — never just the verb name. */
+  summary: string;
+  /** The payload as the agent sent it, so the human can see what they allow. */
+  payload: unknown;
+  /** When the hold expires. It DENIES at that point; it never opens. */
+  expiresAt: number;
+}
+
+/** The human's answer. Anything that is not an explicit allow is a deny. */
+export interface ChatGateDecision {
+  id: string;
+  allow: boolean;
+}

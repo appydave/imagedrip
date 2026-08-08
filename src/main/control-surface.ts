@@ -43,6 +43,7 @@ import {
   describeVerb,
   isExposed,
   isGated,
+  isPaneDenied,
   requiresEngine,
   toVerb,
   type VerbInfo,
@@ -52,6 +53,20 @@ import { toToolInputSchema } from './zod-to-json-schema.js';
 
 /** Loopback only. Never a wildcard bind — this surface is for this machine. */
 const HOST = '127.0.0.1';
+
+/**
+ * How a caller says "I am the in-app pane" (D1).
+ *
+ * A SECOND credential, alongside the bearer token, and the separation is the
+ * whole point: the bearer answers *may you call at all*, this answers *who are
+ * you*. They are deliberately not the same value and not in the same file —
+ * possessing `control.json` must NOT make you the pane, or the gate would hold
+ * every terminal session too and `chat:probe` would stop being headless.
+ *
+ * Minted per pane-session in `chat-session.ts` and handed to the MCP proxy out
+ * of band, through the child's environment.
+ */
+export const CLIENT_HEADER = 'x-imagedrip-client';
 
 export const DEFAULT_CONTROL_PORT = 7180;
 
@@ -91,9 +106,34 @@ export interface ControlSurfaceOptions {
    * evidence of a working engine.
    */
   engineReadiness?: () => Promise<EngineReadiness>;
+  /**
+   * The credential that identifies the in-app pane right now, or null when no
+   * pane session is alive (D1). Read per request, because it is minted fresh
+   * for each spawned CLI and must stop identifying anyone the moment that
+   * child is gone.
+   */
+  paneToken?: () => string | null;
+  /**
+   * Ask a HUMAN to approve one gated verb from the pane. Resolves true only on
+   * an explicit allow.
+   *
+   * Optional so the surface stays constructible in tests and in any host with
+   * no window — but when it is omitted a gated call from the pane is REFUSED,
+   * never waved through. The pane's whole premise is that a person is sitting
+   * there; if we cannot reach them, we do not have their consent.
+   */
+  confirmGated?: (request: GatedCall) => Promise<boolean>;
   /** Explicit port; otherwise `IMAGEDRIP_CONTROL_PORT`, otherwise 7180. `0` = OS-assigned. */
   port?: number;
   logger?: Logger;
+}
+
+/** One gated call, held pending a human answer. */
+export interface GatedCall {
+  verb: string;
+  payload: unknown;
+  /** The verb's own "when to call it" text — what the confirm should explain. */
+  description: string;
 }
 
 export interface ControlSurfaceInfo {
@@ -117,15 +157,37 @@ function resolvePort(explicit?: number): number {
   return DEFAULT_CONTROL_PORT;
 }
 
-/** Constant-time bearer comparison — length mismatch short-circuits before the compare. */
+/** Constant-time comparison — length mismatch short-circuits before the compare. */
+function secretMatches(given: string | undefined, expected: string | null): boolean {
+  if (!given || !expected) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+/** Constant-time bearer comparison. */
 function tokenMatches(header: string | undefined, token: string): boolean {
   if (!header) return false;
   const prefix = 'Bearer ';
   if (!header.startsWith(prefix)) return false;
-  const given = Buffer.from(header.slice(prefix.length));
-  const expected = Buffer.from(token);
-  if (given.length !== expected.length) return false;
-  return timingSafeEqual(given, expected);
+  return secretMatches(header.slice(prefix.length), token);
+}
+
+/**
+ * Is this request the in-app pane (D1)?
+ *
+ * Compared in constant time like the bearer, and false whenever no pane
+ * session is alive. Note which way the default falls: an unrecognised or
+ * absent header means "not the pane", so an unknown caller gets today's
+ * behaviour rather than being held in front of a human. That is the correct
+ * default *because* the pane is the only client with a human attached —
+ * holding anyone else would block a headless caller on a confirm nobody is
+ * there to answer.
+ */
+function isPaneRequest(headerValue: unknown, paneToken: string | null): boolean {
+  if (typeof headerValue !== 'string') return false;
+  return secretMatches(headerValue, paneToken);
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -226,7 +288,12 @@ export function createControlSurface(options: ControlSurfaceOptions): ControlSur
    * refusal (409). Classifying by STAGE rather than by error type is what makes
    * a run-state lock surface with its own message intact.
    */
-  async function dispatch(res: ServerResponse, verb: string, payload: unknown): Promise<void> {
+  async function dispatch(
+    res: ServerResponse,
+    verb: string,
+    payload: unknown,
+    isPane = false,
+  ): Promise<void> {
     const def = resolve(verb);
     if (!def) {
       json(res, 404, { error: 'unknown_verb', verb });
@@ -267,6 +334,61 @@ export function createControlSurface(options: ControlSurfaceOptions): ControlSur
       }
     }
 
+    // ── D1: the human gate ──
+    //
+    // LAST of the three gates, and the order is load-bearing. A malformed
+    // payload (422) and an unready engine (409) are both answers we can give
+    // without troubling anybody — and asking a human to approve a run that is
+    // about to fail because ChatGPT is signed out spends their attention to
+    // produce an error. Never raise a dialog for a call that cannot succeed.
+    //
+    // Only the PANE is held. Every other client keeps the advisory behaviour,
+    // which is what leaves `chat:probe` headless and leaves an agent driving
+    // the surface directly un-blocked — there is no human at those.
+    if (isPane && isGated(verb)) {
+      if (isPaneDenied(verb)) {
+        // Not "ask the human" — this one is refused outright, because a
+        // confirm cannot convey what it would actually do. See PANE_DENIED_VERBS.
+        options.logger?.warn({ verb }, 'control surface refused: verb is denied to the pane');
+        json(res, 403, {
+          error: 'forbidden_for_pane',
+          verb,
+          message:
+            `${verb} cannot be called from the in-app chat, with or without approval. ` +
+            'It carries a known defect that a yes/no confirm cannot describe honestly. ' +
+            'Tell the user it must be done by hand, and why.',
+        });
+        return;
+      }
+
+      let allowed = false;
+      try {
+        // No confirm channel means no reachable human, and the pane's whole
+        // premise is that one is sitting there. Absent consent is not consent.
+        allowed = options.confirmGated
+          ? await options.confirmGated({ verb, payload: input, description: describeVerb(verb) })
+          : false;
+      } catch (err) {
+        // A confirm that THREW told us nothing about what the human wants.
+        allowed = false;
+        options.logger?.warn({ verb, err: messageOf(err) }, 'gate confirm failed — denying');
+      }
+
+      if (!allowed) {
+        options.logger?.info({ verb }, 'control surface refused: human declined the gated verb');
+        json(res, 403, {
+          error: 'confirm_denied',
+          verb,
+          message:
+            `The user did not approve ${verb}. This is a final answer, not a transient ` +
+            'failure — do NOT retry it and do not look for another way to achieve it. ' +
+            'Tell them it was declined and ask what they want instead.',
+        });
+        return;
+      }
+      options.logger?.info({ verb }, 'gated verb approved by the human');
+    }
+
     let result: unknown;
     try {
       result = await def.handle(input);
@@ -304,11 +426,14 @@ export function createControlSurface(options: ControlSurfaceOptions): ControlSur
       return;
     }
 
+    const isPane = isPaneRequest(req.headers[CLIENT_HEADER], options.paneToken?.() ?? null);
+
     if (path === '/v1/context' && method === 'GET') {
       // Dispatched through the registry so the route and `context.get` can
-      // never answer differently.
+      // never answer differently. `context.get` is not gated, so the pane flag
+      // changes nothing here — passed for uniformity, not effect.
       const verb = toVerb(CONTEXT_CHANNEL);
-      await dispatch(res, verb ?? 'context.get', undefined);
+      await dispatch(res, verb ?? 'context.get', undefined, isPane);
       return;
     }
 
@@ -332,7 +457,7 @@ export function createControlSurface(options: ControlSurfaceOptions): ControlSur
           return;
         }
       }
-      await dispatch(res, verb, payload);
+      await dispatch(res, verb, payload, isPane);
       return;
     }
 

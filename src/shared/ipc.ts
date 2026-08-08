@@ -4,7 +4,7 @@
  * (consumes) import from here, so the surface stays in one place.
  */
 
-import type { ChatEvent } from './chat';
+import type { ChatEvent, ChatGateRequest } from './chat';
 import type { DomainState } from './domain';
 import type { SnagInput, UatCounts, VerdictInput } from './live-uat';
 
@@ -126,6 +126,16 @@ export const IPC = {
    * single event — see `chat-coalesce.ts` for why.
    */
   chatEvent: 'imagedrip:chat:event',
+  /**
+   * main → renderer push of the D1 confirm: a `ChatGateRequest` to show, or
+   * null to take it down (answered elsewhere, expired, or the chat went away).
+   */
+  chatGate: 'imagedrip:chat:gate',
+  /**
+   * renderer → main: the human's answer. Anything other than an explicit
+   * allow — Escape, a click outside, the timeout, a closed window — is a deny.
+   */
+  chatGateDecide: 'imagedrip:chat:gate-decide',
 
   // ── Live UAT: the judgment sidecar (docs/live-uat.md) — never touches domain.json ──
   uatSnag: 'imagedrip:uat:snag',
@@ -517,6 +527,15 @@ export interface ImagedripApi {
     stop(): Promise<void>;
     /** Subscribe to coalesced stream frames; returns an unsubscribe fn. */
     onEvent(cb: (events: ChatEvent[]) => void): () => void;
+    /**
+     * Subscribe to the D1 confirm (null takes it down). The renderer MUST
+     * answer with `decide` — a dialog that is dismissed without one leaves the
+     * agent waiting for a timeout that will deny anyway, so dismissal should
+     * call `decide(id, false)` explicitly.
+     */
+    onGate(cb: (request: ChatGateRequest | null) => void): () => void;
+    /** Answer the confirm. `allow: false` for every form of dismissal. */
+    decide(id: string, allow: boolean): Promise<void>;
   };
   /**
    * Live UAT (`docs/live-uat.md`) — capture only. Two anchors, two stores, one

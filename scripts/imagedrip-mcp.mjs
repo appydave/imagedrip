@@ -86,10 +86,19 @@ async function readControlFile() {
  * @returns {Promise<{ status: number, body: any }>}
  */
 async function callControl(control, path, init = {}) {
+  // D1: who is calling, as distinct from whether they may call at all.
+  //
+  // Set ONLY when ImageDrip itself spawned this proxy for the in-app pane, and
+  // handed the credential through the environment. A proxy launched from the
+  // user's own `.mcp.json` has no such variable and is therefore not the pane —
+  // which is exactly right: nobody is sitting in front of a terminal session
+  // waiting to answer a confirm dialog in a window they may not even have open.
+  const client = process.env.IMAGEDRIP_CLIENT_TOKEN;
   const res = await fetch(`http://127.0.0.1:${control.port}${path}`, {
     method: init.method ?? 'GET',
     headers: {
       authorization: `Bearer ${control.token}`,
+      ...(client ? { 'x-imagedrip-client': client } : {}),
       ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
     },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
@@ -176,7 +185,14 @@ export function toToolResult(res) {
     };
   }
   const label =
-    res.status === 409 && res.body?.error === 'engine_not_ready'
+    res.status === 403
+      ? // D1. The sharpest distinction on this list, and the one an agent is
+        // most likely to get wrong: a human SAW this and said no. It is not a
+        // lock that clears, not a timing problem, and not something to route
+        // around — a retry is asking a person who already answered to answer
+        // again, and finding "another way" is defeating them on purpose.
+        'DECLINED BY THE USER — a human was asked and said no. This is FINAL. Do not retry it, and do not look for an alternative route to the same outcome. Say it was declined and ask what they want instead'
+      : res.status === 409 && res.body?.error === 'engine_not_ready'
       ? // Distinguished from an ordinary refusal because the resolution differs:
         // a run-state lock clears itself when the run ends, but this one clears
         // only when a HUMAN acts. Telling the agent to wait and retry would

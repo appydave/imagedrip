@@ -12,7 +12,7 @@ import {
   type RunStatus,
   type RunSummary,
 } from '../shared/ipc';
-import type { ChatEvent } from '../shared/chat';
+import type { ChatEvent, ChatGateRequest } from '../shared/chat';
 import type { DomainState } from '../shared/domain';
 import type { SnagInput, UatCounts, VerdictInput } from '../shared/live-uat';
 
@@ -103,6 +103,13 @@ const imagedrip: ImagedripApi = {
       ipcRenderer.on(IPC.chatEvent, listener);
       return () => ipcRenderer.removeListener(IPC.chatEvent, listener);
     },
+    onGate: (cb: (request: ChatGateRequest | null) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, payload: ChatGateRequest | null): void => cb(payload);
+      ipcRenderer.on(IPC.chatGate, listener);
+      return () => ipcRenderer.removeListener(IPC.chatGate, listener);
+    },
+    decide: (id: string, allow: boolean): Promise<void> =>
+      ipcRenderer.invoke(IPC.chatGateDecide, { id, allow }),
   },
   uat: {
     snag: (input: SnagInput): Promise<void> => ipcRenderer.invoke(IPC.uatSnag, input),

@@ -180,29 +180,54 @@ describe('chat session — D2 containment', () => {
   });
 });
 
-describe('chat session — gated verbs are unreachable until the D1 gate exists', () => {
-  it('allow-lists only the non-gated verbs', async () => {
+describe('chat session — gated verbs reach the CLI so the D1 gate can fire', () => {
+  /**
+   * This flipped when D1 landed, and the flip is the point.
+   *
+   * BEFORE the gate existed, gated verbs were blocked at the FLAG layer — the
+   * agent could not call them at all. That satisfied AC-5 by making the chat
+   * unable to ask, which is a weaker thing than it sounds: nobody was ever
+   * consulted, so "the user approves every run" was true only because no run
+   * could be proposed.
+   *
+   * AFTER the gate, they are allowed through to the CLI and intercepted at the
+   * CALL layer, where a person answers (`control-surface-gate.test.ts`). AC-5
+   * is now satisfied by someone deciding. Keeping the flag block as well would
+   * mean the dialog could never fire.
+   */
+  it('allow-lists the gated verbs, so the agent can propose them', async () => {
     const chat = makeSession();
     await chat.send('hello');
     const allowed = flag(spawns[0], '--allowed-tools')!.split(',');
 
     expect(allowed).toContain('mcp__imagedrip__domain_get');
-    expect(allowed).toContain('mcp__imagedrip__domain_import-prompts');
     expect(allowed).toContain('mcp__imagedrip__template_save');
+    // Proposable — and held for a human the moment it is called.
+    expect(allowed).toContain('mcp__imagedrip__run_start');
+    expect(allowed).toContain('mcp__imagedrip__project_delete');
+  });
 
-    expect(allowed).not.toContain('mcp__imagedrip__run_start');
-    expect(allowed).not.toContain('mcp__imagedrip__project_delete');
+  it('still hard-denies repo.attach, which no confirm can honestly describe', async () => {
+    const chat = makeSession();
+    await chat.send('hello');
+    const allowed = flag(spawns[0], '--allowed-tools')!.split(',');
+    const disallowed = flag(spawns[0], '--disallowed-tools')!.split(',');
+
+    // Its defect is that it publishes every unsourced record into whichever
+    // repo you point at, stamped with the ACTIVE brand. "Allow repo.attach?"
+    // does not convey that, so a yes would not be informed consent.
+    expect(disallowed).toContain('mcp__imagedrip__repo_attach');
     expect(allowed).not.toContain('mcp__imagedrip__repo_attach');
   });
 
-  it('ALSO names every gated verb on the deny-list, so AC-5 does not rest on one list', async () => {
+  it('never gives up the D2 tool restrictions in the process', async () => {
+    // Widening the MCP surface must not have widened the filesystem one.
     const chat = makeSession();
     await chat.send('hello');
     const disallowed = flag(spawns[0], '--disallowed-tools')!.split(',');
-
-    expect(disallowed).toContain('mcp__imagedrip__run_start');
-    expect(disallowed).toContain('mcp__imagedrip__project_delete');
-    expect(disallowed).toContain('mcp__imagedrip__repo_attach');
+    expect(disallowed).toContain('Bash');
+    expect(disallowed).toContain('Write');
+    expect(disallowed).toContain('Edit');
   });
 
   it('never gives the CLI a tool that writes to the ChatGPT webview', async () => {
@@ -325,6 +350,53 @@ describe('chat session — process lifetime', () => {
       { type: 'text_delta', text: 'ok' },
       { type: 'status', status: 'done' },
     ]);
+  });
+});
+
+describe('chat session — the D1 pane credential', () => {
+  it('has none before the first message, and one after', async () => {
+    const chat = makeSession();
+    expect(chat.paneToken()).toBeNull();
+
+    await chat.send('hello');
+    expect(chat.paneToken()).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('hands the SAME credential to the child, through its environment', async () => {
+    const chat = makeSession();
+    await chat.send('hello');
+
+    const config = JSON.parse(readFileSync(join(userData, CHAT_MCP_FILE), 'utf8'));
+    expect(config.mcpServers.imagedrip.env.IMAGEDRIP_CLIENT_TOKEN).toBe(chat.paneToken());
+  });
+
+  it('revokes it when the child dies — a credential must not outlive its session', async () => {
+    const chat = makeSession();
+    await chat.send('hello');
+    expect(chat.paneToken()).not.toBeNull();
+
+    spawns[0].child.emit('close', 0);
+    // Otherwise a confirm could be raised for a chat that is no longer running.
+    expect(chat.paneToken()).toBeNull();
+  });
+
+  it('revokes it on stop()', async () => {
+    const chat = makeSession();
+    await chat.send('hello');
+    await chat.stop();
+    expect(chat.paneToken()).toBeNull();
+  });
+
+  it('mints a FRESH one per spawn — a respawn is a new client', async () => {
+    const chat = makeSession();
+    await chat.send('first');
+    const first = chat.paneToken();
+
+    spawns[0].child.emit('close', 0);
+    await chat.send('after the crash');
+
+    expect(chat.paneToken()).not.toBeNull();
+    expect(chat.paneToken()).not.toBe(first);
   });
 });
 

@@ -27,12 +27,15 @@
  * the probe evidence about the pane rather than about a sibling copy.
  */
 
-import { spawn, execFile, type ChildProcess } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createStreamParser, takeLines, type StreamParser } from './claude-stream.ts';
 import type { ChatEvent } from '../shared/chat.js';
 
-const exec = promisify(execFile);
+/** A `--help` that has not answered in this long is not going to. */
+const PROBE_TIMEOUT_MS = 15_000;
 
 /**
  * ── D2 · the containment policy for the IN-APP pane (decided 2026-08-08) ──
@@ -107,15 +110,62 @@ export class ContainmentUnavailableError extends Error {
  * Mechanic 3: probe once, gate everything optional on the result. Never assume
  * a flag exists because the docs mention it — the docs describe some version,
  * and the user has whichever one they have.
+ *
+ * ⚠️ **The output goes to a FILE, not a pipe, and that is not a stylistic
+ * choice.** (Found 2026-08-08, by running the real app.)
+ *
+ * `claude -p --help` writes ~15 KB and exits immediately. A child's unflushed
+ * pipe data dies with it, and macOS starts a pipe at an 8 KB buffer — so when
+ * the parent does not drain fast enough, the output is silently CUT at ~8190
+ * bytes, mid-sentence. Plain Node usually drains in time. Electron's main
+ * process, busy at startup, does not: it saw 45 of 65 flags, and `--verbose`
+ * sat past the cut.
+ *
+ * That is this repo's cardinal sin in miniature — **a truncated read and a
+ * genuinely absent flag are indistinguishable.** "This CLI does not support
+ * `--verbose`" and "we only read the first half of the help" produce the same
+ * empty answer, and the caller believes the first one. It fails CLOSED (a
+ * missing containment flag refuses the spawn), so it was never unsafe — but it
+ * made the chat unusable for a reason that read like a true fact about the
+ * user's CLI.
+ *
+ * A regular file has no such buffer, so the read is complete and deterministic.
  */
 export async function probeCapabilities(bin = 'claude'): Promise<Set<string>> {
+  let dir: string | null = null;
   try {
-    const { stdout } = await exec(bin, ['-p', '--help'], { maxBuffer: 4 * 1024 * 1024 });
-    return new Set(stdout.match(/--[a-z0-9-]+/g) ?? []);
+    dir = await fs.mkdtemp(join(tmpdir(), 'imagedrip-probe-'));
+    const path = join(dir, 'help.txt');
+    const handle = await fs.open(path, 'w');
+    try {
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const child = spawn(bin, ['-p', '--help'], {
+          // stdout straight to the file — no pipe, nothing to truncate.
+          stdio: ['ignore', handle.fd, 'ignore'],
+        });
+        child.on('error', reject);
+        child.on('close', resolve);
+        // A `--help` that hangs must not hang the pane behind it.
+        const timer = setTimeout(() => child.kill('SIGKILL'), PROBE_TIMEOUT_MS);
+        timer.unref?.();
+        child.on('close', () => clearTimeout(timer));
+      });
+      // A non-zero exit is not automatically fatal — some builds exit 1 on
+      // `--help` — so the text is what counts, and an empty read falls through
+      // to the empty set below.
+      void code;
+    } finally {
+      await handle.close();
+    }
+    const text = await fs.readFile(path, 'utf8');
+    return new Set(text.match(/--[a-z0-9-]+/g) ?? []);
   } catch {
-    // No probe, no optional flags. The required set below is the floor that has
-    // to work for the integration to exist at all.
+    // No probe, no optional flags — and no spawn, because the containment
+    // flags will read as missing. An unchecked CLI and an incapable one are
+    // indistinguishable from here, and only one of those guesses is safe.
     return new Set();
+  } finally {
+    if (dir) await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 

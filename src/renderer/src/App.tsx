@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RunManifest, RunStatus, RunSummary, Rect } from '@shared/ipc';
+import type { ChatGateRequest } from '@shared/chat';
 import { compose, parsePromptList, renderListPrompt, type DomainState } from '@shared/domain';
-import { useAppStore } from './store';
+import { useAppStore, type CtxTab } from './store';
 import { FlagButton, UatToggle, VerdictBar } from './FlagButton';
 import { Modal, Popover } from './Popover';
 import { Grabber, SizePresets, useResizable } from './useResizable';
@@ -57,6 +58,8 @@ export default function App(): JSX.Element {
     setCtx,
     setMode,
     uat,
+    ctxTab,
+    setCtxTab,
   } = useAppStore();
 
   // macOS hides the native title bar (hiddenInset) — so the top bar must be the
@@ -108,7 +111,13 @@ export default function App(): JSX.Element {
     if (el && attached.current) void window.imagedrip.setBounds(rectOf(el));
     // `uat` is in here because the ⚑ strip above the panel changes its rect —
     // miss it and the overlaid ChatGPT view drifts out of alignment.
-  }, [ctxOpen, mode, uat]);
+    // `ctxTab` is in here for the reason §6 flags: a layout state missing from
+    // this list leaves the native ChatGPT view sitting over the wrong rectangle.
+    // Switching tabs should not move the column — it has a fixed width and the
+    // panel does not resize — but "should not" is the assumption that produced
+    // the S/M/L resize bug behind the 2026-08-07 feed failure, so it is
+    // measured rather than assumed. A redundant recompute costs one layout read.
+  }, [ctxOpen, mode, uat, ctxTab]);
 
   // Transient copy/save confirmations self-clear.
   useEffect(() => {
@@ -323,6 +332,11 @@ export default function App(): JSX.Element {
         <UatToggle />
       </header>
 
+      {/* D1 — the chat's confirm. Mounted here rather than in a column so it
+          is answerable whatever else is on screen; it renders nothing until
+          main is actually holding a call. */}
+      <ChatGateDialog />
+
       {/* ── body ────────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1">
         {ctxOpen ? (
@@ -349,6 +363,8 @@ export default function App(): JSX.Element {
             onCreateProject={(name, dir) => void createProject(name, dir)}
             onChooseDir={chooseOutputDir}
             onOpenRun={(id) => void openRun(id)}
+            tab={ctxTab}
+            onTab={setCtxTab}
           />
           <Grabber onMouseDown={ctx.onGrabberDown} dragging={ctx.dragging} />
           </>
@@ -855,6 +871,9 @@ function ContextPanel(props: {
   onCreateProject: (name: string, outputDir?: string) => void;
   onChooseDir: () => Promise<string | null>;
   onOpenRun: (runId: string) => void;
+  /** Which half of the column is showing (v4 WP4 §5). */
+  tab: CtxTab;
+  onTab: (tab: CtxTab) => void;
 }): JSX.Element {
   const d = props.domain;
   const nextQueued = d?.theme.prompts.find((p) => p.status === 'queued');
@@ -863,16 +882,35 @@ function ContextPanel(props: {
   return (
     <div
       style={{ width: props.width }}
-      className="flex flex-shrink-0 flex-col gap-2.5 overflow-y-auto border-r border-edge bg-surface p-3.5"
+      className={`flex flex-shrink-0 flex-col gap-2.5 border-r border-edge bg-surface p-3.5 ${
+        // The transcript scrolls INSIDE the chat pane, with the composer pinned
+        // to the bottom; the context cards scroll as one column.
+        props.tab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'
+      }`}
     >
-      {/* "CONTEXT" alone said nothing about what the cards below it were
-          (snag-2: "I don't know what this area is… it just says context").
-          The subtitle names the layered model the cards actually implement. */}
+      {/* v4 WP4 §5 — the column is tabbed `Context ｜ Chat`. The chat's primary
+          job is editing exactly the fields below it, so they share a home and
+          compete for no new space.
+
+          Chat is the DEFAULT half, which inverts how §5 was drafted. The North
+          Star (ratified 2026-08-08) is explicit: *"Fill in a few fields — or
+          just say it in chat"*, and *"typing into controls by hand is the
+          fallback, not the design."* The choice is remembered, so disagreeing
+          with it costs one click, once. */}
       <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <span className="font-display text-[11px] font-bold tracking-[0.18em] text-brown">
-            CONTEXT
-          </span>
+        <div className="flex min-w-0 items-center gap-1">
+          {(['chat', 'context'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => props.onTab(tab)}
+              className={`rounded px-1.5 py-0.5 font-display text-[11px] font-bold tracking-[0.18em] ${
+                props.tab === tab ? 'text-brown' : 'text-muted opacity-60 hover:opacity-100'
+              }`}
+            >
+              {tab === 'chat' ? 'CHAT' : 'CONTEXT'}
+            </button>
+          ))}
         </div>
         <button
           type="button"
@@ -883,6 +921,11 @@ function ContextPanel(props: {
           ✕
         </button>
       </div>
+
+      {props.tab === 'chat' ? (
+        <ChatPane />
+      ) : (
+        <>
 
       {/* Round 1 explained the model in a sentence — which read as more small
           grey prose in a rail already full of it, and wrapped badly when narrow.
@@ -1016,123 +1059,230 @@ function ContextPanel(props: {
           )}
         </div>
       </div>
+        </>
+      )}
 
-      <ChatStreamProof />
     </div>
   );
 }
 
 /**
- * ⚠️ SCAFFOLDING — v4 WP4 step 3, and deliberately not the Chat tab.
+ * The chat seat (v4 WP4 §5) — the CHAT half of the CONTEXT column.
  *
- * Its ONLY job is to show that the stream reaches the renderer: a prompt goes
- * down `chat.send`, and `text_delta` frames come back on the `chatEvent` push
- * channel. It is a meter, not a transcript — no message bubbles, no history, no
- * markdown. The real `Context ｜ Chat` tab (§5) replaces it.
+ * The North Star puts this first: *"Fill in a few fields — or just say it in
+ * chat."* Everything the cards on the Context tab do by hand, this does by
+ * talking, through the SAME verbs — there is no second write path.
  *
- * It sits INSIDE the existing CONTEXT scroll area on purpose. Adding a tab
- * changes that column's layout, and the reserved ChatGPT rect is recomputed
- * from `[ctxOpen, mode, uat]` — a new layout state that is not in that
- * dependency list leaves the native view sitting over the wrong rectangle.
- * Adding a row inside a panel that already scrolls changes no geometry, so
- * this proof cannot cause that bug while proving something unrelated to it.
+ * The transcript lives in the store, not here, because frames arrive on a push
+ * channel whether or not this component is mounted. A reply that streamed while
+ * the user was reading the Context tab is still here when they come back.
+ *
+ * Deliberately not a chat client: no markdown, no avatars, no message actions.
+ * Per the North Star, *"not a cockpit to be mastered — if it needs learning,
+ * that is the defect."* What it does show is every VERB the agent called, and
+ * whether it failed, because the transcript is also the audit trail for a thing
+ * that edits your project.
  */
-function ChatStreamProof(): JSX.Element {
-  const [prompt, setPrompt] = useState('Say hello in exactly five words.');
-  const [text, setText] = useState('');
-  const [batches, setBatches] = useState(0);
-  const [events, setEvents] = useState(0);
-  const [tools, setTools] = useState<string[]>([]);
-  const [phase, setPhase] = useState('idle');
-  const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
+function ChatPane(): JSX.Element {
+  const { chatTurns, chatPhase, chatBusy, chatError, chatCostUsd, sendChat, resetChat } =
+    useAppStore();
+  const [draft, setDraft] = useState('');
+  const endRef = useRef<HTMLDivElement>(null);
 
+  // Follow the stream. `auto` rather than `smooth`: at delta cadence a smooth
+  // scroll never finishes, and the view lags behind the text being written.
   useEffect(() => {
-    // The third push channel, subscribed exactly like run.onStatus.
-    return window.imagedrip.chat.onEvent((batch) => {
-      setBatches((n) => n + 1);
-      setEvents((n) => n + batch.length);
-      for (const e of batch) {
-        if (e.type === 'text_delta') setText((t) => t + e.text);
-        else if (e.type === 'status') setPhase(e.status);
-        else if (e.type === 'tool_use') setTools((list) => [...list, e.name]);
-      }
-    });
-  }, []);
+    endRef.current?.scrollIntoView({ block: 'end' });
+  }, [chatTurns, chatPhase]);
 
-  async function send(): Promise<void> {
-    setError(null);
-    setText('');
-    setTools([]);
-    setBatches(0);
-    setEvents(0);
-    setPhase('starting');
-    setSending(true);
-    try {
-      await window.imagedrip.chat.send(prompt);
-    } catch (err) {
-      // A refusal to spawn (D2 containment unavailable) must be READ, not
-      // retried — so it is shown verbatim rather than summarised.
-      setError(err instanceof Error ? err.message : String(err));
-      setPhase('refused');
-    } finally {
-      setSending(false);
-    }
-  }
+  const submit = (): void => {
+    const text = draft.trim();
+    if (!text || chatBusy) return;
+    setDraft('');
+    void sendChat(text);
+  };
+
+  const idle = chatPhase === 'idle' || chatPhase === 'done';
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-md border border-dashed border-edge bg-cream p-2.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="font-display text-[11px] font-bold tracking-[0.18em] text-brown">
-          CHAT STREAM
-        </span>
-        <span className="font-mono text-[10px] text-muted">WP4 proof · not the pane</span>
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
+        {chatTurns.length === 0 && !chatError && (
+          <p className="font-mono text-[10px] leading-relaxed text-muted opacity-80">
+            Ask for what you want and it edits the fields on the Context tab —
+            “make a template for catalogue tiles, one design per line”, “give me
+            twelve prompts in the house style and queue them”. It can read the
+            brand repo. It cannot type into ChatGPT, and anything that starts a
+            run or deletes work asks you first.
+          </p>
+        )}
+
+        {chatTurns.map((turn, i) => (
+          <div key={i} className="flex flex-col gap-1">
+            {turn.role === 'user' ? (
+              <div className="rounded-md border border-edge bg-cream px-2 py-1.5 font-mono text-[11px] leading-relaxed text-brown">
+                {turn.text}
+              </div>
+            ) : (
+              <>
+                {turn.thinking && (
+                  <details className="font-mono text-[10px] text-muted">
+                    <summary className="cursor-pointer opacity-70">thinking…</summary>
+                    <pre className="mt-1 whitespace-pre-wrap opacity-70">{turn.thinking}</pre>
+                  </details>
+                )}
+                {turn.tools.map((t, j) => (
+                  <div
+                    key={j}
+                    className={`font-mono text-[10px] ${t.failed ? 'text-red-700' : 'text-muted'}`}
+                    title={t.name}
+                  >
+                    {t.failed ? '✕' : '→'} {t.name.replace('mcp__imagedrip__', '')}
+                  </div>
+                ))}
+                {turn.text && (
+                  <div className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-brown">
+                    {turn.text}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        ))}
+
+        {chatError && (
+          <pre className="whitespace-pre-wrap rounded border border-edge bg-cream p-2 font-mono text-[10px] leading-relaxed text-red-700">
+            {chatError}
+          </pre>
+        )}
+        <div ref={endRef} />
       </div>
 
-      <textarea
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        rows={2}
-        className="w-full resize-y rounded border border-edge bg-surface p-1.5 font-mono text-[11px] text-brown"
-      />
-
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          disabled={sending || !prompt.trim()}
-          onClick={() => void send()}
-          className="rounded-md border border-edge bg-surface px-2.5 py-1 font-display text-[11px] font-semibold text-brown hover:border-amber disabled:opacity-40"
-        >
-          {sending ? 'streaming…' : 'Send'}
-        </button>
-        <button
-          type="button"
-          onClick={() => void window.imagedrip.chat.stop()}
-          className="rounded-md border border-edge bg-surface px-2.5 py-1 font-display text-[11px] text-brown hover:border-amber"
-        >
-          Stop CLI
-        </button>
-        <span className="font-mono text-[10px] text-muted">
-          {phase} · {batches} batches / {events} events · {text.length} chars
-        </span>
+      <div className="flex flex-col gap-1 border-t border-edge pt-2">
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends; Shift+Enter is a newline. A prompt carrying a brand
+            // body is a paragraph, so the multi-line case has to stay easy.
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          rows={3}
+          placeholder={chatBusy ? 'answering…' : 'say what you want…'}
+          className="w-full resize-y rounded border border-edge bg-cream p-1.5 font-mono text-[11px] leading-relaxed text-brown placeholder:text-muted"
+        />
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={submit}
+            disabled={chatBusy || !draft.trim()}
+            className="rounded-md border border-edge bg-surface px-2.5 py-1 font-display text-[11px] font-semibold text-brown hover:border-amber disabled:opacity-40"
+          >
+            {chatBusy ? '…' : 'Send'}
+          </button>
+          {chatTurns.length > 0 && idle && (
+            <button
+              type="button"
+              onClick={() => void resetChat()}
+              title="drop the CLI process and start a fresh conversation"
+              className="rounded-md border border-edge bg-surface px-2 py-1 font-display text-[11px] text-muted hover:border-amber hover:text-brown"
+            >
+              new chat
+            </button>
+          )}
+          <span className="ml-auto font-mono text-[10px] text-muted">
+            {chatBusy ? chatPhase : idle ? '' : chatPhase}
+            {chatCostUsd !== null && ` · $${chatCostUsd.toFixed(3)}`}
+          </span>
+        </div>
       </div>
-
-      {tools.length > 0 && (
-        <div className="font-mono text-[10px] text-muted">tools: {tools.join(', ')}</div>
-      )}
-
-      {error && (
-        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded border border-edge bg-surface p-1.5 font-mono text-[10px] text-red-700">
-          {error}
-        </pre>
-      )}
-
-      {text && (
-        <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-edge bg-surface p-1.5 font-mono text-[10px] leading-relaxed text-brown">
-          {text}
-        </pre>
-      )}
     </div>
+  );
+}
+
+/**
+ * D1 — the human gate (v4 WP4).
+ *
+ * The chat asked to do something confirm-first, and main is HOLDING that call
+ * until this component answers. Three things it must get right:
+ *
+ * 1. **Every dismissal is a DENY, and it says so out loud.** Escape, a click
+ *    on the backdrop, the ✕ — all call `decide(id, false)`. Walking away
+ *    silently would also deny, at the timeout, but two minutes later and with
+ *    the agent hanging in between. An explicit no is a faster no.
+ * 2. **It renders through `Modal`.** That component hides the ChatGPT
+ *    `WebContentsView` for its lifetime — the view composites above all HTML,
+ *    so a confirm drawn over that rect is a confirm nobody sees. This is the
+ *    same failure that ate the WP5 run-entry chooser on 2026-08-03.
+ * 3. **It shows the payload.** "The chat wants to start a run" is not enough
+ *    to consent to; what it would run with is.
+ *
+ * Deliberately mounted at App level, not inside the CONTEXT column: the
+ * question must be answerable whichever pane is open, and it outranks
+ * whatever the user was doing.
+ */
+function ChatGateDialog(): JSX.Element | null {
+  const [request, setRequest] = useState<ChatGateRequest | null>(null);
+  const [left, setLeft] = useState(0);
+
+  useEffect(() => window.imagedrip.chat.onGate(setRequest), []);
+
+  // A live countdown, because the deadline is real and it denies. A confirm
+  // that silently expires teaches the user their answer did not matter.
+  useEffect(() => {
+    if (!request) return;
+    const tick = (): void => setLeft(Math.max(0, Math.ceil((request.expiresAt - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 500);
+    return () => clearInterval(t);
+  }, [request]);
+
+  if (!request) return null;
+
+  const answer = (allow: boolean): void => {
+    setRequest(null); // close now; main is the authority on the outcome
+    void window.imagedrip.chat.decide(request.id, allow);
+  };
+
+  return (
+    <Modal title="The chat is asking permission" onClose={() => answer(false)}>
+      <div className="flex flex-col gap-3">
+        <p className="font-display text-sm leading-relaxed text-brown">{request.summary}</p>
+
+        <div className="font-mono text-[11px] text-muted">
+          verb: <span className="text-brown">{request.verb}</span>
+        </div>
+
+        {request.payload !== undefined && request.payload !== null && (
+          <pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded border border-edge bg-cream p-2 font-mono text-[10px] leading-relaxed text-brown">
+            {JSON.stringify(request.payload, null, 2)}
+          </pre>
+        )}
+
+        <div className="flex items-center gap-2 border-t border-edge pt-3">
+          <button
+            type="button"
+            onClick={() => answer(true)}
+            className="rounded-md border border-amber bg-amber/20 px-3 py-1.5 font-display text-sm font-semibold text-brown hover:bg-amber/40"
+          >
+            Allow once
+          </button>
+          <button
+            type="button"
+            onClick={() => answer(false)}
+            className="rounded-md border border-edge bg-surface px-3 py-1.5 font-display text-sm font-semibold text-brown hover:border-amber"
+          >
+            Deny
+          </button>
+          <span className="font-mono text-[10px] text-muted">
+            {left}s — no answer means DENY
+          </span>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

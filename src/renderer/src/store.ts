@@ -1,9 +1,31 @@
 import { create } from 'zustand';
 import type { DomainState, ImportFormat, ImportMode } from '@shared/domain';
 import type { RunManifest, RunStatus, RunSummary } from '@shared/ipc';
+import type { ChatEvent } from '@shared/chat';
 import { uatEnabled, type UatCounts, type Verdict, type VerdictInput } from '@shared/live-uat';
 
 export type Mode = 'dial-in' | 'auto';
+
+/** Which half of the CONTEXT column is showing (v4 WP4 §5). */
+export type CtxTab = 'context' | 'chat';
+
+/**
+ * One exchange in the chat transcript.
+ *
+ * Assembled in the STORE rather than in the pane, for one reason: the frames
+ * arrive on a push channel whether or not the Chat tab is mounted. Holding the
+ * transcript in a component would lose whatever streamed while the user was
+ * looking at Context, or had the whole column collapsed — and a reply that
+ * silently went missing is exactly the failure this repo refuses to ship.
+ */
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  text: string;
+  /** Extended thinking, rendered collapsed (v4 §3). */
+  thinking: string;
+  /** Verb calls, in order. The transcript is also the audit trail. */
+  tools: { name: string; failed: boolean }[];
+}
 
 /** A previous run opened from history (WP1) — manifest arrives async. */
 export interface RunView {
@@ -79,6 +101,26 @@ interface AppState {
   setCtx: (open: boolean) => void;
   setMode: (mode: Mode) => void;
 
+  // ── v4 WP4: the resident chat operator ──
+  /** Which half of the CONTEXT column is showing; persisted across restarts. */
+  ctxTab: CtxTab;
+  setCtxTab: (tab: CtxTab) => void;
+  /** The conversation so far. Survives tab switches and a collapsed column. */
+  chatTurns: ChatTurn[];
+  /** The CLI's own account of what it is doing (`thinking`, `done`, …). */
+  chatPhase: string;
+  /** A turn is in flight — the input is disabled and the send button spins. */
+  chatBusy: boolean;
+  /** A refusal worth reading, e.g. the CLI cannot be contained (D2). */
+  chatError: string | null;
+  /** Running cost of this conversation, on the user's OWN subscription. */
+  chatCostUsd: number | null;
+  /** Fold one batch of coalesced stream frames into the transcript. */
+  applyChatEvents: (events: ChatEvent[]) => void;
+  sendChat: (prompt: string) => Promise<void>;
+  /** Drop the CLI child and the transcript with it. */
+  resetChat: () => Promise<void>;
+
   /** Live UAT gate (docs/live-uat.md). ON by default (A4); persisted across restarts. */
   uat: boolean;
   uatCounts: UatCounts | null;
@@ -91,6 +133,12 @@ interface AppState {
 }
 
 const UAT_KEY = 'imagedrip.uat';
+const CTX_TAB_KEY = 'imagedrip.ctxTab';
+
+/** Chat is the default; anything unrecognised falls back to it, not to a crash. */
+function ctxTabOf(stored: string | null): CtxTab {
+  return stored === 'context' ? 'context' : 'chat';
+}
 
 async function copy(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
@@ -129,6 +177,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       // A finished/stopped run just wrote its manifest — refresh history.
       if (['done', 'stopped'].includes(status.phase)) void get().loadRuns();
     });
+    // v4 WP4 — chat stream frames, subscribed HERE and not in the pane: they
+    // arrive whether or not the Chat tab is mounted, and a reply that streamed
+    // while the user was looking at Context must still be in the transcript
+    // when they come back.
+    window.imagedrip.chat.onEvent((events) => get().applyChatEvents(events));
   },
   refresh: async () => {
     set({ domain: await window.imagedrip.domain.get() });
@@ -313,6 +366,94 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setCtx: (open) => set({ ctxOpen: open }),
   setMode: (mode) => set({ mode }),
+
+  // ── v4 WP4: the resident chat operator ──
+  //
+  // The North Star (ratified 2026-08-08) puts the chat first: *"Fill in a few
+  // fields — or just say it in chat"*, and *"typing into controls by hand is
+  // the fallback, not the design."* So Chat is the DEFAULT tab. The choice is
+  // remembered, so anyone who disagrees pays for it exactly once.
+  ctxTab: ctxTabOf(localStorage.getItem(CTX_TAB_KEY)),
+  setCtxTab: (tab) => {
+    localStorage.setItem(CTX_TAB_KEY, tab);
+    set({ ctxTab: tab });
+  },
+  chatTurns: [],
+  chatPhase: 'idle',
+  chatBusy: false,
+  chatError: null,
+  chatCostUsd: null,
+
+  applyChatEvents: (events) => {
+    const turns = [...get().chatTurns];
+    let phase = get().chatPhase;
+    let cost = get().chatCostUsd;
+
+    /** The assistant turn currently being written into, created on demand. */
+    const current = (): ChatTurn => {
+      const last = turns[turns.length - 1];
+      if (last?.role === 'assistant') return last;
+      const fresh: ChatTurn = { role: 'assistant', text: '', thinking: '', tools: [] };
+      turns.push(fresh);
+      return fresh;
+    };
+
+    for (const e of events) {
+      switch (e.type) {
+        case 'text_delta':
+          current().text += e.text;
+          break;
+        case 'thinking_delta':
+          current().thinking += e.text;
+          break;
+        case 'tool_use':
+          current().tools.push({ name: e.name, failed: false });
+          break;
+        case 'tool_result': {
+          // Mark the most recent unresolved call. Names are not unique across a
+          // turn, and the parser guarantees one tool_use per call in order.
+          const tools = current().tools;
+          if (e.is_error && tools.length) tools[tools.length - 1].failed = true;
+          break;
+        }
+        case 'status':
+          phase = e.status;
+          break;
+        case 'usage':
+          if (e.costUsd !== null) cost = e.costUsd;
+          break;
+      }
+    }
+    // Replace the last turn object so React sees a new reference.
+    set({ chatTurns: turns.map((t, i) => (i === turns.length - 1 ? { ...t } : t)), chatPhase: phase, chatCostUsd: cost });
+  },
+
+  sendChat: async (prompt) => {
+    const text = prompt.trim();
+    if (!text || get().chatBusy) return;
+    set({
+      chatTurns: [...get().chatTurns, { role: 'user', text, thinking: '', tools: [] }],
+      chatBusy: true,
+      chatError: null,
+      chatPhase: 'starting',
+    });
+    try {
+      await window.imagedrip.chat.send(text);
+    } catch (err) {
+      // Shown verbatim: a containment refusal is meant to be READ, not retried.
+      set({ chatError: err instanceof Error ? err.message : String(err), chatPhase: 'refused' });
+    } finally {
+      set({ chatBusy: false });
+      // The domain almost certainly moved — the whole point of the chat is that
+      // it edits the fields the other panes are showing.
+      void get().refresh();
+    }
+  },
+
+  resetChat: async () => {
+    await window.imagedrip.chat.stop().catch(() => undefined);
+    set({ chatTurns: [], chatPhase: 'idle', chatError: null, chatCostUsd: null });
+  },
 
   // ── Live UAT (docs/live-uat.md) — capture only. These calls must never be
   // able to change what the app does; the feedback channel is separate from the

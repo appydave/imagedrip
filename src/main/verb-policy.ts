@@ -163,6 +163,32 @@ export function isGated(verb: string): boolean {
 }
 
 /**
+ * Gated verbs the IN-APP PANE may not reach even WITH a human confirm (D1).
+ *
+ * Every other gated verb becomes reachable-behind-a-confirm once the gate
+ * exists, because a human clicking Allow is a human who understands what they
+ * allowed. `repo.attach` is the exception, and it is an exception about
+ * COMPREHENSION rather than about danger:
+ *
+ * Its defect is that attaching publishes every unsourced project and template
+ * into the repo you point at, stamped with whichever brand is ACTIVE — so
+ * attaching an AITLDR repo while a Beauty & Joy project is unsourced writes
+ * that project into the AITLDR repo and keeps mirroring every later edit there.
+ * A confirm reading "the chat wants to attach a repo — Allow?" does not convey
+ * that blast radius, so the human's Yes would not be informed consent. A gate
+ * only works when the person can see what they are agreeing to.
+ *
+ * `CLAUDE.md`: *"repo.attach is knowingly defective and gated. Do not un-gate
+ * it."* When the agreed fix lands (import-only + explicit per-record publish),
+ * delete this list.
+ */
+export const PANE_DENIED_VERBS: readonly string[] = ['repo.attach'];
+
+export function isPaneDenied(verb: string): boolean {
+  return PANE_DENIED_VERBS.includes(verb);
+}
+
+/**
  * `template.create` → `mcp__imagedrip__template_create`.
  *
  * The name a spawned CLI sees for a published verb, which is what

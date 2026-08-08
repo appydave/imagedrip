@@ -14,12 +14,13 @@ import {
   type RunStatus,
   type RunSummary,
 } from '@shared/ipc';
-import type { ChatEvent } from '@shared/chat';
+import type { ChatEvent, ChatGateRequest } from '@shared/chat';
 import type { DomainState } from '@shared/domain';
 import type { SnagInput, UatCounts, VerdictInput } from '@shared/live-uat';
 import { createConsole } from './create-console.js';
 import { createControlSurface, listVerbs, type ControlSurface } from './control-surface.js';
 import { createChatSession, type ChatSessionHandle } from './chat-session.js';
+import { createChatGate, type ChatGate } from './chat-gate.js';
 import { buildContext, type ContextMode, type ContextResult } from './context-snapshot.js';
 import { buildEngineReadiness, type EngineReadiness } from './engine-readiness.js';
 import { isInside, isInsideWorkTree } from './git-scope.js';
@@ -99,8 +100,42 @@ let control: ControlSurface | null = null;
  */
 let chat: ChatSessionHandle | null = null;
 
+/**
+ * D1 — the human gate. Created eagerly (it holds no resources until asked) so
+ * the control surface can be handed a live reference at startup.
+ */
+let gate: ChatGate | null = null;
+
 function pushChatEvents(events: ChatEvent[]): void {
   if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.chatEvent, events);
+}
+
+/**
+ * Put a confirm in front of the human, and say whether that was possible.
+ *
+ * Returning false is a DENY, not an error: no window means no person, and the
+ * gate treats absent consent as refusal.
+ *
+ * ⚠️ The ChatGPT `WebContentsView` composites ABOVE all HTML, so a dialog
+ * overlapping its rect is simply invisible — the failure that ate the WP5
+ * run-entry chooser on 2026-08-03. The renderer's `Modal` already hides the
+ * view for its lifetime (refcounted, in `Popover.tsx`), which is why the
+ * confirm is rendered through that component and not hand-rolled. Hiding is
+ * not detaching: a running generation carries on underneath.
+ */
+function presentGate(request: ChatGateRequest): boolean {
+  if (!hostWindow || hostWindow.isDestroyed()) return false;
+  hostWindow.webContents.send(IPC.chatGate, request);
+  // Bring the window forward: a confirm the user never saw because ImageDrip
+  // was behind their editor would expire and deny, and they would only find
+  // out from the chat claiming it was refused.
+  if (hostWindow.isMinimized()) hostWindow.restore();
+  hostWindow.show();
+  return true;
+}
+
+function dismissGate(): void {
+  if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.chatGate, null);
 }
 
 /**
@@ -792,7 +827,22 @@ const desktop = createConsole({
     });
     ipc.register<void, void>({
       channel: IPC.chatStop,
-      handle: () => chat?.stop(),
+      handle: async () => {
+        // A pending confirm belongs to the session being torn down. Deny it
+        // rather than leave it hanging against a CLI that is going away.
+        gate?.cancelAll('the chat was stopped');
+        await chat?.stop();
+      },
+    });
+    // D1 — the human's answer. `allow` is only ever honoured as an explicit
+    // true; every other form of dismissal reaches here as false, or does not
+    // reach here at all and expires into a deny.
+    ipc.register<{ id: string; allow: boolean }, void>({
+      channel: IPC.chatGateDecide,
+      input: z.object({ id: z.string().min(1), allow: z.boolean() }),
+      handle: ({ id, allow }) => {
+        gate?.decide(id, allow);
+      },
     });
 
     // ── Live UAT: the judgment sidecar (docs/live-uat.md) ──
@@ -875,11 +925,25 @@ const desktop = createConsole({
     // Started here, after `registerIpc` has run, so the registry it mirrors is
     // fully populated. Loopback only, bearer-authed, and it publishes its port
     // and token together in one 0600 file so a client discovers both in one read.
+    // D1 — created before the control surface, which holds a reference to it.
+    gate = createChatGate({
+      present: presentGate,
+      dismiss: () => dismissGate(),
+      logger: log,
+    });
+
     control = createControlSurface({
       defs: () => ipc.list(),
       userDataDir: app.getPath('userData'),
       version: app.getVersion(),
       isRunning: () => runner?.running ?? false,
+      // ── D1 · who is calling, and asking a human when it matters ──
+      //
+      // Read live rather than captured: the credential is minted per CLI spawn
+      // and revoked on teardown, so a stale copy would either stop recognising
+      // the pane or keep recognising a session that has gone.
+      paneToken: () => chat?.paneToken() ?? null,
+      confirmGated: (call) => gate?.ask(call) ?? Promise.resolve(false),
       // The seam the human path gets for free: a person sees the login wall in
       // the pane, an HTTP caller sees nothing. This is what gives them parity.
       engineReadiness: () => getEngineReadiness(),
@@ -939,6 +1003,10 @@ const desktop = createConsole({
       // fires on a macOS Cmd-Q.
       control?.stopSync();
       control = null;
+      // A confirm still on screen at quit is denied, not abandoned: the agent
+      // gets a definite answer instead of a promise that dies with the process.
+      gate?.cancelAll('ImageDrip is quitting');
+      gate = null;
       // WP4 §2: the CLI child holds an OPEN stdin, so it will not exit on its
       // own, and on macOS it would outlive an Electron that simply exited.
       // A SEPARATE step from the run-manifest flush on purpose — `flushRunOnQuit`

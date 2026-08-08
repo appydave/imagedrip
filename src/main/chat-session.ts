@@ -20,19 +20,21 @@
  *    THROWS when the capability probe cannot confirm the tool-restriction flags.
  *    There is no degraded path: a chat that quietly spawns with full tools is
  *    worse than no chat, because it is believed.
- *  - **Gated verbs are hard-blocked until the D1 human gate exists.** The
- *    pane's allow-list carries only the non-gated verbs and its deny-list names
- *    every gated one explicitly, so AC-5 is structurally impossible to violate
- *    rather than merely unlikely. When D1 lands, gated verbs move from
- *    "unreachable" to "reachable, held for a human confirm" — and not before.
+ *  - **D1 — a gated verb from HERE stops at a human.** This session mints its
+ *    own credential and hands it to the MCP proxy through the environment, so
+ *    main can tell the pane's calls apart from a terminal session's. Gated
+ *    verbs are therefore ALLOWED through to the CLI: they are intercepted at
+ *    the call layer, where a person answers, rather than blocked at the flag
+ *    layer where nobody is asked. AC-5 is satisfied by someone deciding, not
+ *    by the chat being unable to raise the question.
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import type { Logger } from '@appydave/core';
 import type { ChatEvent } from '../shared/chat.js';
-import { toMcpToolName, type VerbInfo } from './verb-policy.js';
+import { isPaneDenied, toMcpToolName, type VerbInfo } from './verb-policy.js';
 import {
   ContainmentUnavailableError,
   buildChatArgs,
@@ -98,6 +100,15 @@ export interface ChatSessionState {
 
 export interface ChatSessionHandle {
   state(): ChatSessionState;
+  /**
+   * The credential identifying THIS pane session to the control surface (D1),
+   * or null when no child is alive.
+   *
+   * Read live by the control surface rather than handed to it once, so it
+   * follows a respawn and goes dead with a teardown. Never leaves main and
+   * never reaches the renderer — it is not a secret the UI has any use for.
+   */
+  paneToken(): string | null;
   /** Send one turn. Resolves when the turn's `result` frame arrives. */
   send(prompt: string): Promise<void>;
   /** Close stdin and let the child exit; safe to call when nothing is running. */
@@ -126,17 +137,39 @@ export function createChatSession(deps: ChatSessionDeps): ChatSessionHandle {
    * makes the whole thing single-flight.
    */
   let busy = false;
+  /**
+   * D1 — the credential that says "this call came from the pane".
+   *
+   * Minted per spawn, handed to the MCP proxy through the child's ENVIRONMENT,
+   * and deliberately NOT written into `control.json`: the whole design rests on
+   * possessing that file's bearer token not making you the pane. It is also
+   * cleared the moment the child dies, so a stale credential cannot outlive the
+   * session that earned it and put a confirm in front of a human for a chat
+   * that is no longer running.
+   */
+  let paneToken: string | null = null;
 
   /**
-   * The tool surface the pane's CLI is given, split by the SAME `gated` flag the
-   * control surface publishes — so a verb added to main lands on the right side
-   * of this line with no change here.
+   * The tool surface the pane's CLI is given.
+   *
+   * With the D1 gate in place, GATED verbs are allowed through to the CLI —
+   * that is the point of building the gate. They are no longer blocked at the
+   * flag layer because they are now intercepted at the call layer, where a
+   * human answers. Blocking them here as well would mean the confirm dialog
+   * could never fire, and AC-5 would be satisfied by the chat being unable to
+   * ask rather than by a person deciding.
+   *
+   * `PANE_DENIED_VERBS` is the exception and stays on the deny-list: those
+   * cannot be honestly confirmed, so the agent should not be able to raise the
+   * dialog at all.
    */
   function toolPolicy(): { allow: string[]; deny: string[] } {
     const allow: string[] = [];
     const deny: string[] = [];
     for (const verb of deps.verbs()) {
-      (verb.gated ? deny : allow).push(toMcpToolName(verb.verb));
+      const name = toMcpToolName(verb.verb);
+      if (isPaneDenied(verb.verb)) deny.push(name);
+      else allow.push(name);
     }
     return { allow, deny };
   }
@@ -149,7 +182,7 @@ export function createChatSession(deps: ChatSessionDeps): ChatSessionHandle {
    * `process.execPath` without this variable would launch a second ImageDrip
    * window instead of a stdio server.
    */
-  async function writeMcpConfig(): Promise<string> {
+  async function writeMcpConfig(client: string): Promise<string> {
     const path = join(deps.userDataDir, CHAT_MCP_FILE);
     const config = {
       mcpServers: {
@@ -159,6 +192,9 @@ export function createChatSession(deps: ChatSessionDeps): ChatSessionHandle {
           env: {
             ELECTRON_RUN_AS_NODE: '1',
             IMAGEDRIP_CONTROL_FILE: deps.controlFile,
+            // D1. This is what makes a gated verb from this child stop at a
+            // human, while the same verb from a terminal session does not.
+            IMAGEDRIP_CLIENT_TOKEN: client,
           },
         },
       },
@@ -196,13 +232,16 @@ export function createChatSession(deps: ChatSessionDeps): ChatSessionHandle {
     // an error, so getting this backwards turns one crash into a dead pane.
     const resume = sessionId !== null;
     const id = sessionId ?? randomUUID();
+    // A fresh pane credential for every spawn — a respawn is a new client, and
+    // the old credential stops meaning anything the moment it is replaced.
+    const client = randomBytes(32).toString('hex');
     const args = buildChatArgs({
       capabilities,
       sessionId: id,
       resume,
       model: deps.model ?? null,
       addDirs,
-      mcpConfig: await writeMcpConfig(),
+      mcpConfig: await writeMcpConfig(client),
       permissionMode: PERMISSION_MODE,
       mcpTools: allow,
       // Every gated verb, named. The allow-list above already omits them; this
@@ -227,6 +266,7 @@ export function createChatSession(deps: ChatSessionDeps): ChatSessionHandle {
       onEvent: (event) => local.push(event),
     });
     sessionId = id;
+    paneToken = client;
 
     // `close`, not `exit`: `exit` fires while stdio may still have buffered
     // output to deliver, and the last thing a turn emits is the `result` frame
@@ -238,6 +278,9 @@ export function createChatSession(deps: ChatSessionDeps): ChatSessionHandle {
       if (coalescer === local) coalescer = null;
       session = null;
       busy = false;
+      // Revoke: a credential that outlives its child would put a confirm in
+      // front of a human for a chat that is no longer running.
+      if (paneToken === client) paneToken = null;
     });
 
     return session;
@@ -246,6 +289,10 @@ export function createChatSession(deps: ChatSessionDeps): ChatSessionHandle {
   return {
     state(): ChatSessionState {
       return { running: session !== null, busy, sessionId };
+    },
+
+    paneToken(): string | null {
+      return paneToken;
     },
 
     async send(prompt: string): Promise<void> {
@@ -275,6 +322,7 @@ export function createChatSession(deps: ChatSessionDeps): ChatSessionHandle {
       const live = session;
       session = null;
       busy = false;
+      paneToken = null;
       coalescer?.dispose();
       coalescer = null;
       if (!live) return;
@@ -285,6 +333,7 @@ export function createChatSession(deps: ChatSessionDeps): ChatSessionHandle {
       const live = session;
       session = null;
       busy = false;
+      paneToken = null;
       coalescer = null; // do NOT flush: the renderer is going away too
       if (!live) return;
       try {
