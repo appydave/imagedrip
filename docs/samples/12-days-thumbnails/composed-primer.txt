@@ -1,0 +1,48 @@
+Brand: AppyDave. Warm, typographic, grid-aware. A thumbnail is a cropped extension of appydave.com — someone should land on the image, then the website, and feel they are the same place.
+
+Palette. These occupy 80%+ of every frame:
+  brown   #342d2d  a FIRST-CLASS ground colour, not merely an outline
+  gold    #ccba9d
+  yellow  #ffde59  reserved for ONE attention element, never decorative fill
+  ground  #faf5ec near-white cream, or #25201e dark surface
+  amber   #c8841a  sequence numerals only (01, 042) — never a focal element
+
+At most ONE semantic accent per image (AI purple, success green, pain red, impact orange, doc blue), on a single small element. Most images use none at all.
+
+Typography: Bebas Neue for display, Oswald for watermarks, labels and sequence numerals. Flat, clean, grid-aware composition. A subtle warm-cream paper texture is the only acceptable gradient.
+
+Artifact: a 16:9 YouTube thumbnail PLATE, 1280x720, for the AppyDave channel.
+
+A PLATE, not a finished thumbnail. The headline hook text is deliberately NOT drawn — it is composed later, at higher fidelity, by a separate step. What this image must deliver is the ground, the palette, the composition and the ghost watermark: everything the hook will later sit on top of. Leave clear, uncluttered space on the LEFT for it, occupying 30-60% of the frame width.
+
+The ghost watermark is the single strongest tie to the web brand, and the only text this image carries:
+  - ONE word, uppercase, Oswald or Bebas Neue, bold weight
+  - brown #342d2d at 8-15% opacity on a cream ground, or cream #faf5ec at 6-12% on a dark brown ground
+  - ALWAYS bleeds off at least one edge — never centred, never fully contained
+  - sized 1.5x to 2.5x the cap height of the space left for the hook
+  - sits behind everything else, never in front
+  - exactly one per image
+
+Composition — use the pattern named in the prompt:
+  Type-Dominant   ground plus watermark alone, held open for a bold claim
+  Type + Glyph    one small iconographic element (arrow, cursor, node, terminal prompt, pill) — the default
+  Split Panel     a dark brown panel beside a cream panel — before/after, problem/fix
+  Sequence Badge  a large amber numeral plus a topic word plus the watermark
+  Ghost-Forward   the watermark IS the hero at 40%+ opacity, very large, everything else recedes
+
+Hard constraints — never do any of these:
+no headline text, no hook text, no large foreground lettering, no captions, no titles drawn in the image
+no humans, no human faces, no hands
+no halftone grain, no newsprint texture, no comic-book outlines
+no 3D render, no photorealism, no neon colours
+no gradients beyond a subtle warm-cream paper texture
+no text smaller than roughly 40px cap height at 1280x720
+no more than one semantic accent colour
+no illustrated scenes with multiple characters or props — at most one glyph
+no centred ghost watermark — it must bleed off an edge
+no second competing watermark
+no clutter — one idea per frame
+
+Subject: the "12 Days of Claudmas" series on the AppyDave YouTube channel — twelve daily builds in December, each a working AI tool built live with Claude Code and vibe-coding techniques, assembling into one content-creator pipeline called FliGen.
+
+Each prompt in this queue is one day of that series. It names the day, the topic, the composition pattern and the ghost watermark word. Where a prompt gives the published video TITLE, that is context for the design only — the title is never drawn in the image.

@@ -1,0 +1,95 @@
+day-01-harness | Day 1 — the application harness. The empty frame everything else gets built into.
+Paired title (context only, never drawn): "12 Days of Claudmas - Day #1 - Application Harness"
+Contrast mode: Abstract / Concrete — the title is a announcement, the image is one concrete empty container.
+Composition: Sequence Badge.
+Ghost watermark: HARNESS
+Scene: a large amber #c8841a numeral 01 on a near-white cream ground, set against a single flat rectangular frame with an empty vertical menu rail down its left inner edge — the shell of an app with nothing in it yet. Nothing inside the frame. The emptiness is the point.
+Subliminal signals: HARNESS bleeding off the right edge behind the numeral.
+---
+day-02-primary-brain | Day 2 — the primary brain. One orchestrator that talks, built on the Claude Agent SDK.
+Paired title (context only, never drawn): "12 Days of Claudmas: Building with Agent SDK Day 2"
+Contrast mode: Explain / Intrigue — the title says what was built, the image makes it feel like something switching on.
+Composition: Type + Glyph.
+Ghost watermark: BRAIN
+Scene: a dark brown #25201e ground. One single glyph, centred-right: a solid node with four clean radiating connectors reaching outward and running off the frame edges, in gold #ccba9d. One connector, and only one, is yellow #ffde59 — the live one.
+Subliminal signals: BRAIN in cream at low opacity, bleeding off the bottom edge, sitting behind the node.
+---
+day-03-second-brain | Day 3 — the second brain. Memory, on the file system.
+Paired title (context only, never drawn): "I Gave My AI Agent a Second Brain | #3 of 12 Days of Claudmas"
+Contrast mode: Parallel — title and image say the same thing from two angles: one brain thinks, the other remembers.
+Composition: Split Panel.
+Ghost watermark: MEMORY
+Scene: the frame divided cleanly in two. Left panel dark brown #25201e holding one small gold node glyph. Right panel near-white cream #faf5ec holding a simple stack of three flat horizontal bars, like layered files. A hard vertical seam between them, no blending.
+Subliminal signals: MEMORY spanning the seam, bleeding off the top edge, low opacity on both sides so it reads across the divide.
+---
+day-04-image-generation | Day 4 — multi-model image generation, FAL.AI and KIE.AI behind one interface.
+Paired title (context only, never drawn): "Build a Multi-Model Image Generator with FAL.AI + KIE.AI (Claudemas Day 4)"
+Contrast mode: Abstract / Concrete — the title names two APIs, the image is one aperture.
+Composition: Type + Glyph.
+Ghost watermark: IMAGE
+Scene: a near-white cream ground. One glyph: four flat corner brackets forming an implied frame, offset so they suggest three stacked frames slightly rotated behind each other — many models, one output. Brackets in brown #342d2d, the frontmost set in yellow #ffde59.
+Subliminal signals: IMAGE bleeding off the left edge at low opacity behind the brackets.
+---
+day-05-text-to-speech | Day 5 — text to speech, built in fifteen minutes.
+Paired title (context only, never drawn): "I Built a Text-to-Speech Generator in 15 Minutes (Claudemas Day 5)"
+Contrast mode: Calm / Dramatic — the title is casual about the speed, the image is taut and precise.
+Composition: Type + Glyph.
+Ghost watermark: VOICE
+Scene: a dark brown #25201e ground. One glyph: a single row of flat vertical bars of varying heights, an equaliser at rest, running horizontally across the lower third and off the right edge. Bars in gold #ccba9d, with exactly one bar in yellow #ffde59 standing well above the rest.
+Subliminal signals: VOICE in cream, low opacity, bleeding off the top edge.
+---
+day-06-video-generation | Day 6 — video generation day.
+Paired title (context only, never drawn): "Build a Video Generator with FAL.AI + KIE.AI (Claudemas Day 6)"
+Contrast mode: Calm / Dramatic — the title is a build note, the image is cinematic and large.
+Composition: Ghost-Forward.
+Ghost watermark: VIDEO
+Scene: the watermark is the hero. VIDEO set enormous in cream #faf5ec at around 40% opacity on a dark brown #25201e ground, cropped hard so it bleeds off both the left and right edges and only the middle of the letterforms is visible. One small solid yellow #ffde59 play triangle sits low-right, tiny against it.
+Subliminal signals: the watermark itself carries the whole signal here.
+---
+day-07-music-suno | Day 7 — music generation with Suno, wired into the story pipeline.
+Paired title (context only, never drawn): "I Added Music to My AI Story Pipeline (Suno + Claude Code) | Day 7 Claudemas"
+Contrast mode: Explain / Intrigue — the title lists the tools, the image is about rhythm arriving.
+Composition: Type + Glyph.
+Ghost watermark: MUSIC
+Scene: a near-white cream ground. One glyph: four flat vertical bars of stepped increasing height in gold #ccba9d, the tallest in yellow #ffde59, arranged along a single baseline in the lower right — a rising phrase, not a note cluster.
+Subliminal signals: MUSIC bleeding off the bottom-right corner, brown at low opacity.
+---
+day-08-thumbnail-generator | Day 8 — the thumbnail generator. This image is the thing it makes.
+Paired title (context only, never drawn): "I Built a Thumbnail Generator in an Hour (Claudemas Day 8)"
+Contrast mode: Parallel — the title says a thumbnail tool was built; the image is a thumbnail plate, doing the job it describes.
+Composition: Type-Dominant.
+Ghost watermark: THUMBS
+Scene: a near-white cream #faf5ec ground and almost nothing else — this is the plate at its purest. A single flat 16:9 rectangle outline in brown #342d2d sits in the lower right, small, like a thumbnail of a thumbnail. The rest of the frame is deliberately open.
+Subliminal signals: THUMBS very large in brown at 10% opacity, bleeding off the top and right edges.
+---
+day-09-prompt-pack | Day 9 — transcript in, prompt pack out.
+Paired title (context only, never drawn): "From Transcript to Prompt Pack: Designing an AI Prompt Pipeline | Day 9 Claudemas"
+Contrast mode: Abstract / Concrete — the title describes a pipeline, the image shows one thing becoming another.
+Composition: Split Panel.
+Ghost watermark: PROMPTS
+Scene: frame split vertically. Left panel near-white cream holding a dense block of many thin flat horizontal lines, tightly packed — raw transcript. Right panel dark brown #25201e holding just four short, well-spaced yellow #ffde59 bars — the distilled pack. The left is crowded, the right is sparse, and the contrast between densities is the whole idea.
+Subliminal signals: PROMPTS bleeding off the bottom edge, crossing the seam.
+---
+day-10-n8n-workflows | Day 10 — hooking into n8n and ComfyUI workflow engines.
+Paired title (context only, never drawn): "I Connected My AI App to n8n + ComfyUI Workflows (Claudemas Day 10)"
+Contrast mode: Explain / Intrigue — the title names the integrations, the image makes the connection feel like a circuit closing.
+Composition: Type + Glyph.
+Ghost watermark: WORKFLOW
+Scene: a dark brown #25201e ground. One glyph: a chain of four flat nodes joined by straight orthogonal connectors, stepping down from upper-left to lower-right and running off the right edge. Nodes in gold #ccba9d, connectors thin, with the final visible connector in yellow #ffde59.
+Subliminal signals: WORKFLOW in cream at low opacity, bleeding off the left edge.
+---
+day-11-storytelling | Day 11 — where the pieces become a finished film.
+Paired title (context only, never drawn): "This Is Where Vibe Coding Turns Into a Finished Film (Claudemas #11)"
+Contrast mode: Calm / Dramatic — the title is a quiet claim, the image is the most cinematic in the set.
+Composition: Ghost-Forward.
+Ghost watermark: STORY
+Scene: STORY set enormous in brown #342d2d at around 40% opacity on a near-white cream ground, bleeding off the left and bottom edges so the letterforms are cropped. Across the lower third, a single row of five small flat rectangles in gold #ccba9d, evenly spaced like a filmstrip, one of them yellow #ffde59.
+Subliminal signals: the cropped watermark carries it.
+---
+day-12-finale-fligen | Day 12 — the finale. Twelve tools, one pipeline, and a song.
+Paired title (context only, never drawn): "I Built 12 Content Creator Tools… Then Made Them Sing (Claudemas Finale)"
+Contrast mode: Parallel — title and image both say: this is the whole thing, assembled.
+Composition: Sequence Badge.
+Ghost watermark: FLIGEN
+Scene: a large amber #c8841a numeral 12 on a dark brown #25201e ground. To its right, a tight grid of twelve small flat squares in gold #ccba9d, three rows of four, with the final square in yellow #ffde59 — twelve builds, complete.
+Subliminal signals: FLIGEN in cream at low opacity, bleeding off the bottom edge behind the numeral and the grid.

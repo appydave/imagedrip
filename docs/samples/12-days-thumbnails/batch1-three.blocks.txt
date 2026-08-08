@@ -1,0 +1,23 @@
+day-08-thumbnail-generator | Day 8 — the thumbnail generator. This image is the thing it makes.
+Paired title (context only, never drawn): "I Built a Thumbnail Generator in an Hour (Claudemas Day 8)"
+Contrast mode: Parallel — the title says a thumbnail tool was built; the image is a thumbnail plate, doing the job it describes.
+Composition: Type-Dominant.
+Ghost watermark: THUMBS
+Scene: a near-white cream #faf5ec ground and almost nothing else — this is the plate at its purest. A single flat 16:9 rectangle outline in brown #342d2d sits in the lower right, small, like a thumbnail of a thumbnail. The rest of the frame is deliberately open.
+Subliminal signals: THUMBS very large in brown at 10% opacity, bleeding off the top and right edges.
+---
+day-06-video-generation | Day 6 — video generation day.
+Paired title (context only, never drawn): "Build a Video Generator with FAL.AI + KIE.AI (Claudemas Day 6)"
+Contrast mode: Calm / Dramatic — the title is a build note, the image is cinematic and large.
+Composition: Ghost-Forward.
+Ghost watermark: VIDEO
+Scene: the watermark is the hero. VIDEO set enormous in cream #faf5ec at around 40% opacity on a dark brown #25201e ground, cropped hard so it bleeds off both the left and right edges and only the middle of the letterforms is visible. One small solid yellow #ffde59 play triangle sits low-right, tiny against it.
+Subliminal signals: the watermark itself carries the whole signal here.
+---
+day-03-second-brain | Day 3 — the second brain. Memory, on the file system.
+Paired title (context only, never drawn): "I Gave My AI Agent a Second Brain | #3 of 12 Days of Claudmas"
+Contrast mode: Parallel — title and image say the same thing from two angles: one brain thinks, the other remembers.
+Composition: Split Panel.
+Ghost watermark: MEMORY
+Scene: the frame divided cleanly in two. Left panel dark brown #25201e holding one small gold node glyph. Right panel near-white cream #faf5ec holding a simple stack of three flat horizontal bars, like layered files. A hard vertical seam between them, no blending.
+Subliminal signals: MEMORY spanning the seam, bleeding off the top edge, low opacity on both sides so it reads across the divide.
