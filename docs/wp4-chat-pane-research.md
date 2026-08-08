@@ -3,7 +3,8 @@ doc: research
 project: imagedrip
 created: 2026-08-08
 for: the session that builds v4 WP4 — the in-app `Context ｜ Chat` pane
-status: research only. No pane code was written, and `src/renderer/src/App.tsx` was not touched.
+status: research complete. Two containment decisions taken 2026-08-08 (§0.4) — the build is unblocked.
+  No pane code was written; `src/renderer/src/App.tsx` was not touched.
 ---
 
 # WP4 — the in-app chat pane: research brief
@@ -72,6 +73,71 @@ mechanics, the stream protocol, the four traps — is already transcribed into
 `docs/requirements-v4-resident-chat.md` §3 **and already implemented and tested** in
 `scripts/claude-cli.mjs` + `scripts/claude-stream.mjs`. Go to the source to resolve a contradiction,
 not to re-derive what is built.
+
+---
+
+## 0.4 · Decisions taken (David, 2026-08-08) — build to these
+
+The two containment questions this brief opened with are **decided**. They were the stop boundary in
+the original launch line; that boundary is now cleared and the next session builds.
+
+### D1 · The gate is a per-client credential ⭐
+
+**Chosen: option (a).** The in-app pane's MCP proxy gets its **own** credential, distinct from the
+one in `control.json`. Main uses it to tell callers apart, which it currently cannot do at all.
+
+```
+pane's MCP proxy  ──▶ gated verb ──▶ main HOLDS the request
+                                     ──▶ push a confirm to the renderer
+                                     ──▶ human clicks Allow / Deny
+                                     ──▶ proceed, or 403
+terminal / curl / chat:probe ──▶ gated verb ──▶ today's behaviour (advisory metadata)
+```
+
+Why not (b) "gate every client": it would block `npm run chat:probe`, and the probe is the only thing
+standing between WP4 and a false green. Why not (c) "ship advisory": `run.start` feeds a paid session
+against OpenAI's ToS, and a gate the model can decline is not a gate.
+
+**This is not a hole in AC-5.** The two mechanisms test different things and both are needed:
+
+- The **UI gate** enforces that a *human* approves a gated verb originating from the pane.
+- **`chat:probe` AC-5** tests that the *model* does not reach for a gated verb unprompted — model
+  discipline, not transport. Unchanged by this decision, and must keep passing.
+
+Implementation notes that fall out:
+
+- The pane credential should be **per pane-session and passed to the proxy out of band** (env var),
+  not added to `control.json` — the point is that possessing the file's token does *not* make you the
+  pane.
+- The held request needs a timeout, and it must **DENY on expiry, never allow**. A confirm that
+  defaults open under load is the failure this is preventing.
+- The confirm UI must account for the ChatGPT `WebContentsView` compositing **above all HTML**
+  (`harness.setVisible(false)` exists for exactly this). A confirm the webview paints over is a
+  confirm nobody sees.
+
+### D2 · The CLI gets Read + MCP, no Bash and no Write
+
+**Chosen: option (c).** Concretely, via the existing `buildArgs()` support:
+
+| | |
+|---|---|
+| **Allowed** | `Read`, `Glob`, `Grep` + every MCP verb tool |
+| **Disallowed** | `Bash`, `Write`, `Edit`, `NotebookEdit` |
+| **Scope** | `--add-dir <brand-repo>` stays — Read is scoped and useful |
+
+Rationale: §5.2's risk is that §4 ("the operator chat must never touch the ChatGPT webview") is
+**structural at the MCP layer and absent at the Bash layer**. Removing Bash is what turns §4 from a
+promise into a property. Reading the brand repo is most of the post-v3 value and is retained; the
+chat still *writes* through the app's own verbs (`template.save`, `domain.save-project`), which carry
+their own run-state locks.
+
+> ⚠️ **This must fail CLOSED, and today's code would fail open.**
+> `buildArgs()` gates every optional flag on `probeCapabilities()` (mechanic 3) — so on a CLI that
+> does not understand `--disallowed-tools`, the flag is **silently omitted** and the agent spawns
+> with **full tools including Bash**. That is the exact inverse of this decision.
+> **WP4 must refuse to spawn** when the capability probe cannot confirm the tool-restriction flags,
+> and say so in the pane. A containment control that quietly disappears on an old CLI is worse than
+> none, because it is believed.
 
 ---
 
@@ -319,12 +385,12 @@ Relevant facts from `src/renderer/src/App.tsx` (read-only — not edited):
 
 Stated as questions. None should be guessed.
 
-1. **Who is allowed to bypass the gate, and how does main tell clients apart?** (§5.3.) The answer
-   decides whether gating lives in the transport, the verb layer, or the UI — and whether
-   `chat:probe` can still run headlessly.
-2. **What tool policy does the CLI run under?** `bypassPermissions` + `--add-dir` gives Bash on
-   David's machine. Which of `--allowed-tools` / `--disallowed-tools` are set, and does the chat get
-   filesystem access at all? (Requirements §10 Q3.)
+1. ~~**Who is allowed to bypass the gate?**~~ ✅ **DECIDED — see D1.** Per-client credential; the
+   pane's calls are held for a human confirm, other clients keep today's behaviour, `chat:probe`
+   stays headless.
+2. ~~**What tool policy does the CLI run under?**~~ ✅ **DECIDED — see D2.** Read + MCP; Bash, Write
+   and Edit disallowed; `--add-dir` retained. **Must fail closed if the probe cannot confirm the
+   flags.**
 3. **Is the chat global, or per project?** Decides where the session id lives and whether switching
    project switches conversation. (§4.)
 4. **Does the transcript persist to disk, and where?** (Requirements §10 Q5.) A run's provenance
@@ -346,13 +412,17 @@ Stated as questions. None should be guessed.
 
 ## 8 · Suggested order
 
-1. **Answer Q1 and Q2** — the gate and the tool policy. Both are containment decisions, and both are
-   much cheaper to make now than to retrofit.
-2. **Move `claude-cli` / `claude-stream` into `src/main`** (Q5), keep the parser tests green.
-3. **Spawn from main via `ProcessSupervisor`**, lazily, with teardown wired into the quit path.
-4. **Add `IPC.chatEvent`** and prove one `text_delta` stream reaches the renderer.
-5. **Build the gate** — intercept, hold, confirm in the UI, deny on timeout.
-6. **Then the tab and the transcript UI.** Rendering is the easy part and should come last.
+~~1. Answer Q1 and Q2~~ ✅ **done — D1 and D2 above.** Build to them.
+
+1. **Move `claude-cli` / `claude-stream` into `src/main`** (Q5), keep the parser tests green.
+2. **Spawn from main via `ProcessSupervisor`**, lazily, with teardown wired into the quit path.
+   Apply **D2** here — and make the capability probe a **hard precondition**, not a soft one: no
+   confirmed `--disallowed-tools`, no spawn.
+3. **Add `IPC.chatEvent`** and prove one `text_delta` stream reaches the renderer.
+4. **Build the gate (D1)** — second credential, hold the request, confirm in the UI, deny on timeout.
+   Do this **before** the pane can call anything gated, not after; it is the piece that decides
+   whether the chat is safe to trust, and it is far cheaper now than retrofitted.
+5. **Then the tab and the transcript UI.** Rendering is the easy part and should come last.
 
 `npm run chat:probe` already replays AC-1…AC-5 headlessly and checks results against the control
 surface rather than against what the agent claimed. **Keep it passing at every step** — it is the
