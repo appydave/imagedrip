@@ -30,7 +30,12 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir, homedir, platform } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildArgs, probeCapabilities, startClaude } from './claude-cli.mjs';
+// The pane's OWN implementation, imported directly from src/main (WP4 §1.1
+// option b). That is what makes this probe evidence about the in-app chat
+// rather than about a sibling copy of the same code. Node 22.18+ strips the
+// types on load; the `.ts` extension is required because bare Node does not do
+// TypeScript's `.js` → `.ts` specifier rewriting.
+import { buildArgs, probeCapabilities, startClaude } from '../src/main/claude-cli.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..');
@@ -204,7 +209,26 @@ async function main() {
     return events;
   }
 
-  const projectName = `Probe Spring Nails ${new Date().toISOString().slice(11, 19)}`;
+  /**
+   * Both names carry the run's clock time, and the TEMPLATE one is not
+   * decoration — it is a false-red fix (2026-08-08).
+   *
+   * The probe writes into the app's real domain store, so a second run finds
+   * the first run's records still there. With a fixed name, `template.create`
+   * makes "Catalogue Tile" a SECOND time (id `catalogue-tile-2`), the agent
+   * correctly selects the one it just made, and the check below — which looked
+   * the name up with `find`, taking the FIRST match — compared the new active
+   * id against the OLD record and reported a failure the agent had not
+   * committed. The project name was already timestamped for this reason; the
+   * template name was an oversight.
+   *
+   * A probe that fails spuriously on its second run is worth fixing quickly:
+   * it is the only thing standing between WP4 and a false green, and a check
+   * that cries wolf stops being read.
+   */
+  const stamp = new Date().toISOString().slice(11, 19);
+  const projectName = `Probe Spring Nails ${stamp}`;
+  const templateName = `Catalogue Tile ${stamp}`;
   const outputDir = join(work, 'spring-nails-output');
 
   try {
@@ -225,12 +249,12 @@ async function main() {
     await turn(
       'AC-2 · author a template',
       `Read the active brand with domain.get for the house style, then create a template named exactly ` +
-        `"Catalogue Tile" for catalogue-ready single-nail tiles, one design per line. ` +
+        `"${templateName}" for catalogue-ready single-nail tiles, one design per line. ` +
         `Use template.create with importFormat "lines", then template.save to write its body and a ` +
         `"negatives" field with the hard constraints. Finally point the active project at it.`,
     );
     domain = (await api('/v1/call/domain.get', { method: 'POST', body: {} })).body.result;
-    const template = domain.templates.find((/** @type {any} */ t) => t.name === 'Catalogue Tile');
+    const template = domain.templates.find((/** @type {any} */ t) => t.name === templateName);
     check('AC-2 template created', Boolean(template), template ? `id ${template.id}` : 'not found');
     check('AC-2 template is selectable and selected', domain.activeTemplateId === template?.id, domain.activeTemplateId ?? '(none)');
     check('AC-2 template has a body', Boolean(domain.template?.body?.trim()), `${domain.template?.body?.length ?? 0} chars`);
@@ -239,7 +263,7 @@ async function main() {
     const onDisk = readPersistedDomain(file);
     check(
       'AC-2 template persisted to disk (survives a restart)',
-      Boolean(onDisk) && JSON.stringify(onDisk).includes('Catalogue Tile'),
+      Boolean(onDisk) && JSON.stringify(onDisk).includes(templateName),
       onDisk ? 'found in domain.json' : 'domain.json unreadable',
     );
 

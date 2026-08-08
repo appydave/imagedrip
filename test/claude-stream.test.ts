@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-// @ts-expect-error — plain ESM, JSDoc-typed; see tsconfig.scripts.json
-import { createStreamParser, takeLines } from '../scripts/claude-stream.mjs';
+import { createStreamParser, takeLines } from '../src/main/claude-stream.ts';
 
 /**
  * The stream parser against JSONL RECORDED FROM THE REAL CLI (2.1.223), not

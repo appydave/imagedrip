@@ -77,6 +77,21 @@ export const NEVER_EXPOSED: readonly string[] = [
   // Dial-in injects type the primer / a prompt straight into the live chat.
   'imagedrip:run:inject-primer',
   'imagedrip:run:inject-prompt',
+  /**
+   * WP4 — the operator chat's OWN controls.
+   *
+   * A different hazard from the webview ones above, and worth stating: these
+   * are not dangerous to the ChatGPT session, they are dangerous to the
+   * containment. Publishing `chat.send` would hand the contained agent a tool
+   * that prompts itself — an unbounded loop on David's subscription — and would
+   * let any control-surface client drive the pane's CLI, which is exactly the
+   * client the D1 gate exists to tell apart from the others.
+   *
+   * The pane reaches these over IPC, like every other renderer-only channel.
+   */
+  'imagedrip:chat:send',
+  'imagedrip:chat:state',
+  'imagedrip:chat:stop',
 ];
 
 /**
@@ -145,6 +160,27 @@ export function isExposed(channel: string): boolean {
 
 export function isGated(verb: string): boolean {
   return GATED_VERBS.includes(verb);
+}
+
+/**
+ * `template.create` → `mcp__imagedrip__template_create`.
+ *
+ * The name a spawned CLI sees for a published verb, which is what
+ * `--allowed-tools` / `--disallowed-tools` are matched against. It lives here,
+ * with the rest of the policy, because WP4 needs it in main to bound the pane's
+ * tool surface — and it must agree EXACTLY with `toolName()` in
+ * `scripts/imagedrip-mcp.mjs`, or the pane would allow-list names that no tool
+ * answers to and the agent would silently have neither.
+ *
+ * The proxy keeps its own copy rather than importing this one: it is launched
+ * by `.mcp.json` on whatever Node the user has, and must stay plain ESM with no
+ * build step. `test/mcp-proxy.test.ts` asserts the two agree on every verb, so
+ * the duplication is a CHECKED invariant rather than a drift risk.
+ */
+export const MCP_TOOL_PREFIX = 'mcp__imagedrip__';
+
+export function toMcpToolName(verb: string): string {
+  return `${MCP_TOOL_PREFIX}${verb.replace(/\./g, '_')}`;
 }
 
 /**

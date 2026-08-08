@@ -3,6 +3,7 @@ import {
   IPC,
   type AppInfo,
   type AppytronApi,
+  type ChatState,
   type HarnessEvent,
   type ImagedripApi,
   type Rect,
@@ -11,6 +12,7 @@ import {
   type RunStatus,
   type RunSummary,
 } from '../shared/ipc';
+import type { ChatEvent } from '../shared/chat';
 import type { DomainState } from '../shared/domain';
 import type { SnagInput, UatCounts, VerdictInput } from '../shared/live-uat';
 
@@ -89,6 +91,17 @@ const imagedrip: ImagedripApi = {
       const listener = (_e: IpcRendererEvent, payload: RunStatus): void => cb(payload);
       ipcRenderer.on(IPC.runStatus, listener);
       return () => ipcRenderer.removeListener(IPC.runStatus, listener);
+    },
+  },
+  chat: {
+    send: (prompt: string): Promise<void> => ipcRenderer.invoke(IPC.chatSend, prompt),
+    state: (): Promise<ChatState> => ipcRenderer.invoke(IPC.chatState),
+    stop: (): Promise<void> => ipcRenderer.invoke(IPC.chatStop),
+    // The third push channel, wired exactly like run.onStatus and onEvent above.
+    onEvent: (cb: (events: ChatEvent[]) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, payload: ChatEvent[]): void => cb(payload);
+      ipcRenderer.on(IPC.chatEvent, listener);
+      return () => ipcRenderer.removeListener(IPC.chatEvent, listener);
     },
   },
   uat: {

@@ -1,5 +1,5 @@
 /**
- * Claude Code stream-json parser (v4 WP3, §3 "The stream protocol").
+ * Claude Code stream-json parser (v4 §3 "The stream protocol").
  *
  * Reduces the CLI's stdout JSONL to six UI-facing events:
  *
@@ -32,30 +32,23 @@
  *
  * Pure and synchronous: feed it parsed objects, take events back. No I/O, no
  * timers, no process — which is what makes it testable against recorded JSONL.
+ *
+ * **Lives in `src/main` (WP4, §1.1 option b), not `scripts/`.** The pane and the
+ * headless `chat:probe` run ONE implementation — two copies of a parser with
+ * four subtle traps is how trap 3 comes back. The import below is `import type`
+ * on purpose: it is erased at runtime, so `chat-probe.mjs` can load this file
+ * under bare Node (which strips types but cannot resolve the `@shared` alias).
  */
 
-/**
- * @typedef {{ type: 'status', status: string }} StatusEvent
- * @typedef {{ type: 'text_delta', text: string }} TextDeltaEvent
- * @typedef {{ type: 'thinking_delta', text: string }} ThinkingDeltaEvent
- * @typedef {{ type: 'tool_use', id: string, name: string, input: unknown }} ToolUseEvent
- * @typedef {{ type: 'tool_result', tool_use_id: string, content: unknown, is_error: boolean }} ToolResultEvent
- * @typedef {{ type: 'usage', input: number, output: number, cacheRead: number, cacheCreation: number, costUsd: number | null }} UsageEvent
- * @typedef {StatusEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolUseEvent | ToolResultEvent | UsageEvent} StreamEvent
- */
+import type { ChatEvent, ChatUsageEvent } from '../shared/chat.js';
 
-/**
- * An input the wrapper "has" but that carries nothing — trap 2's signature.
- * @param {unknown} input
- * @returns {boolean}
- */
-function isEmptyInput(input) {
+/** An input the wrapper "has" but that carries nothing — trap 2's signature. */
+function isEmptyInput(input: unknown): boolean {
   if (input === undefined || input === null) return true;
-  return typeof input === 'object' && Object.keys(input).length === 0;
+  return typeof input === 'object' && Object.keys(input as object).length === 0;
 }
 
-/** @param {any} usage @param {number | null} costUsd @returns {UsageEvent} */
-function usageEvent(usage, costUsd = null) {
+function usageEvent(usage: any, costUsd: number | null = null): ChatUsageEvent {
   return {
     type: 'usage',
     input: usage?.input_tokens ?? 0,
@@ -66,13 +59,30 @@ function usageEvent(usage, costUsd = null) {
   };
 }
 
-export function createStreamParser() {
+/** Per-content-block scratch — trap 4. */
+interface BlockScratch {
+  kind: string;
+  id?: string;
+  name?: string;
+  json?: string;
+}
+
+export interface StreamParser {
+  /** Feed one parsed stdout line; take back whatever it resolves to. */
+  push(obj: any): ChatEvent[];
+  /** The session id the CLI reported — ImageDrip persists it (mechanic 4). */
+  readonly sessionId: string | null;
+  /** The turn's `result` frame, verbatim. */
+  readonly lastResult: any;
+}
+
+export function createStreamParser(): StreamParser {
   /** Tool-use ids already emitted — trap 2. */
-  const emittedToolUses = new Set();
+  const emittedToolUses = new Set<string>();
   /** Message ids whose text already streamed as deltas — trap 3. */
-  const streamedText = new Set();
+  const streamedText = new Set<string>();
   /** Per-content-block scratch, keyed `messageId:blockIndex` — trap 4. */
-  const blocks = new Map();
+  const blocks = new Map<string, BlockScratch>();
   /**
    * tool-use id → its scratch key, so the `assistant` wrapper can find the
    * fragments still accumulating for the same call. Observed ordering (real
@@ -82,24 +92,19 @@ export function createStreamParser() {
    * and on any build that ships the wrapper with `input: {}` (trap 2) the
    * arguments would vanish while the call still rendered as successful.
    */
-  const pendingToolIds = new Map();
+  const pendingToolIds = new Map<string, string>();
   /**
    * Content-block events carry only an index, never a message id, so the block
    * has to be attributed to the most recent assistant message. Losing this is
    * how two concurrent messages' tool inputs get spliced together.
    */
-  let currentMessageId = null;
-  let sessionId = null;
+  let currentMessageId: string | null = null;
+  let sessionId: string | null = null;
   /** Set when the turn's `result` frame arrives. */
-  let lastResult = null;
+  let lastResult: any = null;
 
-  /**
-   * @param {any} obj one parsed stdout line
-   * @returns {StreamEvent[]}
-   */
-  function push(obj) {
-    /** @type {StreamEvent[]} */
-    const out = [];
+  function push(obj: any): ChatEvent[] {
+    const out: ChatEvent[] = [];
     if (!obj || typeof obj !== 'object') return out;
 
     if (typeof obj.session_id === 'string') sessionId = obj.session_id;
@@ -123,7 +128,7 @@ export function createStreamParser() {
         // mode 1 delivers it here AGAIN. Both are handled by the same code:
         // anything already emitted is skipped, anything not is emitted now.
         const message = obj.message ?? {};
-        const messageId = message.id ?? currentMessageId ?? 'unknown';
+        const messageId: string = message.id ?? currentMessageId ?? 'unknown';
         for (const block of message.content ?? []) {
           if (block.type === 'text') {
             if (!streamedText.has(messageId) && block.text) {
@@ -148,7 +153,7 @@ export function createStreamParser() {
         }
         // Mark AFTER the loop: a wrapper that arrives without prior deltas must
         // still emit its text, and only then suppress a later duplicate.
-        if (message.content?.some((/** @type {any} */ b) => b.type === 'text')) {
+        if (message.content?.some((b: any) => b.type === 'text')) {
           streamedText.add(messageId);
         }
         if (message.usage) out.push(usageEvent(message.usage));
@@ -171,7 +176,9 @@ export function createStreamParser() {
 
       case 'result':
         lastResult = obj;
-        out.push(usageEvent(obj.usage, typeof obj.total_cost_usd === 'number' ? obj.total_cost_usd : null));
+        out.push(
+          usageEvent(obj.usage, typeof obj.total_cost_usd === 'number' ? obj.total_cost_usd : null),
+        );
         // Not one of the six payloads but the same lifecycle channel: a
         // consumer driving turns needs a definite end-of-turn signal.
         out.push({ type: 'status', status: obj.is_error ? 'error' : 'done' });
@@ -182,12 +189,7 @@ export function createStreamParser() {
     }
   }
 
-  /**
-   * @param {any} event
-   * @param {StreamEvent[]} out
-   * @returns {StreamEvent[]}
-   */
-  function handleStreamEvent(event, out) {
+  function handleStreamEvent(event: any, out: ChatEvent[]): ChatEvent[] {
     if (!event || typeof event !== 'object') return out;
 
     switch (event.type) {
@@ -222,7 +224,7 @@ export function createStreamParser() {
           if (delta.thinking) out.push({ type: 'thinking_delta', text: delta.thinking });
         } else if (delta.type === 'input_json_delta') {
           // Trap 4: each chunk is a fragment, not valid JSON on its own.
-          const block = blocks.get(key) ?? { kind: 'tool_use', id: undefined, name: undefined, json: '' };
+          const block = blocks.get(key) ?? { kind: 'tool_use', json: '' };
           block.json = `${block.json ?? ''}${delta.partial_json ?? ''}`;
           blocks.set(key, block);
         }
@@ -259,22 +261,17 @@ export function createStreamParser() {
     }
   }
 
-  /** @param {number} index */
-  function blockKey(index) {
+  function blockKey(index: number): string {
     return `${currentMessageId ?? 'unknown'}:${index}`;
   }
 
-  /**
-   * Emit one accumulated tool-use block, once.
-   * @param {any} block
-   * @param {StreamEvent[]} out
-   */
-  function flushToolBlock(block, out) {
+  /** Emit one accumulated tool-use block, once. */
+  function flushToolBlock(block: BlockScratch | undefined, out: ChatEvent[]): void {
     if (block?.kind !== 'tool_use' || !block.id) return;
     if (emittedToolUses.has(block.id)) return;
     emittedToolUses.add(block.id);
     pendingToolIds.delete(block.id);
-    let input = {};
+    let input: unknown = {};
     if (block.json) {
       try {
         input = JSON.parse(block.json);
@@ -289,11 +286,9 @@ export function createStreamParser() {
 
   return {
     push,
-    /** @returns {string | null} */
     get sessionId() {
       return sessionId;
     },
-    /** @returns {any} */
     get lastResult() {
       return lastResult;
     },
@@ -303,10 +298,8 @@ export function createStreamParser() {
 /**
  * Split a chunk of stdout into whole lines, keeping any trailing partial.
  * The CLI writes JSONL, but a pipe read can land mid-line.
- * @param {string} buffer
- * @returns {{ lines: string[], rest: string }}
  */
-export function takeLines(buffer) {
+export function takeLines(buffer: string): { lines: string[]; rest: string } {
   const parts = buffer.split('\n');
   const rest = parts.pop() ?? '';
   return { lines: parts.map((l) => l.trim()).filter(Boolean), rest };

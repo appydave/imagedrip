@@ -37,6 +37,17 @@ describe('exposure — v4 §4, the hard constraint', () => {
     expect(isExposed('imagedrip:run:inject-prompt')).toBe(false);
   });
 
+  it('never publishes the chat operator’s own controls (WP4)', () => {
+    // A different hazard from the webview channels: publishing `chat.send`
+    // would hand the CONTAINED agent a tool that prompts itself — an unbounded
+    // loop on David's own subscription — and would let any control-surface
+    // client drive the pane's CLI, which is precisely the client the D1 gate
+    // exists to tell apart from the others.
+    expect(isExposed('imagedrip:chat:send')).toBe(false);
+    expect(isExposed('imagedrip:chat:state')).toBe(false);
+    expect(isExposed('imagedrip:chat:stop')).toBe(false);
+  });
+
   it('does publish the sanctioned run verbs — asking the harness to run is allowed', () => {
     expect(isExposed('imagedrip:run:start')).toBe(true);
     expect(isExposed('imagedrip:run:stop')).toBe(true);

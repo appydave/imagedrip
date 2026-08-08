@@ -4,6 +4,7 @@
  * (consumes) import from here, so the surface stays in one place.
  */
 
+import type { ChatEvent } from './chat';
 import type { DomainState } from './domain';
 import type { SnagInput, UatCounts, VerdictInput } from './live-uat';
 
@@ -102,6 +103,29 @@ export const IPC = {
   harnessStop: 'imagedrip:harness:stop',
   /** main → renderer push of harness events (image-done / rate-limit / refused / stall). */
   harnessEvent: 'imagedrip:harness:event',
+
+  /**
+   * ── v4 WP4: the resident chat operator ──
+   *
+   * Renderer-only, and NEVER_EXPOSED on the control surface — publishing
+   * `chat.send` would give the contained agent a tool that prompts itself.
+   */
+  /** Send one turn. Resolves when the turn ends; the frames arrive on `chatEvent`. */
+  chatSend: 'imagedrip:chat:send',
+  /** Is a CLI child alive, is a turn in flight, which session id? */
+  chatState: 'imagedrip:chat:state',
+  /** Close the CLI child. The next message spawns a fresh one. */
+  chatStop: 'imagedrip:chat:stop',
+  /**
+   * main → renderer push of chat stream frames — the THIRD push channel,
+   * alongside `runStatus` and `harnessEvent` and built the same way.
+   *
+   * `IpcRouter.register()` wires `ipcMain.handle`, which is strictly
+   * request/response; one prompt produces hundreds of `text_delta` events over
+   * seconds, so the frames need a channel of their own. Carries a BATCH, not a
+   * single event — see `chat-coalesce.ts` for why.
+   */
+  chatEvent: 'imagedrip:chat:event',
 
   // ── Live UAT: the judgment sidecar (docs/live-uat.md) — never touches domain.json ──
   uatSnag: 'imagedrip:uat:snag',
@@ -333,6 +357,16 @@ export interface RunStatus {
   at: number;
 }
 
+/** What the Chat tab needs to know about the CLI child behind it (WP4). */
+export interface ChatState {
+  /** Is a CLI child alive right now? False before the first message — spawn is lazy. */
+  running: boolean;
+  /** Is a turn in flight? */
+  busy: boolean;
+  /** The id ImageDrip owns and the CLI was told to claim (§3 mechanic 4). */
+  sessionId: string | null;
+}
+
 export interface AppInfo {
   name: string;
   version: string;
@@ -459,6 +493,30 @@ export interface ImagedripApi {
     injectPrompt(promptId: string): Promise<void>;
     /** Subscribe to run status snapshots; returns an unsubscribe fn. */
     onStatus(cb: (s: RunStatus) => void): () => void;
+  };
+  /**
+   * The resident chat operator (v4 WP4) — a contained Claude Code CLI, spawned
+   * lazily in main on the first message, running with Read + the ImageDrip MCP
+   * verbs and with Bash, Write and Edit disallowed (D2).
+   *
+   * It configures the app through the same verbs the UI uses. It has no tool
+   * that can type into the ChatGPT webview, and it cannot reach a gated verb.
+   */
+  chat: {
+    /**
+     * Send one turn. Resolves when the turn ENDS, not when it is accepted —
+     * the frames stream separately on `onEvent`.
+     *
+     * Rejects when the installed CLI cannot be contained; that message is meant
+     * to be shown to the user verbatim, not retried.
+     */
+    send(prompt: string): Promise<void>;
+    /** Is a child alive, is a turn in flight, which session id? */
+    state(): Promise<ChatState>;
+    /** Close the child. The next message spawns a fresh one. */
+    stop(): Promise<void>;
+    /** Subscribe to coalesced stream frames; returns an unsubscribe fn. */
+    onEvent(cb: (events: ChatEvent[]) => void): () => void;
   };
   /**
    * Live UAT (`docs/live-uat.md`) — capture only. Two anchors, two stores, one

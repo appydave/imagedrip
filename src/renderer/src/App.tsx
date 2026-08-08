@@ -1016,6 +1016,122 @@ function ContextPanel(props: {
           )}
         </div>
       </div>
+
+      <ChatStreamProof />
+    </div>
+  );
+}
+
+/**
+ * ⚠️ SCAFFOLDING — v4 WP4 step 3, and deliberately not the Chat tab.
+ *
+ * Its ONLY job is to show that the stream reaches the renderer: a prompt goes
+ * down `chat.send`, and `text_delta` frames come back on the `chatEvent` push
+ * channel. It is a meter, not a transcript — no message bubbles, no history, no
+ * markdown. The real `Context ｜ Chat` tab (§5) replaces it.
+ *
+ * It sits INSIDE the existing CONTEXT scroll area on purpose. Adding a tab
+ * changes that column's layout, and the reserved ChatGPT rect is recomputed
+ * from `[ctxOpen, mode, uat]` — a new layout state that is not in that
+ * dependency list leaves the native view sitting over the wrong rectangle.
+ * Adding a row inside a panel that already scrolls changes no geometry, so
+ * this proof cannot cause that bug while proving something unrelated to it.
+ */
+function ChatStreamProof(): JSX.Element {
+  const [prompt, setPrompt] = useState('Say hello in exactly five words.');
+  const [text, setText] = useState('');
+  const [batches, setBatches] = useState(0);
+  const [events, setEvents] = useState(0);
+  const [tools, setTools] = useState<string[]>([]);
+  const [phase, setPhase] = useState('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    // The third push channel, subscribed exactly like run.onStatus.
+    return window.imagedrip.chat.onEvent((batch) => {
+      setBatches((n) => n + 1);
+      setEvents((n) => n + batch.length);
+      for (const e of batch) {
+        if (e.type === 'text_delta') setText((t) => t + e.text);
+        else if (e.type === 'status') setPhase(e.status);
+        else if (e.type === 'tool_use') setTools((list) => [...list, e.name]);
+      }
+    });
+  }, []);
+
+  async function send(): Promise<void> {
+    setError(null);
+    setText('');
+    setTools([]);
+    setBatches(0);
+    setEvents(0);
+    setPhase('starting');
+    setSending(true);
+    try {
+      await window.imagedrip.chat.send(prompt);
+    } catch (err) {
+      // A refusal to spawn (D2 containment unavailable) must be READ, not
+      // retried — so it is shown verbatim rather than summarised.
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase('refused');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-dashed border-edge bg-cream p-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-display text-[11px] font-bold tracking-[0.18em] text-brown">
+          CHAT STREAM
+        </span>
+        <span className="font-mono text-[10px] text-muted">WP4 proof · not the pane</span>
+      </div>
+
+      <textarea
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        rows={2}
+        className="w-full resize-y rounded border border-edge bg-surface p-1.5 font-mono text-[11px] text-brown"
+      />
+
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          disabled={sending || !prompt.trim()}
+          onClick={() => void send()}
+          className="rounded-md border border-edge bg-surface px-2.5 py-1 font-display text-[11px] font-semibold text-brown hover:border-amber disabled:opacity-40"
+        >
+          {sending ? 'streaming…' : 'Send'}
+        </button>
+        <button
+          type="button"
+          onClick={() => void window.imagedrip.chat.stop()}
+          className="rounded-md border border-edge bg-surface px-2.5 py-1 font-display text-[11px] text-brown hover:border-amber"
+        >
+          Stop CLI
+        </button>
+        <span className="font-mono text-[10px] text-muted">
+          {phase} · {batches} batches / {events} events · {text.length} chars
+        </span>
+      </div>
+
+      {tools.length > 0 && (
+        <div className="font-mono text-[10px] text-muted">tools: {tools.join(', ')}</div>
+      )}
+
+      {error && (
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded border border-edge bg-surface p-1.5 font-mono text-[10px] text-red-700">
+          {error}
+        </pre>
+      )}
+
+      {text && (
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-edge bg-surface p-1.5 font-mono text-[10px] leading-relaxed text-brown">
+          {text}
+        </pre>
+      )}
     </div>
   );
 }

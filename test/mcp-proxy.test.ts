@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { z } from '@appydave/core';
 import type { HandlerDef } from '../src/main/ipc-router';
-import { createControlSurface, type ControlSurface } from '../src/main/control-surface';
+import { createControlSurface, listVerbs, type ControlSurface } from '../src/main/control-surface';
+import { MCP_TOOL_PREFIX, toMcpToolName } from '../src/main/verb-policy';
 // @ts-expect-error — plain ESM, JSDoc-typed; see tsconfig.scripts.json
 import { toTool, toToolResult, toolName, toPayload } from '../scripts/imagedrip-mcp.mjs';
 
@@ -209,6 +210,24 @@ describe('pure helpers', () => {
   it('maps a dotted verb to a legal MCP tool name', () => {
     expect(toolName('domain.import-prompts')).toBe('domain_import-prompts');
     expect(toolName('run.start')).toBe('run_start');
+  });
+
+  /**
+   * WP4 needs this same mapping in MAIN, to bound the pane's `--allowed-tools`
+   * / `--disallowed-tools`. The proxy cannot import `verb-policy.ts` — it is
+   * launched by `.mcp.json` on whatever Node the user has and must stay plain
+   * ESM with no build step — so the rule exists twice.
+   *
+   * This is what stops that being drift. If the two ever disagree, the pane
+   * allow-lists names no tool answers to, and the agent silently has NEITHER
+   * the verb nor an error saying why.
+   */
+  it('agrees with verb-policy.toMcpToolName on every published verb', () => {
+    const verbs = listVerbs(defs).map((v) => v.verb);
+    expect(verbs.length).toBeGreaterThan(0);
+    for (const verb of verbs) {
+      expect(toMcpToolName(verb)).toBe(`${MCP_TOOL_PREFIX}${toolName(verb)}`);
+    }
   });
 
   it('keeps the verb visible in the description, so nothing is lost in translation', () => {

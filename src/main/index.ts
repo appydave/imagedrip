@@ -7,16 +7,19 @@ import { z, createStore, type Logger, type Store } from '@appydave/core';
 import {
   IPC,
   type AppInfo,
+  type ChatState,
   type Rect,
   type RunConfig,
   type RunManifest,
   type RunStatus,
   type RunSummary,
 } from '@shared/ipc';
+import type { ChatEvent } from '@shared/chat';
 import type { DomainState } from '@shared/domain';
 import type { SnagInput, UatCounts, VerdictInput } from '@shared/live-uat';
 import { createConsole } from './create-console.js';
-import { createControlSurface, type ControlSurface } from './control-surface.js';
+import { createControlSurface, listVerbs, type ControlSurface } from './control-surface.js';
+import { createChatSession, type ChatSessionHandle } from './chat-session.js';
 import { buildContext, type ContextMode, type ContextResult } from './context-snapshot.js';
 import { buildEngineReadiness, type EngineReadiness } from './engine-readiness.js';
 import { isInside, isInsideWorkTree } from './git-scope.js';
@@ -85,6 +88,39 @@ let lastRunMode: ContextMode = 'dial-in';
 // Phase of the last status snapshot this launch; null until a run has happened.
 let lastRunPhase: string | null = null;
 let control: ControlSurface | null = null;
+
+/**
+ * ── v4 WP4: the resident chat operator ──
+ *
+ * Created once the IPC registry exists (it needs `ipc.list()` to bound the
+ * pane's tool surface) but it SPAWNS NOTHING until the first message: a user
+ * who never opens the Chat tab should not have a CLI running, and app startup
+ * must not depend on `claude` being installed.
+ */
+let chat: ChatSessionHandle | null = null;
+
+function pushChatEvents(events: ChatEvent[]): void {
+  if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.chatEvent, events);
+}
+
+/**
+ * The chat's sandbox (mechanic 5) and its read scope (D2 keeps `--add-dir`).
+ *
+ * The brand repo is the useful root — it holds DESIGN.md and the templates, and
+ * reading it is most of the post-v3 value. With no repo attached there is
+ * nothing to point at, so the chat gets `userData` and works from the verbs
+ * alone, which is what it did before v3 anyway.
+ */
+async function chatScope(): Promise<{ cwd: string; addDirs: string[] }> {
+  const repoRoot = (await getDomain()).brand?.repoRoot;
+  if (repoRoot) return { cwd: repoRoot, addDirs: [repoRoot] };
+  return { cwd: app.getPath('userData'), addDirs: [] };
+}
+
+function getChat(): ChatSessionHandle {
+  if (!chat) throw new Error('imagedrip: chat is not ready yet');
+  return chat;
+}
 
 const rectSchema = z.object({
   x: z.number(),
@@ -736,6 +772,29 @@ const desktop = createConsole({
       handle: (rel) => readThumb(rel),
     });
 
+    // ── v4 WP4: the resident chat operator ──
+    //
+    // Renderer-only. These channels are in NEVER_EXPOSED, so the control
+    // surface does not publish them: `chat.send` as a verb would hand the
+    // contained agent a tool that prompts itself.
+    //
+    // `chat.send` resolves when the TURN ends. The frames do not travel back
+    // through this call — they stream on `IPC.chatEvent`, because
+    // `ipc.register` is `ipcMain.handle` and strictly request/response.
+    ipc.register<string, void>({
+      channel: IPC.chatSend,
+      input: z.string().min(1),
+      handle: (prompt) => getChat().send(prompt),
+    });
+    ipc.register<void, ChatState>({
+      channel: IPC.chatState,
+      handle: () => chat?.state() ?? { running: false, busy: false, sessionId: null },
+    });
+    ipc.register<void, void>({
+      channel: IPC.chatStop,
+      handle: () => chat?.stop(),
+    });
+
     // ── Live UAT: the judgment sidecar (docs/live-uat.md) ──
     // Capture only. These handlers must never write domain.json or a run
     // manifest — the feedback channel stays separate from the decision channel.
@@ -836,6 +895,28 @@ const desktop = createConsole({
         control = null;
       });
 
+    // ── v4 WP4: the chat operator, wired but not yet spawned ──
+    //
+    // It reads `ipc.list()` through the SAME `listVerbs` projection the control
+    // surface publishes, so the pane's allow-list and the MCP proxy's tool list
+    // are derived from one registry — a verb added to `registerIpc` lands on
+    // the correct side of the gated/non-gated line with no change here.
+    //
+    // Read directly rather than over HTTP: main IS the control surface, so a
+    // loopback round trip would only add a token to manage and a failure mode
+    // to handle.
+    chat = createChatSession({
+      verbs: () => listVerbs(ipc.list()),
+      controlFile: join(app.getPath('userData'), 'control.json'),
+      // `app.getAppPath()` is the repo root in dev and the asar root packaged.
+      mcpServerPath: join(app.getAppPath(), 'scripts', 'imagedrip-mcp.mjs'),
+      userDataDir: app.getPath('userData'),
+      cwd: async () => (await chatScope()).cwd,
+      addDirs: async () => (await chatScope()).addDirs,
+      emit: pushChatEvents,
+      logger: log,
+    });
+
     // Migrate the domain document (v1 → multi-project) and point the harvest
     // author at the active project's output dir before anything runs.
     void ensureOutputRoot()
@@ -858,6 +939,13 @@ const desktop = createConsole({
       // fires on a macOS Cmd-Q.
       control?.stopSync();
       control = null;
+      // WP4 §2: the CLI child holds an OPEN stdin, so it will not exit on its
+      // own, and on macOS it would outlive an Electron that simply exited.
+      // A SEPARATE step from the run-manifest flush on purpose — `flushRunOnQuit`
+      // is about a manifest write landing, this is about a process dying, and
+      // overloading one with the other makes both harder to reason about.
+      chat?.stopSync();
+      chat = null;
     });
   },
 });
@@ -867,6 +955,10 @@ const desktop = createConsole({
 desktop.lifecycle.onStop(async () => {
   await control?.stop();
   control = null;
+  // The orderly path: close stdin and let the CLI exit on its own terms.
+  // `will-quit`'s `stopSync` is the one that fires on a macOS Cmd-Q.
+  await chat?.stop().catch(() => undefined);
+  chat = null;
 });
 
 /**
