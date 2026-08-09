@@ -35,6 +35,8 @@ interface Fake {
   statuses: RunStatus[];
   newConversations: () => number;
   imageDone: (url: string) => void;
+  /** Fire the harness's "ChatGPT refused this prompt" signal. */
+  refused: () => void;
 }
 
 function makeFake(
@@ -47,13 +49,16 @@ function makeFake(
   const stallCaps: number[] = [];
   let newConv = 0;
   let imageCb: ((e: { imageUrl: string; at: number }) => void) | undefined;
+  let refusedCb: (() => void) | undefined;
 
   const harness = {
     onImageDone: (cb: (e: { imageUrl: string; at: number }) => void) => {
       imageCb = cb;
     },
     onRateLimit: () => {},
-    onRefused: () => {},
+    onRefused: (cb: () => void) => {
+      refusedCb = cb;
+    },
     onStall: () => {},
     // The runner re-derives the stall cap from measured generations and pushes
     // it down here; the fake just records that it was told.
@@ -97,7 +102,18 @@ function makeFake(
     statuses,
     newConversations: () => newConv,
     imageDone: (url) => imageCb?.({ imageUrl: url, at: Date.now() }),
+    refused: () => refusedCb?.(),
   };
+}
+
+/** Drive a whole run to its natural end by landing one image per prompt. */
+async function runToCompletion(f: Fake, prompts: Prompt[] = PROMPTS): Promise<void> {
+  await f.runner.start({ ...FAST, entry: 'fresh' });
+  await settle();
+  for (const p of prompts) {
+    f.imageDone(`https://img/${p.subject}.png`);
+    await settle();
+  }
 }
 
 /** Let queued microtasks + 0ms timers run. */
@@ -382,5 +398,68 @@ describe('a feed that fails to deliver', () => {
     expect(last.phase).toBe('paused');
     expect(last.note).toMatch(/feed failed/i);
     expect(f.harvests).toHaveLength(1); // the good image survived
+  });
+});
+
+/**
+ * v5 Phase 0.1. A run that SUCCEEDED left `running` true forever, because the
+ * completion paths set `phase='done'` and never set `stopped`. `running` is the
+ * predicate 14 gates in `src/main/index.ts` refuse config edits on, and the one
+ * `/v1/health` publishes — so after every success the app locked the operator
+ * out of brand / template / project with "brand is locked while a run is live"
+ * when no run was live, and `run.start` became a silent no-op.
+ */
+describe('a run that completes stops being live', () => {
+  it('running === false once the queue empties', async () => {
+    const f = makeFake();
+    expect(f.runner.running).toBe(false); // idle before
+    await runToCompletion(f);
+
+    expect(f.harvests).toHaveLength(PROMPTS.length);
+    expect(f.statuses[f.statuses.length - 1].phase).toBe('done');
+    expect(f.runner.running).toBe(false); // ← the regression
+  });
+
+  it('another run can be started afterwards without pressing STOP first', async () => {
+    // start() returns early on `!stopped`, so the stale flag made the SECOND
+    // run a silent no-op — nothing thrown, nothing fed, nothing said.
+    const f = makeFake();
+    await runToCompletion(f);
+    const feedsAfterFirst = f.feeds.length;
+
+    await f.runner.start({ ...FAST, entry: 'continue' });
+    await settle();
+    expect(f.feeds.length).toBeGreaterThan(feedsAfterFirst);
+    expect(f.runner.running).toBe(true);
+  });
+
+  it('a run whose LAST prompt is refused also stops being live, and says why', async () => {
+    const f = makeFake();
+    await f.runner.start({ ...FAST, entry: 'fresh' });
+    await settle();
+    f.imageDone('https://img/kangaroo.png');
+    await settle();
+    f.imageDone('https://img/koala.png');
+    await settle();
+    f.refused(); // the third and last prompt is refused, not generated
+    await settle();
+
+    const last = f.statuses[f.statuses.length - 1];
+    expect(last.phase).toBe('done');
+    // The outcome must survive into the final status — a refusal that vanishes
+    // makes a run that under-delivered look like one that did not.
+    expect(last.note).toMatch(/refused/i);
+    expect(f.runner.running).toBe(false);
+  });
+
+  it('a PAUSED run is still live — the fix must not unlock config mid-run', async () => {
+    const f = makeFake(PROMPTS, 'PRIMER', { failFeedFrom: 2 });
+    await f.runner.start({ ...FAST, entry: 'fresh' });
+    await settle();
+    f.imageDone('https://img/kangaroo.png');
+    await settle();
+
+    expect(f.statuses[f.statuses.length - 1].phase).toBe('paused');
+    expect(f.runner.running).toBe(true);
   });
 });

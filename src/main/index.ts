@@ -709,6 +709,12 @@ const desktop = createConsole({
       channel: IPC.projectCreate,
       input: z.object({ name: z.string().min(1), outputDir: z.string().min(1).optional() }),
       handle: async (input) => {
+        // `createProject` sets `activeProjectId` — it IS a switch, so it
+        // repoints the harvest root exactly as `project.switch` does, and the
+        // `ensureOutputRoot()` below moves it. Ungated until 2026-08-09, which
+        // meant creating a project mid-run split that run across two folders
+        // with nothing said. Found auditing the 14 `running` gates (v5 §0.1).
+        if (runner?.running) throw new Error('stop the run before creating a project');
         const state = await createProject(input);
         await ensureOutputRoot();
         return state;

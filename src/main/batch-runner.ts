@@ -426,11 +426,8 @@ export class BatchRunner {
       return;
     }
     if (this.idx >= this.queue.length) {
-      this.phase = 'done';
       this.note = undefined;
-      this.finishRun('complete');
-      this.emit();
-      this.logger?.info({ harvested: this.harvestedCount }, 'batch run complete');
+      this.completeRun();
       return;
     }
     const prompt = this.queue[this.idx];
@@ -541,10 +538,7 @@ export class BatchRunner {
     }
 
     if (this.idx >= this.queue.length) {
-      this.phase = 'done';
-      this.finishRun('complete');
-      this.emit();
-      this.logger?.info({ harvested: this.harvestedCount }, 'batch run complete');
+      this.completeRun();
       return;
     }
     // Chunk boundary → re-prime a fresh chat to fight drift (plan §3).
@@ -570,9 +564,7 @@ export class BatchRunner {
     }
     this.idx += 1;
     if (this.idx >= this.queue.length) {
-      this.phase = 'done';
-      this.finishRun('complete');
-      this.emit();
+      this.completeRun(); // note kept — the last refusal is the run's outcome
       return;
     }
     this.scheduleNextFeed();
@@ -596,6 +588,37 @@ export class BatchRunner {
     void fn(this.d.recorder).catch((err) =>
       this.logger?.warn({ err: String(err) }, 'run recorder hook failed'),
     );
+  }
+
+  /**
+   * The queue emptied — the only truthful end of a run other than stop(), and
+   * it must tear down exactly as much state as stop() does.
+   *
+   * It did not, until 2026-08-09. The three completion paths set `phase='done'`
+   * and left `stopped` false, so `get running()` stayed TRUE after a run
+   * SUCCEEDED. That is not cosmetic: `running` is the predicate 14 gates in
+   * `src/main/index.ts` use to refuse brand / template / project edits,
+   * `theme.rename`, all three deletes and `repo.attach` — so every one of them
+   * was refused after a successful run with the words "brand is locked while a
+   * run is live" when no run was live. `/v1/health` published `running: true`
+   * forever, so an agent polling for completion never saw it finish. And
+   * `start()`'s own `!stopped` guard made the NEXT `run.start` a silent no-op.
+   *
+   * The note is deliberately NOT cleared here: `harvest failed: …` on the last
+   * image, and the last `refused: …`, are the run's outcome and must survive
+   * into the final status. Callers that want it cleared clear it first.
+   */
+  private completeRun(): void {
+    this.stopped = true;
+    this.awaiting = false;
+    this.manual = false;
+    this.manualPaused = false;
+    this.clearTimers();
+    this.guard.dispose();
+    this.phase = 'done';
+    this.finishRun('complete');
+    this.emit();
+    this.logger?.info({ harvested: this.harvestedCount }, 'batch run complete');
   }
 
   /** Close the run record exactly once per run. */
