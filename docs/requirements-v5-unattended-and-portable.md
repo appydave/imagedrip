@@ -290,14 +290,18 @@ The app must be truthful about its own state before anything is built on top of 
 
 ## 5 · Open questions — not guessed
 
-1. **The bearing.** Proposed in §6. The current one is explicitly *derived, not ruled*.
+1. ~~**The bearing.**~~ **ANSWERED 2026-08-09** — §6's proposal was ruled by David and is now the
+   Star's bearing. Unattended leads; distribution follows.
 2. **Should the chat be able to SEE harvested images?** It would let an agent close the judgment
    loop — the one part of the system still entirely human. It also means shipping image data into
    a model on every run, and it is the first thing in this plan that would put per-token cost on
    the critical path of a *run* rather than of a conversation. Not guessed.
-3. **Who is the second install actually for?** The Star names clients, Mary, Jan. The answer
-   changes Phase 3's shape: a client needs signing and notarization; Mary and Jan may accept a
-   dmg from a Dropbox link.
+3. ~~**Who is the second install actually for?**~~ **ANSWERED 2026-08-09 — nobody, yet.** David:
+   *"being installed by other people is not needed just yet."* No real person is waiting, so
+   Phase 3 does not jump the queue and its shape stays undecided until someone does. The two
+   shapes remain as recorded: staff take a `.dmg` from a link; a client takes signing,
+   notarization and a first launch that does not seed David's demo data. **Re-ask this question
+   the day a name appears** — it is the one input that re-orders the plan.
 4. **Does a run belong to a project, or to a template+subject pair?** Interpolation variables
    make "the same twelve subjects through a different template" a natural request, and today that
    means a new project. This may be the next modelling error, in the way Project-doing-two-jobs
@@ -309,7 +313,14 @@ The app must be truthful about its own state before anything is built on top of 
 
 ---
 
-## 6 · Proposed bearing — for ratification or correction
+## 6 · The bearing — RULED 2026-08-09
+
+> **Ratified by David on 2026-08-09, together with question 3.** The proposal below stands as
+> written and is now `bearing:` in `docs/north-star.md`. The "what would change my mind" clause at
+> the foot of this section was tested and did **not** fire: there is no client on a deadline,
+> because there is no second install at all yet.
+
+### The record of how it was proposed
 
 The Star's frontmatter carries `status: open` and flags `bearing:` as derived. Its own Open §1
 says it is the line most likely to be wrong. The current bearing reads:

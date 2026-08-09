@@ -5,8 +5,11 @@ horizon: product
 status: open
 parent: /Users/davidcruwys/dev/ad/brains/north-star/north-star.md   # David's own Star, life/business horizon
 bearing: |
-  Finish the chat seat so the three fields can be driven by talking, then make it something
-  another person can install and run on their own machine.
+  Make a run something you can start and walk away from — then make the whole configuration
+  travel, so a second person can run it on their own machine.
+bearing_source: 2026-08-09 — RULED by David, not derived. The previous bearing's first clause
+  ("finish the chat seat") shipped as v4 WP4 on 2026-08-08. Distribution was explicitly deferred
+  in the same ruling: "being installed by other people is not needed just yet."
 source: 2026-08-08 — INTERVIEWED from David, not derived. A first pass derived from 54 commits
   and the docs produced a different and wrong Star; he corrected it. The code is a stale snapshot
   of intent, the human is not. Evidence below is used to CHECK his answer, never to form it.
@@ -60,10 +63,14 @@ like one that did.
 
 ## Open
 
-1. **The bearing above is derived, not ruled** — David ratified the Star, not the heading. Most
-   likely line to correct.
-2. **Distribution to other people has not started.** Every install today assumes David's machine and
-   a hand-signed-in ChatGPT. Clients and staff are named as users and nothing points that way yet.
+1. ~~The bearing above is derived, not ruled.~~ **Closed 2026-08-09** — ruled by David, and
+   corrected: *unattended* leads, distribution follows. See `bearing_source` above.
+2. **Distribution to other people has not started**, and is **deliberately not next**. Every
+   install today assumes David's machine and a hand-signed-in ChatGPT. Clients and staff are named
+   in the Star as users, but on 2026-08-09 David confirmed **nobody is waiting** — so this stays a
+   named destination with no date. It moves the moment a real person has one, and *who* they are
+   decides its size: staff take a `.dmg` from a link; a client takes signing, notarization and an
+   honest first launch.
 3. **Interpolation variables** — floated, not specified.
 
 *Limits: the Star came from a 2026-08-08 interview. The 54 commits and v1–v4 requirements docs were

@@ -5,6 +5,7 @@ import { createLifecycle, createLogger, type Lifecycle, type Logger } from '@app
 import { IpcRouter } from './ipc-router.js';
 import { WindowManager } from './window-manager.js';
 import { ProcessSupervisor } from './process-supervisor.js';
+import { teeToFile } from './file-log.js';
 
 export interface ConsoleContext {
   logger: Logger;
@@ -72,7 +73,12 @@ function redirectHomeIfRequested(logger: Logger): void {
 }
 
 export function createConsole(options: CreateConsoleOptions): Console {
-  const logger = createLogger({ name: options.name });
+  const stdoutLogger = createLogger({ name: options.name });
+  // The tee is built HERE, before `registerIpc` hands `ctx` out, so every
+  // consumer holds the wrapper whenever it happens to capture it. The file it
+  // writes to is named later — see `start()`.
+  const tee = teeToFile(stdoutLogger);
+  const logger = tee.logger;
   const lifecycle = createLifecycle();
   const windows = new WindowManager();
   const ipc = new IpcRouter();
@@ -82,6 +88,7 @@ export function createConsole(options: CreateConsoleOptions): Console {
   lifecycle.onStop(() => {
     ipc.dispose();
     processes.stopAll();
+    tee.close();
   });
 
   return {
@@ -89,7 +96,11 @@ export function createConsole(options: CreateConsoleOptions): Console {
     lifecycle,
     async start() {
       options.registerIpc?.(ctx);
-      redirectHomeIfRequested(logger);
+      redirectHomeIfRequested(stdoutLogger);
+      // AFTER the redirect, and deliberately: an isolated `APPYTRON_HOME` run
+      // must write its log beside its own throwaway data, never into the real
+      // `<userData>/logs`. `getPath` is valid before `whenReady`.
+      tee.attach(join(app.getPath('userData'), 'logs'));
       await app.whenReady();
       await lifecycle.start();
       logger.info('appytron console started');
