@@ -243,8 +243,31 @@ making it the default. The buttons already exist; this is about whether they are
 that reading nothing new is added to learn, and the tension mostly dissolves — but that is a reading,
 and David should be the one to take it.
 
-**This document does not rule on it.** It is recorded because a plan that quietly overrode the Star's
-own test would be worse than one that argued with it in the open.
+### 3.4 ✅ RULED by David, 2026-08-10 — and the Star gained a clause
+
+The tension is resolved, and not by picking a side. David's ruling, in his words: *"everything still
+needs to be demonstrable by an operator normally… it's very hard to test things if you can't use it
+as an operator later on."*
+
+The principle that came out of it is sharper than the tension that produced it, and is now in
+`docs/north-star.md`:
+
+> **Every automated step is operable by hand, and every manual step is automatable.** Less touching
+> is still the goal — but the hand-operable version of a step is how you *verify* the automatic one,
+> and how you *show* it. You cannot test what you cannot drive yourself.
+
+**This is a testability rule before it is a UX one**, which is why it does not weaken the Star's test.
+The test's own second clause is now read with it: a control performing a step the app already
+performs is not a new thing to learn — it is the same step, made visible. *"Does this let a person do
+something the machine already does, or something new?"* The first is parity and fits; the second is
+cockpit and does not.
+
+Two consequences for the work below:
+
+- The manual affordance **may live behind a toggle** and may be tidied away later; it **may not be
+  absent**. The existing Dial-in / Auto switch is already that toggle.
+- Parity runs **both ways**. Anything added as a manual control has to be automatable too — so
+  nothing in Item 2 may become a step only a human can perform.
 
 ---
 

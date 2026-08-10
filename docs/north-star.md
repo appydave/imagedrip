@@ -38,6 +38,12 @@ unattended, into a folder for that run. Drivable by a person or an agent.**
 - **Agents are first-class operators**, not an afterthought — ultimately through API endpoints they
   can drive directly.
 - **Flexible for prompt shapes not invented yet** — interpolation variables are the named example.
+- **Parity: every automated step is operable by hand, and every manual step is automatable.**
+  Ruled by David, 2026-08-10. Less touching is still the goal — but the hand-operable version of a
+  step is how you *verify* the automatic one, and how you *show* it. **You cannot test what you
+  cannot drive yourself**, and a step with no manual equivalent is a step nobody can check. This is
+  a testability rule before it is a UX one. The manual affordance may live behind a toggle, and may
+  be tidied away later; it may not be absent.
 
 ## What this is NOT
 
@@ -52,6 +58,12 @@ unattended, into a folder for that run. Drivable by a person or an agent.**
 
 If it removes a manual step, widens what a run can express, or lets an agent do something a human
 had to do — it fits. If it adds a control to learn, it does not.
+
+**Read the second half with the parity rule above.** A control that performs a step the app already
+performs by itself is not a new thing to learn — it is the same step, made visible and checkable.
+The test forbids *new cockpit*, not *manual equivalence*. The question to ask of a proposed control
+is: **does this let a person do something the machine already does, or something new?** The first is
+parity and it fits; the second is cockpit and it does not.
 
 **And nothing may fail silently.** This repo's own hardest-won rule: *"a control that quietly
 disappears is worse than none, because it is believed."* A run that did not deliver must never look

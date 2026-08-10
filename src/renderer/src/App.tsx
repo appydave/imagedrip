@@ -2322,20 +2322,28 @@ function QueuedLane(props: {
               )}
             </button>
             {props.dialIn ? (
-              <>
-                <span className="font-mono text-[10px] text-gold group-hover:hidden">
+              /* ALWAYS visible, never hover-revealed. This button is the manual
+                 equivalent of the step the Auto loop performs, and the Star's
+                 parity rule (2026-08-10) makes that something which has to be
+                 demonstrable: "you cannot test what you cannot drive yourself."
+                 A control that only exists where the cursor happens to be
+                 cannot be shown to anyone — on camera the audience sees a row
+                 number flicker into a button and back. The row keeps its
+                 number too, so nothing is traded away for the button. */
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <span className="font-mono text-[10px] text-gold">
                   {String(i + 1).padStart(2, '0')}
                 </span>
                 <button
                   type="button"
                   disabled={props.injectBusy}
                   onClick={() => props.onInject(p.id)}
-                  title="feed THIS prompt into the live chat and harvest its image"
-                  className="hidden flex-shrink-0 rounded bg-amber px-2 py-0.5 font-display text-[10px] font-bold text-cream hover:brightness-105 disabled:opacity-50 group-hover:inline-block"
+                  title="feed THIS prompt into the live chat and harvest its image — the same step Auto performs, done by hand"
+                  className="rounded bg-amber px-2 py-0.5 font-display text-[10px] font-bold text-cream hover:brightness-105 disabled:opacity-50"
                 >
                   ⚡ inject
                 </button>
-              </>
+              </div>
             ) : (
               <span className="font-mono text-[10px] text-gold">
                 {String(i + 1).padStart(2, '0')}
