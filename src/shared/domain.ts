@@ -105,6 +105,32 @@ export interface Project {
    * was before v3, which is what keeps every pre-existing project byte-identical.
    */
   templateId?: string;
+  /**
+   * Which Brand this project belongs to — the axis that did NOT move when you
+   * switched projects (v5.1 Item 3). With it, selecting one project moves the
+   * whole configuration: brand, recipe, subject, prompt list and output folder.
+   *
+   * THREE states, and the difference is load-bearing:
+   *   `undefined`  never bound — this project has never been told whose it is.
+   *                Falls back to the document's `activeBrandId` so nothing about
+   *                an existing project changes the day this field appears.
+   *   `null`       explicitly "(none)" — compose Template + Project only. The
+   *                same first-class "no brand" A1 made expressible.
+   *   `string`     bound.
+   *
+   * It is never INFERRED for records that predate it. v5 §2.1 proposed stamping
+   * every project with whichever brand happened to be active at upgrade time;
+   * checked against the real store that would have labelled `smoothies` —
+   * whose body is verbatim Beauty & Joy — as `appydave`, and made the guess
+   * indistinguishable from a choice. `undefined` says "nobody has said", which
+   * is the truth, and is the same refusal-to-substitute `activeBrand()` and
+   * `activeTemplate()` already make.
+   *
+   * Also the root cause of the `repo.attach` defect (v5 §1.1): attach stamps
+   * unsourced records with the ACTIVE brand because a project carries nothing to
+   * route with. This is the field it should route with.
+   */
+  brandId?: string | null;
   /** WP2 — the `projects/<id>/` folder this project is read from / written back to. */
   sourcePath?: string;
   /** Harvest route target — FileAuthor's scoped root for this project (§8). */

@@ -108,10 +108,19 @@ function activeRecord(s: PersistedDomain): ProjectRecord {
  * refusal to substitute: falling back to `brands[0]` meant a stale or deleted id
  * silently put SOMEBODY ELSE'S look into the primer, and a wrong brand is worse
  * than a missing one — a missing one is visible in the card as `(none)`.
+ *
+ * v5.1 Item 3 — the brand is now a property of the UNIT. It is DERIVED from the
+ * active project's `brandId`, falling back to the document-level `activeBrandId`
+ * for a project that has never been bound. Derived rather than synced on
+ * purpose: two fields kept in step by hand drift, and a brand that drifts is a
+ * wrong look in a primer nobody edited. `switchProject` therefore needs no brand
+ * logic at all — the brand moves because it was never separately stored.
  */
 function activeBrand(s: PersistedDomain): Brand | null {
-  if (!s.activeBrandId) return null;
-  return s.brands.find((b) => b.id === s.activeBrandId) ?? null;
+  const bound = activeRecord(s)?.project.brandId;
+  const id = bound === undefined ? s.activeBrandId : bound;
+  if (!id) return null;
+  return s.brands.find((b) => b.id === id) ?? null;
 }
 
 /**
@@ -432,7 +441,19 @@ export async function createBrand(input: { name: string }): Promise<DomainState>
   if (!name) throw new Error('brand name is required');
   return updateDoc((s) => {
     const id = uniqueSlug(name, s.brands.map((b) => b.id));
-    return { ...s, brands: [...s.brands, { id, name, body: '' }], activeBrandId: id };
+    const activeId = activeRecord(s)?.project.id;
+    return {
+      ...s,
+      brands: [...s.brands, { id, name, body: '' }],
+      activeBrandId: id,
+      // Binds for the same reason `switchBrand` does — and here it is not
+      // merely consistency: the brand is DERIVED from the active project, so
+      // creating one without binding would activate a brand the card never
+      // showed. A control that appears to do nothing is the silent failure.
+      projects: s.projects.map((r) =>
+        r.project.id === activeId ? { ...r, project: { ...r.project, brandId: id } } : r,
+      ),
+    };
   });
 }
 
@@ -446,9 +467,23 @@ export async function switchBrand(id: string | null): Promise<DomainState> {
     if (!current.brands.some((b) => b.id === id)) throw new Error(`unknown brand: ${id}`);
   }
   // Re-check inside the closure — the validated read above may be stale.
-  await updateDoc((s) =>
-    id === null || s.brands.some((b) => b.id === id) ? { ...s, activeBrandId: id } : s,
-  );
+  await updateDoc((s) => {
+    if (id !== null && !s.brands.some((b) => b.id === id)) return s;
+    const activeId = activeRecord(s)?.project.id;
+    return {
+      ...s,
+      // Still recorded at document level: it is the default a project that has
+      // never been bound falls back to, and the one a NEW project inherits.
+      activeBrandId: id,
+      // v5.1 Item 3 — and the brand BINDS to the active project. Choosing a
+      // brand here is how a person says "this project is a <brand> project";
+      // without the bind the choice would be forgotten the moment they switched
+      // away and back, which is exactly the "nothing moves as a unit" complaint.
+      projects: s.projects.map((r) =>
+        r.project.id === activeId ? { ...r, project: { ...r.project, brandId: id } } : r,
+      ),
+    };
+  });
   await hydrateActive();
   return getDomain();
 }
@@ -720,12 +755,19 @@ export async function createProject(input: {
   return updateAndMirror(() =>
     updateDoc((s) => {
       const id = uniqueSlug(name, s.projects.map((r) => r.project.id));
-      const repoRoot = activeBrand(s)?.repoRoot;
+      const brand = activeBrand(s);
+      const repoRoot = brand?.repoRoot;
       const record: ProjectRecord = {
         project: {
           id,
           name,
           body: '',
+          // Bound at BIRTH from the brand in play. This is not the inference
+          // this field refuses to make: guessing a brand for a record created
+          // months ago is a guess, capturing the one the operator is standing
+          // in as they create it is a choice. `null` when that is "(none)" —
+          // an explicit no-brand, not an absence of information.
+          brandId: brand?.id ?? null,
           // WP3's folder convention: with a repo attached, runs land in
           // `<repo>/projects/<project>/runs/<run-id>/`, beside the project's
           // own files rather than off in ~/Pictures. Without one, the v2
