@@ -35,7 +35,17 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger } from '@appydave/core';
 import type { ChatGateRequest } from '../shared/chat.js';
-import type { GatedCall } from './control-surface.js';
+/**
+ * The shape a gated call arrives in. Declared here rather than imported from
+ * the HTTP adapter — the gate is asked by the capability guard now, and a
+ * shared type owned by one transport is how logic creeps back into adapters.
+ */
+export interface GatedCall {
+  verb: string;
+  payload: unknown;
+  /** The verb's own "when to call it" text — what the confirm should explain. */
+  description: string;
+}
 
 /**
  * Long enough to read a dialog and think; short enough that a forgotten one

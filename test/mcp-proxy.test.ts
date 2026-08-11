@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { z } from '@appydave/core';
 import type { HandlerDef } from '../src/main/ipc-router';
 import { createControlSurface, listVerbs, type ControlSurface } from '../src/main/control-surface';
+import { createCapabilityGuard } from '../src/main/capability-guard';
 import { MCP_TOOL_PREFIX, toMcpToolName } from '../src/main/verb-policy';
 // @ts-expect-error — plain ESM, JSDoc-typed; see tsconfig.scripts.json
 import { toTool, toToolResult, toolName, toPayload } from '../scripts/imagedrip-mcp.mjs';
@@ -77,6 +78,7 @@ beforeAll(async () => {
     userDataDir: userData,
     version: '0.1.0-test',
     isRunning: () => running,
+    guard: createCapabilityGuard({}),
     port: 0,
   });
   await surface.start();

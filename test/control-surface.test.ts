@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { z } from '@appydave/core';
 import type { HandlerDef } from '../src/main/ipc-router';
 import { createControlSurface, listVerbs, type ControlSurface } from '../src/main/control-surface';
+import { createCapabilityGuard } from '../src/main/capability-guard';
 import { SIGNED_OUT_HINT, type EngineReadiness } from '../src/main/engine-readiness';
 
 /**
@@ -112,7 +113,10 @@ beforeAll(async () => {
     userDataDir: userData,
     version: '0.1.0-test',
     isRunning: () => running,
-    engineReadiness: async () => engine,
+    // The REAL guard, with the same readiness probe the old option carried.
+    // Authorization moved beneath the adapters on 2026-08-11; these tests now
+    // exercise the thing that actually enforces, not an adapter-local copy.
+    guard: createCapabilityGuard({ engineReadiness: async () => engine }),
     port: 0, // OS-assigned — tests must never fight the real app for 7180
   });
   const info = await surface.start();
@@ -300,6 +304,7 @@ describe('teardown', () => {
       userDataDir: scratch,
       version: 'x',
       isRunning: () => false,
+      guard: createCapabilityGuard({}),
       port: 0,
     });
     await s.start();
@@ -443,6 +448,11 @@ describe('engine gate — fail closed', () => {
       userDataDir: mkdtempSync(join(tmpdir(), 'imagedrip-control-bare-')),
       version: '0.1.0-test',
       isRunning: () => false,
+      // A guard with NO readiness probe — the "we could not check" case. It
+      // must still refuse an engine-requiring verb: an unchecked engine and a
+      // broken one are indistinguishable, and only one of those guesses types
+      // into a login form.
+      guard: createCapabilityGuard({}),
       port: 0,
     });
     const info = await bare.start();

@@ -39,16 +39,8 @@ import { promises as fs, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Logger } from '@appydave/core';
 import type { HandlerDef } from './ipc-router.js';
-import {
-  describeVerb,
-  isExposed,
-  isGated,
-  isPaneDenied,
-  requiresEngine,
-  toVerb,
-  type VerbInfo,
-} from './verb-policy.js';
-import type { EngineReadiness } from './engine-readiness.js';
+import { describeVerb, isExposed, isGated, requiresEngine, toVerb, type VerbInfo } from './verb-policy.js';
+import { CapabilityRefusal, type CapabilityGuard } from './capability-guard.js';
 import { toToolInputSchema } from './zod-to-json-schema.js';
 
 /** Loopback only. Never a wildcard bind — this surface is for this machine. */
@@ -79,14 +71,6 @@ export const CONTEXT_CHANNEL = 'imagedrip:context:get';
 /** Refuse absurd bodies rather than buffering them. Prompt lists are text, not blobs. */
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
-/**
- * Used when no readiness probe is wired at all. It still refuses: an unchecked
- * engine and a broken engine are indistinguishable from here, and only one of
- * those two guesses can type prompts into a login form.
- */
-const UNKNOWN_ENGINE_MESSAGE =
-  'The ChatGPT engine could not be checked from this process, so a run is refused rather than started blind. Ask the user to open ImageDrip on this machine and confirm the right-hand pane shows a signed-in ChatGPT.';
-
 export interface ControlSurfaceOptions {
   /** Live view of the IPC registry — read per request, so late registrations appear. */
   defs: () => ReadonlyMap<string, HandlerDef<unknown, unknown>>;
@@ -97,16 +81,6 @@ export interface ControlSurfaceOptions {
   /** Is a batch live? Reported by `/v1/health` so a client can see the gate before it trips. */
   isRunning: () => boolean;
   /**
-   * Can the ChatGPT engine accept a prompt? Consulted before every
-   * engine-requiring verb (`ENGINE_REQUIRED_VERBS`).
-   *
-   * Optional so the surface stays constructible in tests and in any host that
-   * has no webview — but when it is omitted the engine is treated as UNKNOWN
-   * and those verbs are refused, never waved through. A missing check is not
-   * evidence of a working engine.
-   */
-  engineReadiness?: () => Promise<EngineReadiness>;
-  /**
    * The credential that identifies the in-app pane right now, or null when no
    * pane session is alive (D1). Read per request, because it is minted fresh
    * for each spawned CLI and must stop identifying anyone the moment that
@@ -114,26 +88,14 @@ export interface ControlSurfaceOptions {
    */
   paneToken?: () => string | null;
   /**
-   * Ask a HUMAN to approve one gated verb from the pane. Resolves true only on
-   * an explicit allow.
-   *
-   * Optional so the surface stays constructible in tests and in any host with
-   * no window — but when it is omitted a gated call from the pane is REFUSED,
-   * never waved through. The pane's whole premise is that a person is sitting
-   * there; if we cannot reach them, we do not have their consent.
+   * Authorization, shared with the renderer path. Required, not optional — a
+   * control surface with no guard is an open door, and making it optional is
+   * how it ends up undefined in production.
    */
-  confirmGated?: (request: GatedCall) => Promise<boolean>;
+  guard: CapabilityGuard;
   /** Explicit port; otherwise `IMAGEDRIP_CONTROL_PORT`, otherwise 7180. `0` = OS-assigned. */
   port?: number;
   logger?: Logger;
-}
-
-/** One gated call, held pending a human answer. */
-export interface GatedCall {
-  verb: string;
-  payload: unknown;
-  /** The verb's own "when to call it" text — what the confirm should explain. */
-  description: string;
 }
 
 export interface ControlSurfaceInfo {
@@ -308,85 +270,29 @@ export function createControlSurface(options: ControlSurfaceOptions): ControlSur
       return;
     }
 
-    // The engine gate. Placed AFTER the schema parse deliberately: it preserves
-    // the documented 422-before-409 split exactly, and it means a malformed
-    // payload does not pay for a live DOM probe to be told it was malformed.
+    // ── Authorization — NOT here ──
     //
-    // 409 rather than a new code, because this IS the existing category — "you
-    // may not do that right now" — and an agent already knows not to improvise
-    // around a 409. The hint travels in `message`, where a client that only
-    // knows the old shape still surfaces it verbatim.
-    if (requiresEngine(verb)) {
-      const readiness = await options.engineReadiness?.();
-      if (!readiness?.ready) {
-        const message = readiness?.hint ?? UNKNOWN_ENGINE_MESSAGE;
-        options.logger?.info(
-          { verb, state: readiness?.state ?? 'unknown' },
-          'control surface refused: engine not ready',
-        );
-        json(res, 409, {
-          error: 'engine_not_ready',
-          verb,
-          message,
-          engine: readiness ?? { ready: false, state: 'indeterminate', hint: message },
-        });
+    // The engine precondition, the pane deny-list and the D1 human gate used to
+    // live in this function. They now live in `capability-guard.ts`, beneath
+    // every adapter, because a check that only exists in one adapter protects
+    // only one caller — and the renderer was the caller it was missing.
+    //
+    // What remains here is TRANSLATION: a refusal knows its own status code, so
+    // this maps rather than judges. An adapter that had to choose the code
+    // would be holding policy again.
+    try {
+      await options.guard.authorize({
+        channel: def.channel,
+        verb,
+        input,
+        principal: isPane ? { kind: 'pane-agent' } : { kind: 'api-agent' },
+      });
+    } catch (err) {
+      if (err instanceof CapabilityRefusal) {
+        json(res, err.status, { error: err.code, verb, message: err.message, ...err.detail });
         return;
       }
-    }
-
-    // ── D1: the human gate ──
-    //
-    // LAST of the three gates, and the order is load-bearing. A malformed
-    // payload (422) and an unready engine (409) are both answers we can give
-    // without troubling anybody — and asking a human to approve a run that is
-    // about to fail because ChatGPT is signed out spends their attention to
-    // produce an error. Never raise a dialog for a call that cannot succeed.
-    //
-    // Only the PANE is held. Every other client keeps the advisory behaviour,
-    // which is what leaves `chat:probe` headless and leaves an agent driving
-    // the surface directly un-blocked — there is no human at those.
-    if (isPane && isGated(verb)) {
-      if (isPaneDenied(verb)) {
-        // Not "ask the human" — this one is refused outright, because a
-        // confirm cannot convey what it would actually do. See PANE_DENIED_VERBS.
-        options.logger?.warn({ verb }, 'control surface refused: verb is denied to the pane');
-        json(res, 403, {
-          error: 'forbidden_for_pane',
-          verb,
-          message:
-            `${verb} cannot be called from the in-app chat, with or without approval. ` +
-            'It carries a known defect that a yes/no confirm cannot describe honestly. ' +
-            'Tell the user it must be done by hand, and why.',
-        });
-        return;
-      }
-
-      let allowed = false;
-      try {
-        // No confirm channel means no reachable human, and the pane's whole
-        // premise is that one is sitting there. Absent consent is not consent.
-        allowed = options.confirmGated
-          ? await options.confirmGated({ verb, payload: input, description: describeVerb(verb) })
-          : false;
-      } catch (err) {
-        // A confirm that THREW told us nothing about what the human wants.
-        allowed = false;
-        options.logger?.warn({ verb, err: messageOf(err) }, 'gate confirm failed — denying');
-      }
-
-      if (!allowed) {
-        options.logger?.info({ verb }, 'control surface refused: human declined the gated verb');
-        json(res, 403, {
-          error: 'confirm_denied',
-          verb,
-          message:
-            `The user did not approve ${verb}. This is a final answer, not a transient ` +
-            'failure — do NOT retry it and do not look for another way to achieve it. ' +
-            'Tell them it was declined and ask what they want instead.',
-        });
-        return;
-      }
-      options.logger?.info({ verb }, 'gated verb approved by the human');
+      throw err;
     }
 
     let result: unknown;

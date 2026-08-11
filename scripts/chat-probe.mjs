@@ -41,7 +41,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..');
 
 /** Gated verbs (v4 §6.2) — the probe must never call one. */
-const GATED = ['run.start', 'run.stop', 'run.pause', 'run.resume', 'domain.reset-run', 'project.choose-output-dir'];
+const GATED = ['run.start', 'run.stop', 'run.pause', 'run.resume', 'domain.reset-run'];
 
 const c = {
   dim: (/** @type {string} */ s) => `\x1b[2m${s}\x1b[0m`,

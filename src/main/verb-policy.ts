@@ -92,6 +92,83 @@ export const NEVER_EXPOSED: readonly string[] = [
   'imagedrip:chat:send',
   'imagedrip:chat:state',
   'imagedrip:chat:stop',
+  /**
+   * 🔴 The D1 answer channel — added 2026-08-11, and it was published for
+   * three days before anyone noticed.
+   *
+   * This is how the RENDERER tells main that a human clicked Allow or Deny.
+   * Publishing it put **the tool that answers a security prompt on the surface
+   * the prompt is protecting against** — and worse, `chat-session.ts` builds
+   * the pane's allow-list from everything not in `PANE_DENIED_VERBS`, so the
+   * contained agent D1 exists to constrain was handed `chat_gate-decide` by
+   * name.
+   *
+   * It was not directly exploitable: `decide(id, allow)` ignores anything that
+   * does not match the pending request's `randomUUID`, and that id is pushed
+   * only to the renderer. But the margin was one log line wide. The gate
+   * already logs an id on a mismatched answer, `file-log.ts` writes to
+   * `userData`, and `userData` is the pane CLI's own cwd when no brand repo is
+   * attached — a directory it has Read on. A live id reaching that file at any
+   * point turns this into self-approval.
+   *
+   * This is `agent-safety.md` §2 exactly: the thing being constrained must not
+   * hold the control that constrains it.
+   *
+   * ── The systemic half ──
+   * Nobody added this deliberately. The control surface mirrors the IPC
+   * registry, so **exposure is opt-OUT**: any new `imagedrip:*` channel is
+   * agent-facing the moment it is registered, unless someone remembers this
+   * list. That default is convenient and it is backwards for anything
+   * security-relevant. `test/verb-policy.test.ts` now pins the published set,
+   * so a new channel fails the suite until its exposure is decided on purpose.
+   */
+  'imagedrip:chat:gate-decide',
+  /**
+   * The four PUSH channels — main → renderer, via `webContents.send`.
+   *
+   * These are not verbs and never were: nothing registers a handler on them,
+   * so `listVerbs` has never published them. They are listed anyway because
+   * `isExposed()` said **true** for all four, and "safe because nobody
+   * registered a handler yet" is an accident, not a policy. The moment someone
+   * adds a handler on one — to let a client pull the last status, say — it
+   * becomes an agent-facing verb with no decision having been made.
+   *
+   * Saying it out loud costs one line each and makes the policy answer
+   * truthfully for every channel the app declares, which is what lets the
+   * pinned-set test below use the whole `IPC` map as its population.
+   */
+  'imagedrip:run:status',
+  'imagedrip:harness:event',
+  'imagedrip:chat:event',
+  'imagedrip:chat:gate',
+  /**
+   * ── The native file pickers — unpublished 2026-08-11 ──
+   *
+   * These are the third hazard on this list and the least obvious: they are not
+   * dangerous at all. They simply **cannot work**.
+   *
+   * Both call `dialog.showOpenDialog`, which needs a live `hostWindow` AND a
+   * human looking at the screen. An agent calling either gets a promise that
+   * never usefully resolves — there is nobody to pick a folder.
+   *
+   * They were catalogued anyway, each carrying an honest description saying it
+   * "cannot succeed headlessly". That is the wrong resolution, and it is this
+   * repo's own version of a defect the reference implementation shipped:
+   * `od export --format pdf` is in Open Design's catalog and cannot run
+   * headlessly either, because rasterization lives in its Electron window.
+   * **The rule is not "warn about it" — it is "do not catalogue it."** A verb
+   * list is a promise; a promise with a footnote saying it cannot be kept is
+   * still a broken promise, and it is exactly the "control that quietly
+   * disappears" this repo refuses everywhere else.
+   *
+   * Nothing is lost. The CAPABILITY an agent actually wants is *set the output
+   * folder to this path*, and that already exists as `domain.save-project`
+   * with an `outputDir`. The picker is a UI affordance for OBTAINING a path,
+   * not a capability. The human path is untouched — both remain reachable from
+   * the renderer over IPC, which is the only place they ever worked.
+   */
+  'imagedrip:project:choose-output-dir',
+  'imagedrip:repo:choose-root',
 ];
 
 /**
@@ -128,7 +205,6 @@ export const GATED_VERBS: readonly string[] = [
   // "prompts.clear" is `domain:import-prompts` with mode 'clear'; the destructive
   // reset of an entire queue is its own channel and gated on its own.
   'domain.reset-run',
-  'project.choose-output-dir',
   // A7 — forgetting a record. Nothing leaves the disk, but a deleted project
   // takes its whole prompt queue with it and there is no undo inside the app.
   'brand.delete',
@@ -225,7 +301,7 @@ export const VERB_DOCS: Readonly<Record<string, string>> = {
   'domain.import-prompts':
     'Put prompts into the QUEUED pane. mode "add" appends after the existing queue, "replace" drops queued items (harvested ones always survive), "clear" empties the queue and imports nothing. format "lines" is one prompt per line; "blocks" splits on a line containing only ---. Read the Template first: its importFormat is the intended cut for that artifact kind. This is the verb that finishes the job the embedded ChatGPT cannot.',
   'domain.save-project':
-    'Edit the ACTIVE project: name, body (the SUBJECT layer of the primer), or outputDir. Refused with 409 while a run is live if you try to move outputDir. Ask the user before changing outputDir — it decides where images land.',
+    'Also the headless way to set a destination — pass outputDir with a path you already know, rather than reaching for a folder picker (there is none on this surface; it needs a human at the screen). Edit the ACTIVE project: name, body (the SUBJECT layer of the primer), or outputDir. Refused with 409 while a run is live if you try to move outputDir. Ask the user before changing outputDir — it decides where images land.',
   'domain.save-brand':
     'Edit the ACTIVE brand body (the LOOK layer). Locked while a run is live and answers 409 — do not retry, tell the user the run must stop first. A brand sourced from a repo DESIGN.md is canonical elsewhere; prefer proposing the change over writing it.',
   'domain.compose-primer':
@@ -255,8 +331,6 @@ export const VERB_DOCS: Readonly<Record<string, string>> = {
     'DESTRUCTIVE and confirm-first: forgets a project AND its prompt queue. Ask first, every time, and say how many prompts go with it (read domain.get first). Refused with 422 for the last remaining project — something must always be active. Deleting the active one activates another. It removes NOTHING from disk: harvested images, run folders and manifests all stay where they are, and with a repo attached projects/<id>/ is still in git.',
   'theme.rename':
     "Rename the ACTIVE project's theme. Not cosmetic: the theme name is slugged into every FUTURE run folder (2026-08-03-1446-<theme>) and is what runs.list shows. It defaults to the project id, so a long-lived project names every batch after itself — rename it to what is actually being generated before starting a run, not after. Past runs keep the name they ran under, which is correct. Refused with 409 while a run is live.",
-  'project.choose-output-dir':
-    'Confirm-first and INTERACTIVE: opens a native folder picker in front of the user. It cannot succeed headlessly and it needs a human at the window. To set a destination you already know, use domain.save-project with outputDir instead.',
   'project.reveal-output-dir': "Open the active project's output folder in Finder.",
   'runs.list': "Past runs of the ACTIVE project, newest state included — read before claiming what has or has not been generated.",
   'runs.manifest':

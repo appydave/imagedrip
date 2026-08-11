@@ -21,6 +21,8 @@ import { createConsole } from './create-console.js';
 import { createControlSurface, listVerbs, type ControlSurface } from './control-surface.js';
 import { createChatSession, type ChatSessionHandle } from './chat-session.js';
 import { createChatGate, type ChatGate } from './chat-gate.js';
+import { createCapabilityGuard, type CapabilityGuard } from './capability-guard.js';
+import { toVerb } from './verb-policy.js';
 import { buildContext, type ContextMode, type ContextResult } from './context-snapshot.js';
 import { buildEngineReadiness, type EngineReadiness } from './engine-readiness.js';
 import { isInside, isInsideWorkTree } from './git-scope.js';
@@ -105,6 +107,12 @@ let chat: ChatSessionHandle | null = null;
  * the control surface can be handed a live reference at startup.
  */
 let gate: ChatGate | null = null;
+
+/**
+ * Authorization for every caller — renderer, HTTP, MCP, and whatever adapter
+ * comes next. Created in `onReady`; both adapters are wired to this one object.
+ */
+let guard: CapabilityGuard;
 
 function pushChatEvents(events: ChatEvent[]): void {
   if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.chatEvent, events);
@@ -938,6 +946,26 @@ const desktop = createConsole({
       logger: log,
     });
 
+    // ── Authorization, beneath BOTH adapters ──
+    //
+    // One guard, two callers. The renderer gets it through the router's
+    // interceptor below; the control surface gets it as a dependency. Neither
+    // adapter decides anything — they translate a refusal into their own
+    // vocabulary and nothing more.
+    guard = createCapabilityGuard({
+      engineReadiness: () => getEngineReadiness(),
+      confirmGated: (call) => gate?.ask(call) ?? Promise.resolve(false),
+      logger: log,
+    });
+
+    // The human path. This is the line that stops the renderer being a bypass:
+    // a person clicking `▶ Run theme…` now meets the same engine precondition
+    // an agent does, and gets the same hint instead of a run that fails inside
+    // `feed` against a login form.
+    ipc.useInterceptor(async (channel, input) => {
+      await guard.authorize({ channel, verb: toVerb(channel), input, principal: { kind: 'human' } });
+    });
+
     control = createControlSurface({
       defs: () => ipc.list(),
       userDataDir: app.getPath('userData'),
@@ -949,10 +977,7 @@ const desktop = createConsole({
       // and revoked on teardown, so a stale copy would either stop recognising
       // the pane or keep recognising a session that has gone.
       paneToken: () => chat?.paneToken() ?? null,
-      confirmGated: (call) => gate?.ask(call) ?? Promise.resolve(false),
-      // The seam the human path gets for free: a person sees the login wall in
-      // the pane, an HTTP caller sees nothing. This is what gives them parity.
-      engineReadiness: () => getEngineReadiness(),
+      guard,
       logger: log,
     });
     void control

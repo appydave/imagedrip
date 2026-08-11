@@ -4,12 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from '@appydave/core';
 import type { HandlerDef } from '../src/main/ipc-router';
-import {
-  CLIENT_HEADER,
-  createControlSurface,
-  type ControlSurface,
-  type GatedCall,
-} from '../src/main/control-surface';
+import { CLIENT_HEADER, createControlSurface, type ControlSurface } from '../src/main/control-surface';
+import { createCapabilityGuard } from '../src/main/capability-guard';
+import type { GatedCall } from '../src/main/chat-gate';
 
 /**
  * D1 — which CALLER gets held, over a real loopback server.
@@ -103,11 +100,16 @@ beforeAll(async () => {
     version: '0.1.0-test',
     isRunning: () => false,
     paneToken: () => paneToken,
-    confirmGated: async (c) => {
-      asked.push(c);
-      if (answer === 'throw') throw new Error('the renderer blew up');
-      return answer;
-    },
+    // The REAL guard. These tests used to drive an adapter-local copy of the
+    // gate logic; since 2026-08-11 the logic lives beneath every adapter, so
+    // this exercises the thing that actually enforces.
+    guard: createCapabilityGuard({
+      confirmGated: async (c) => {
+        asked.push(c);
+        if (answer === 'throw') throw new Error('the renderer blew up');
+        return answer;
+      },
+    }),
     port: 0,
   });
   const info = await surface.start();
@@ -216,6 +218,7 @@ describe('fail closed', () => {
       isRunning: () => false,
       paneToken: () => 'pane-secret-token',
       // confirmGated deliberately omitted — no window, no human.
+      guard: createCapabilityGuard({}),
       port: 0,
     });
     const info = await s.start();

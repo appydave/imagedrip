@@ -12,6 +12,10 @@ import {
   VERB_DOCS,
 } from '../src/main/verb-policy';
 import { toJsonSchema, toToolInputSchema } from '../src/main/zod-to-json-schema';
+import { IPC } from '../src/shared/ipc';
+
+/** Every channel the app declares — the population `isExposed` filters. */
+const ALL_CHANNELS = Object.values(IPC);
 
 describe('toVerb', () => {
   it('strips the namespace and dot-joins the rest', () => {
@@ -79,7 +83,6 @@ describe('gating — v4 §6.2', () => {
     expect(isGated('run.pause')).toBe(true);
     expect(isGated('run.resume')).toBe(true);
     expect(isGated('domain.reset-run')).toBe(true);
-    expect(isGated('project.choose-output-dir')).toBe(true);
   });
 
   it('gates every delete — there is no undo inside the app (A7)', () => {
@@ -119,9 +122,24 @@ describe('descriptions', () => {
     expect(describeVerb('brand.new-thing')).toMatch(/422/);
   });
 
-  it('documents the interactive verb as unable to succeed headlessly', () => {
-    expect(describeVerb('project.choose-output-dir')).toMatch(/headlessly/);
-    expect(VERB_DOCS['project.choose-output-dir']).toBeTruthy();
+  /**
+   * The rule that replaced the old "document it as unable to work headlessly"
+   * test, 2026-08-11.
+   *
+   * Both pickers call `dialog.showOpenDialog`, which needs a human at the
+   * screen. Catalogued-with-a-warning was the wrong resolution: a verb list is
+   * a promise, and a promise footnoted "cannot be kept" is still broken. The
+   * capability an agent wants — set the output folder to a known path — is
+   * `domain.save-project { outputDir }`, which works headlessly.
+   */
+  it('does not catalogue a verb that needs a human at the screen', () => {
+    expect(isExposed('imagedrip:project:choose-output-dir')).toBe(false);
+    expect(isExposed('imagedrip:repo:choose-root')).toBe(false);
+    // And no orphaned documentation promising something the catalog no longer offers.
+    expect(VERB_DOCS['project.choose-output-dir']).toBeUndefined();
+    expect(VERB_DOCS['repo.choose-root']).toBeUndefined();
+    // The headless route is named where an agent will actually look.
+    expect(describeVerb('domain.save-project')).toMatch(/outputDir/);
   });
 
   it('says a delete removes nothing from disk — the fear that stops it being used', () => {
@@ -268,5 +286,53 @@ describe('requiresEngine', () => {
     for (const verb of ENGINE_REQUIRED_VERBS) {
       expect(VERB_DOCS[verb]).toMatch(/engine/i);
     }
+  });
+});
+
+/**
+ * The published set, pinned.
+ *
+ * ── Why this exists ──
+ *
+ * The control surface MIRRORS the IPC registry rather than declaring routes,
+ * which is what keeps the MCP proxy free of logic. The cost is that **exposure
+ * is opt-OUT**: registering any `imagedrip:*` channel makes it agent-facing
+ * immediately, unless somebody remembers `NEVER_EXPOSED`.
+ *
+ * That default published `chat.gate-decide` — the channel a human's Allow/Deny
+ * travels on — for three days, and put it in the pane agent's own allow-list.
+ * Nobody decided that; the default decided it.
+ *
+ * So the set is pinned. A new channel now FAILS this test until its exposure is
+ * chosen deliberately, which is the PR gate's reachability checklist made
+ * executable instead of remembered. Updating the list is the whole ceremony —
+ * the point is that it cannot happen silently.
+ */
+describe('the published surface is a deliberate list, not a side effect', () => {
+  const PUBLISHED = [
+    'brand.create', 'brand.delete', 'brand.switch',
+    'context.get',
+    'domain.compose-primer', 'domain.get', 'domain.import-prompts',
+    'domain.reset-run', 'domain.save-brand', 'domain.save-project',
+    'harvest.thumb',
+    'project.create', 'project.delete', 'project.reveal-output-dir', 'project.switch',
+    'repo.attach',
+    'run.chat-state', 'run.pause', 'run.resume', 'run.start', 'run.stop',
+    'runs.list', 'runs.manifest', 'runs.reveal',
+    'template.create', 'template.delete', 'template.save', 'template.switch',
+    'theme.rename',
+    'uat.counts', 'uat.reveal', 'uat.snag', 'uat.verdict',
+  ];
+
+  it('publishes exactly the verbs on the list', () => {
+    // Built from the real channel names so a rename shows up here too.
+    const exposed = ALL_CHANNELS.filter(isExposed).map(toVerb).filter(Boolean).sort();
+    expect(exposed).toEqual([...PUBLISHED].sort());
+  });
+
+  it('never publishes the channel that ANSWERS the human gate', () => {
+    // The tool that answers a security prompt must not sit on the surface the
+    // prompt protects against — agent-safety.md §2.
+    expect(isExposed('imagedrip:chat:gate-decide')).toBe(false);
   });
 });
