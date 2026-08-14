@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Probe attach — can an image be pasted into a composer?</title>
+    <style>
+      body { font: 16px system-ui; padding: 24px; }
+      #chip-rail { min-height: 32px; padding: 4px; border: 1px dashed #bbb; margin-bottom: 8px; }
+      /* Mirrors chatgpt-selectors.composerAttachment so the real selector is exercised. */
+      .attachment-chip { display: inline-block; padding: 4px 8px; background: #eee; border-radius: 6px; }
+      #prompt-textarea { border: 1px solid #999; min-height: 40px; padding: 8px; }
+      pre { background: #f6f6f6; padding: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Probe attach — clipboard image → composer</h1>
+    <p>
+      Models ChatGPT's composer: a contenteditable, with an attachment rail
+      <em>outside</em> it. The rail is where a "pasted as file" chip lives, which is why
+      <code>selectAll()</code> inside the contenteditable should not be able to destroy it —
+      <strong>this page exists to check that assumption, not to assert it.</strong>
+    </p>
+
+    <div id="chip-rail" data-testid="attachment-rail"></div>
+    <!-- id mirrors chatgpt-selectors.promptInput so this exercises the real target -->
+    <div id="prompt-textarea" contenteditable="true"></div>
+    <pre id="out">waiting…</pre>
+
+    <script>
+      window.__probe = {
+        pasteCount: 0,
+        pasteTrusted: null,
+        // What the DataTransfer actually carried on the last paste.
+        lastPasteKinds: [],
+        lastPasteTypes: [],
+        lastPasteFileCount: 0,
+        lastPasteFileType: null,
+        lastPasteFileSize: null,
+        text: '',
+        chipCount: 0,
+      };
+      const box = document.getElementById('prompt-textarea');
+      const rail = document.getElementById('chip-rail');
+      const out = document.getElementById('out');
+      const render = () => {
+        window.__probe.text = box.textContent;
+        window.__probe.chipCount = rail.querySelectorAll('.attachment-chip').length;
+        out.textContent = JSON.stringify(window.__probe, null, 2);
+      };
+
+      box.addEventListener('paste', (e) => {
+        window.__probe.pasteCount += 1;
+        window.__probe.pasteTrusted = e.isTrusted;
+        const dt = e.clipboardData;
+        window.__probe.lastPasteKinds = dt ? [...dt.items].map((i) => i.kind) : [];
+        window.__probe.lastPasteTypes = dt ? [...dt.items].map((i) => i.type) : [];
+        const files = dt ? [...dt.files] : [];
+        window.__probe.lastPasteFileCount = files.length;
+        if (files[0]) {
+          window.__probe.lastPasteFileType = files[0].type;
+          window.__probe.lastPasteFileSize = files[0].size;
+          // ChatGPT turns a pasted image into a chip OUTSIDE the contenteditable.
+          // Do the same, so the selectAll survival question is testable here.
+          e.preventDefault();
+          const chip = document.createElement('span');
+          chip.className = 'attachment-chip';
+          chip.setAttribute('data-testid', 'file-chip');
+          chip.textContent = `${files[0].type} · ${files[0].size}B`;
+          rail.appendChild(chip);
+        }
+        setTimeout(render, 0);
+      });
+      box.addEventListener('input', render);
+      render();
+    </script>
+  </body>
+</html>

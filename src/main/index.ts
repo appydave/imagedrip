@@ -229,7 +229,7 @@ function tracked<T>(p: Promise<T>): Promise<T> {
 const QUIT_FLUSH_MS = 2000;
 
 function getOutputAuthor(): SwappableFileAuthor {
-  outputAuthor ??= new SwappableFileAuthor(legacyHarvestRoot());
+  outputAuthor ??= new SwappableFileAuthor(legacyHarvestRoot(), logger ?? undefined);
   return outputAuthor;
 }
 
@@ -903,14 +903,36 @@ const desktop = createConsole({
       input: z.boolean(),
       handle: (visible) => harness?.setVisible(visible),
     });
+    // Both of these write to (or navigate) the ChatGPT view WITHOUT going
+    // through the BatchRunner, so they bypass the `busy`/`feeding` latches, the
+    // `seen` set, the `awaiting` gate, the manifest and the stall budget.
+    //
+    // Their renderer bridges were removed in v5 Phase 0.3 and they stay in
+    // NEVER_EXPOSED, so nothing reaches them today. The guard is the backstop
+    // for the day something does: refusing mid-run is recoverable, whereas a
+    // navigated-away conversation looks exactly like a slow one and a
+    // double-paste looks exactly like a prompt nobody sent.
+    const refuseWhileRunning = (what: string): void => {
+      if (runner?.running) {
+        throw new Error(
+          `${what} is refused while a run is live — it would bypass the runner that owns the ChatGPT view. Stop the run first.`,
+        );
+      }
+    };
     ipc.register<void, void>({
       channel: IPC.harnessNewConversation,
-      handle: () => getHarness().newConversation(),
+      handle: () => {
+        refuseWhileRunning('opening a new conversation');
+        return getHarness().newConversation();
+      },
     });
     ipc.register<string, void>({
       channel: IPC.harnessFeed,
       input: z.string().min(1),
-      handle: (prompt) => getHarness().feed(prompt),
+      handle: (prompt) => {
+        refuseWhileRunning('feeding the chat directly');
+        return getHarness().feed(prompt);
+      },
     });
     // Full teardown: halt the run AND detach the ChatGPT view (app-level stop).
     ipc.register<void, void>({
@@ -954,7 +976,8 @@ const desktop = createConsole({
     // vocabulary and nothing more.
     guard = createCapabilityGuard({
       engineReadiness: () => getEngineReadiness(),
-      confirmGated: (call) => gate?.ask(call) ?? Promise.resolve(false),
+      // No gate wired at all = nobody to ask, which is `cancel`, not `decline`.
+      confirmGated: (call) => gate?.ask(call) ?? Promise.resolve('cancel' as const),
       logger: log,
     });
 

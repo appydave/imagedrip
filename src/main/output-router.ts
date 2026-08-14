@@ -1,3 +1,4 @@
+import type { Logger } from '@appydave/core';
 import { FileAuthor, type AuthorResult } from './file-author.js';
 
 /**
@@ -12,17 +13,23 @@ import { FileAuthor, type AuthorResult } from './file-author.js';
 export class SwappableFileAuthor extends FileAuthor {
   private inner: FileAuthor;
   private currentRoot: string;
+  private readonly innerLogger?: Logger;
 
-  constructor(initialRoot: string) {
-    super({ root: initialRoot });
-    this.inner = new FileAuthor({ root: initialRoot });
+  constructor(initialRoot: string, logger?: Logger) {
+    super({ root: initialRoot, logger });
+    // Carried onto every rebuilt inner author, not just the first: a commit
+    // failure after a project switch is exactly as worth hearing about as one
+    // before it, and a logger that silently stops following the root would be
+    // its own quiet disappearance.
+    this.innerLogger = logger;
+    this.inner = new FileAuthor({ root: initialRoot, logger });
     this.currentRoot = initialRoot;
   }
 
   /** Repoint the scoped root (e.g. on project switch). No-op if unchanged. */
   setRoot(root: string): void {
     if (root === this.currentRoot) return;
-    this.inner = new FileAuthor({ root });
+    this.inner = new FileAuthor({ root, logger: this.innerLogger });
     this.currentRoot = root;
   }
 

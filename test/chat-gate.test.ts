@@ -31,7 +31,7 @@ describe('the gate holds until a human answers', () => {
     await vi.waitFor(() => expect(shown).not.toBeNull());
     gate.decide(shown!.id, true);
 
-    expect(await pending).toBe(true);
+    expect(await pending).toBe('accept');
   });
 
   it('denies on an explicit no', async () => {
@@ -42,7 +42,7 @@ describe('the gate holds until a human answers', () => {
     await vi.waitFor(() => expect(shown).not.toBeNull());
     gate.decide(shown!.id, false);
 
-    expect(await pending).toBe(false);
+    expect(await pending).toBe('decline');
   });
 
   it('does not resolve while nobody has answered', async () => {
@@ -75,7 +75,11 @@ describe('everything that is not a yes is a no', () => {
     // The single most important assertion in this file. A confirm that defaults
     // OPEN under load, or when the user walked away, manufactures a record of
     // consent nobody gave.
-    expect(await pending).toBe(false);
+    //
+    // `cancel`, NOT `decline`: it still denies, but nobody decided anything, and
+    // reporting a timeout as a refusal invents a human judgement that never
+    // happened. That mislabelling reached the agent verbatim until v5 Phase 0.3.
+    expect(await pending).toBe('cancel');
   });
 
   it('denies immediately when there is no window to ask in', async () => {
@@ -83,7 +87,7 @@ describe('everything that is not a yes is a no', () => {
     // And it fails FAST rather than making the agent wait out a timeout to be
     // told nobody was home.
     const gate = createChatGate({ present: () => false, dismiss: () => undefined });
-    expect(await gate.ask(call())).toBe(false);
+    expect(await gate.ask(call())).toBe('cancel');
     expect(gate.pending()).toBeNull();
   });
 
@@ -95,18 +99,19 @@ describe('everything that is not a yes is a no', () => {
 
     // Two dialogs racing is how a person clicks Allow on the one they read and
     // grants the one they did not.
-    expect(await second).toBe(false);
+    // `cancel` — the person never saw this one, so nobody refused it.
+    expect(await second).toBe('cancel');
     expect(gate.pending()?.verb).toBe('run.start');
 
     gate.decide(gate.pending()!.id, true);
-    expect(await first).toBe(true);
+    expect(await first).toBe('accept');
   });
 
   it('denies everything pending when cancelled', async () => {
     const gate = createChatGate({ present: () => true, dismiss: () => undefined });
     const pending = gate.ask(call());
     gate.cancelAll('quitting');
-    expect(await pending).toBe(false);
+    expect(await pending).toBe('cancel');
   });
 });
 
@@ -122,7 +127,7 @@ describe('answers are matched to the question that is open', () => {
     expect(gate.pending()?.id).toBe(real);
 
     gate.decide(real, false);
-    expect(await pending).toBe(false);
+    expect(await pending).toBe('decline');
   });
 
   it('a second answer to an already-closed question does nothing', async () => {
@@ -131,7 +136,7 @@ describe('answers are matched to the question that is open', () => {
     const id = gate.pending()!.id;
 
     gate.decide(id, false);
-    expect(await pending).toBe(false);
+    expect(await pending).toBe('decline');
     // Double-click, or a click racing the timeout. Must not throw, must not
     // reopen, must not settle anything twice.
     expect(() => gate.decide(id, true)).not.toThrow();

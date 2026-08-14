@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { RunManifest, RunStatus, RunSummary, Rect } from '@shared/ipc';
+import type { RunManifest, RunOutcome, RunStatus, RunSummary, Rect } from '@shared/ipc';
 import type { ChatGateRequest } from '@shared/chat';
 import { compose, parsePromptList, renderListPrompt, type DomainState } from '@shared/domain';
 import { useAppStore, type CtxTab } from './store';
@@ -127,8 +127,13 @@ export default function App(): JSX.Element {
   }, [flash]);
 
   const prompts = domain?.theme.prompts ?? [];
-  const queued = prompts.filter((p) => p.status === 'queued');
   const harvested = prompts.filter((p) => p.status === 'harvested');
+  // NOT `=== 'queued'`. PromptStatus gained `refused`, and a partition written as
+  // two positive filters silently drops anything that is neither — the prompt
+  // would vanish from both panes and the queue count would under-report with no
+  // sign that it had. Splitting on `harvested` keeps the partition TOTAL, so a
+  // status added later shows up somewhere instead of disappearing.
+  const queued = prompts.filter((p) => p.status !== 'harvested');
 
   const phase = status?.phase ?? 'idle';
   const isRunning = ['priming', 'feeding', 'awaiting', 'harvested', 'waiting'].includes(phase);
@@ -703,6 +708,28 @@ function fmtWhen(ts: number): string {
 }
 
 /**
+ * How a run ended, rendered honestly (v5 Phase 0.3).
+ *
+ * `complete` renders as nothing on purpose — the harvested/total beside it
+ * already says so, and a "· complete" on every healthy row is noise that makes
+ * the unhealthy ones harder to see.
+ *
+ * The other three all render, because each is a DIFFERENT kind of not-finished
+ * and before 0.3 they were one indistinguishable blank:
+ *   stopped  halted deliberately — the operator, a rate limit, or quit
+ *   open     started, never closed. A LIVE run reads this way too, and that is
+ *            correct: from a folder on disk, a run still going and a run whose
+ *            process died look identical, and the UI must not pretend otherwise
+ *   unknown  no outcome at all — a manifest written before 0.3
+ */
+function fmtOutcome(outcome: RunOutcome | undefined): string {
+  if (outcome === 'stopped') return ' · stopped';
+  if (outcome === 'open') return ' · open';
+  if (outcome === undefined) return ' · unknown';
+  return '';
+}
+
+/**
  * useAutosave (WP2) — draft-edit a persisted string with debounce + blur-flush.
  * The card shows an unmistakable saved/unsaved state; the explicit Save button
  * remains a shortcut, never the only path.
@@ -1048,7 +1075,7 @@ function ContextPanel(props: {
               <div className="font-mono text-[10px] text-muted">
                 {fmtWhen(r.startedAt)} · {r.harvested}/{r.total}
                 {r.mode === 'dial-in' ? ' · dial-in' : ''}
-                {r.outcome === 'stopped' ? ' · stopped' : ''}
+                {fmtOutcome(r.outcome)}
               </div>
             </button>
           ))}
@@ -1363,7 +1390,7 @@ function RunHistoryView(props: {
         {m && (
           <span className="font-mono text-[11px] text-muted">
             {fmtWhen(m.startedAt)} · {m.counts.harvested}/{m.counts.total} harvested
-            {m.outcome === 'stopped' ? ' · stopped' : ''}
+            {fmtOutcome(m.outcome)}
           </span>
         )}
         <span className="flex-1" />
@@ -1940,7 +1967,7 @@ function ProjectCard(props: {
                     <div className="text-muted">
                       {fmtWhen(r.startedAt)} · {r.harvested}/{r.total}
                       {r.mode === 'dial-in' ? ' · dial-in' : ''}
-                      {r.outcome === 'stopped' ? ' · stopped' : ''}
+                      {fmtOutcome(r.outcome)}
                     </div>
                   </div>
                 ))}

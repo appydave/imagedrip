@@ -42,6 +42,59 @@ describe('makeRunId', () => {
   });
 });
 
+describe('RunRecorder — outcome is always present (v5 Phase 0.3)', () => {
+  it("writes outcome:'open' on the very first flush, before any prompt is fed", async () => {
+    const { files, author } = fakeAuthor();
+    const rec = new RunRecorder({ fileAuthor: author });
+    const runId = await rec.start({
+      projectName: 'Smoothies',
+      themeName: 'animals',
+      primer: 'p',
+      prompts: PROMPTS,
+    });
+    const m = JSON.parse(files.get(`${runId}/manifest.json`)!) as RunManifest;
+    expect(m.outcome).toBe('open');
+    expect(m.finishedAt).toBeUndefined();
+  });
+
+  it("a run stopped part-way is 'stopped', and never looks complete", async () => {
+    const { files, author } = fakeAuthor();
+    const rec = new RunRecorder({ fileAuthor: author });
+    const runId = await rec.start({
+      projectName: 'Smoothies',
+      themeName: 'animals',
+      primer: 'p',
+      prompts: PROMPTS,
+    });
+    await rec.harvest('kangaroo-1', 'kangaroo.png');
+    await rec.finish('stopped');
+
+    const m = JSON.parse(files.get(`${runId}/manifest.json`)!) as RunManifest;
+    expect(m.outcome).toBe('stopped');
+    // The whole point of the rule: under-delivery is legible from the record alone.
+    expect(m.counts.harvested).toBe(1);
+    expect(m.counts.total).toBe(2);
+  });
+
+  it('leaves a crashed run readable as open, not as complete', async () => {
+    // No finish() call at all — the process "died". The manifest already on disk
+    // must still say what happened, which before 0.3 it could not.
+    const { files, author } = fakeAuthor();
+    const rec = new RunRecorder({ fileAuthor: author });
+    const runId = await rec.start({
+      projectName: 'Smoothies',
+      themeName: 'animals',
+      primer: 'p',
+      prompts: PROMPTS,
+    });
+    await rec.harvest('kangaroo-1', 'kangaroo.png');
+
+    const m = JSON.parse(files.get(`${runId}/manifest.json`)!) as RunManifest;
+    expect(m.outcome).toBe('open');
+    expect(m.outcome).not.toBe('complete');
+  });
+});
+
 describe('RunRecorder', () => {
   it('records a run end to end: start → harvest/refusal/reprime/pause → finish', async () => {
     const { files, author } = fakeAuthor();
@@ -59,6 +112,8 @@ describe('RunRecorder', () => {
     expect(m.primer).toBe('BRAND\n\nPROJECT');
     expect(m.counts).toEqual({ total: 2, harvested: 0, refused: 0 });
     expect(m.prompts.every((p) => p.status === 'queued')).toBe(true);
+    // v5 Phase 0.3 — open BEFORE anything is fed, so absence can only mean legacy.
+    expect(m.outcome).toBe('open');
 
     await rec.harvest('kangaroo-1', 'kangaroo.png', 42000, 'https://img/1');
     await rec.refusal('koala-2');

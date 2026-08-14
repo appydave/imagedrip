@@ -185,13 +185,19 @@ export function toToolResult(res) {
     };
   }
   const label =
-    res.status === 403
-      ? // D1. The sharpest distinction on this list, and the one an agent is
-        // most likely to get wrong: a human SAW this and said no. It is not a
-        // lock that clears, not a timing problem, and not something to route
-        // around — a retry is asking a person who already answered to answer
-        // again, and finding "another way" is defeating them on purpose.
-        'DECLINED BY THE USER — a human was asked and said no. This is FINAL. Do not retry it, and do not look for an alternative route to the same outcome. Say it was declined and ask what they want instead'
+    res.status === 403 && res.body?.error === 'confirm_unanswered'
+      ? // NOT a decision. The confirm timed out, or there was no window to show
+        // it in. Reporting this as a refusal fabricates a human judgement that
+        // never happened — and unlike a decline, this one IS worth trying again
+        // once somebody is actually at the app.
+        'NOT ANSWERED — a confirmation was needed and nobody answered it (it timed out, or ImageDrip had no window to ask in). This is NOT a refusal: do NOT tell the user they declined. Say it needs their confirmation in the app and stop'
+      : res.status === 403
+        ? // D1. The sharpest distinction on this list, and the one an agent is
+          // most likely to get wrong: a human SAW this and said no. It is not a
+          // lock that clears, not a timing problem, and not something to route
+          // around — a retry is asking a person who already answered to answer
+          // again, and finding "another way" is defeating them on purpose.
+          'DECLINED BY THE USER — a human was asked and said no. This is FINAL. Do not retry it, and do not look for an alternative route to the same outcome. Say it was declined and ask what they want instead'
       : res.status === 409 && res.body?.error === 'engine_not_ready'
       ? // Distinguished from an ordinary refusal because the resolution differs:
         // a run-state lock clears itself when the run ends, but this one clears

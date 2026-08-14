@@ -18,7 +18,24 @@
  * any future driver (DZINE / Higgsfield). Shared by main (Store) and renderer (UI).
  */
 
-export type PromptStatus = 'queued' | 'harvested';
+/**
+ * What happened to one prompt.
+ *
+ * ONE type, shared by the live queue (`Prompt`) and the durable run record
+ * (`RunPromptRecord` in `shared/ipc.ts`). They were two different unions until
+ * v5 Phase 0.3: the queue could say only `queued | harvested`, so **a refusal
+ * was not expressible in the model the UI reads** — it existed in the manifest
+ * and nowhere else. A prompt ChatGPT refused looked exactly like one not
+ * reached yet, which is the failure this repo forbids.
+ *
+ * `refused` is now expressible in both. **Nothing writes it to the live queue
+ * yet** — `RunRecorder.refusal()` still marks only the manifest entry, so a
+ * refused prompt stays `queued` in `domain.json` and IS retried on the next
+ * run. That retry behaviour is deliberate for now (refusals can be transient)
+ * and changing it is a product decision, not a type fix — see
+ * `docs/research-imagedrip-architecture.md §2.8`.
+ */
+export type PromptStatus = 'queued' | 'harvested' | 'refused';
 
 /** One image request. Short + standalone; style inherited from the primed chat. */
 export interface Prompt {

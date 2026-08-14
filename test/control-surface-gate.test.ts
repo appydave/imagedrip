@@ -73,7 +73,7 @@ let base = '';
 let token = '';
 
 /** What the gate is told to do next, and what it was asked. */
-let answer: boolean | 'throw' = true;
+let answer: 'accept' | 'decline' | 'cancel' | 'throw';
 let asked: GatedCall[] = [];
 let paneToken: string | null = 'pane-secret-token';
 
@@ -124,7 +124,7 @@ afterAll(async () => {
 beforeEach(() => {
   handled = [];
   asked = [];
-  answer = true;
+  answer = 'accept';
   paneToken = 'pane-secret-token';
 });
 
@@ -138,11 +138,11 @@ describe('the pane is held; everyone else is not', () => {
   });
 
   it('refuses with 403 when the human denies, and does NOT run the verb', async () => {
-    answer = false;
+    answer = 'decline';
     const res = await call('/v1/call/run.stop', { client: 'pane-secret-token' });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('confirm_denied');
+    expect(res.body.error).toBe('confirm_declined');
     expect(handled).toEqual([]);
   });
 
@@ -150,10 +150,34 @@ describe('the pane is held; everyone else is not', () => {
     // The distinction that matters: a 409 run-state lock clears itself, so
     // waiting is sensible. A person saying no does not clear, and retrying is
     // asking someone who already answered to answer again.
-    answer = false;
+    answer = 'decline';
     const res = await call('/v1/call/run.stop', { client: 'pane-secret-token' });
     expect(res.body.message).toMatch(/do NOT retry/i);
     expect(res.body.message).toMatch(/declined/i);
+  });
+
+  it('an UNANSWERED confirm is a different 403 — it must not claim a refusal', async () => {
+    // The bug this split exists for. A timeout, or no window to ask in, used to
+    // reach the agent as "a human was asked and said no" — a decision nobody
+    // made. It still denies; it must not lie about why.
+    answer = 'cancel';
+    const res = await call('/v1/call/run.stop', { client: 'pane-secret-token' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('confirm_unanswered');
+    expect(handled).toEqual([]);
+    expect(res.body.message).toMatch(/not a refusal/i);
+    expect(res.body.message).toMatch(/do not tell the user they declined/i);
+  });
+
+  it('a confirm that THREW is unanswered, not declined', async () => {
+    // A renderer that blew up told us nothing about what the human wants.
+    answer = 'throw';
+    const res = await call('/v1/call/run.stop', { client: 'pane-secret-token' });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('confirm_unanswered');
+    expect(handled).toEqual([]);
   });
 
   it('does NOT hold the same verb from a client with no credential', async () => {

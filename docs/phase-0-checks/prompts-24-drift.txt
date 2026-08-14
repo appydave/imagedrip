@@ -1,0 +1,41 @@
+# Phase 0c — the 24-prompt drift list.
+#
+# Import with format "lines" (one prompt per line). Blank lines and # comments skipped.
+#
+# THE ORDER IS LOAD-BEARING. Do not sort it, do not regenerate it, and reuse this
+# exact order in EVERY arm of the experiment. It has been shuffled once, on purpose:
+# an alphabetical or thematically clustered list makes adjacent prompts semantically
+# adjacent, and D_prev then falls for reasons that have nothing to do with drift.
+#
+# It contains SIX deliberately confusable pairs, deliberately far apart:
+#   lime / lemon · orange / blood orange · blueberry / blackberry
+#   raspberry / strawberry · green apple / pear · cantaloupe / honeydew
+# Those pairs are the limes-and-lemons failure, planted where it can be measured.
+# If subject collapse is real, the SECOND member of a pair should read as the first.
+#
+# 24 items = two boundaries at chunkSize 6 (after 6 and 12 and 18), one at 18.
+
+lime
+mango
+blackberry
+honeydew
+passionfruit
+strawberry
+pear
+watermelon
+lemon
+dragonfruit
+cantaloupe
+raspberry
+blood orange
+kiwi
+green apple
+pineapple
+blueberry
+papaya
+orange
+coconut
+fig
+banana
+pomegranate
+peach

@@ -48,6 +48,7 @@
  */
 
 import type { Logger } from '@appydave/core';
+import type { GateVerdict } from '../shared/chat.js';
 import type { EngineReadiness } from './engine-readiness.js';
 import {
   describeVerb,
@@ -90,7 +91,8 @@ export type RefusalCode =
   | 'not_exposed'
   | 'engine_not_ready'
   | 'forbidden_for_pane'
-  | 'confirm_denied';
+  | 'confirm_declined'
+  | 'confirm_unanswered';
 
 /**
  * A refusal the guard raises. It carries an HTTP status so the control surface
@@ -132,7 +134,11 @@ export interface CapabilityGuardDeps {
    * explicit allow. Omitted means no reachable human, which is a DENY — absent
    * consent is not consent.
    */
-  confirmGated?: (call: { verb: string; payload: unknown; description: string }) => Promise<boolean>;
+  confirmGated?: (call: {
+    verb: string;
+    payload: unknown;
+    description: string;
+  }) => Promise<GateVerdict>;
   logger?: Logger;
 }
 
@@ -210,28 +216,48 @@ export function createCapabilityGuard(deps: CapabilityGuardDeps): CapabilityGuar
       // no human sitting at those to answer a dialog.
       if (principal.kind !== 'pane-agent') return;
 
-      let allowed = false;
+      // THREE outcomes, not two. `false` used to mean both "a human said no"
+      // and "nobody was there to ask", and the MCP proxy labelled the resulting
+      // 403 *"a human was asked and said no"* — false whenever the confirm timed
+      // out or there was no window. That reported a decision nobody made.
+      // Mirrors MCP elicitation's accept / decline / cancel.
+      let verdict: GateVerdict = 'cancel';
       try {
-        allowed = deps.confirmGated
+        verdict = deps.confirmGated
           ? await deps.confirmGated({ verb, payload: call.input, description: describeVerb(verb) })
-          : false;
+          : 'cancel';
       } catch (err) {
-        // A confirm that THREW told us nothing about what the human wants.
-        allowed = false;
+        // A confirm that THREW told us nothing about what the human wants — so
+        // say exactly that, rather than inventing a decision on their behalf.
+        verdict = 'cancel';
         deps.logger?.warn(
           { verb, err: err instanceof Error ? err.message : String(err) },
-          'gate confirm failed — denying',
+          'gate confirm failed — treating as unanswered',
         );
       }
 
-      if (!allowed) {
+      if (verdict === 'decline') {
         deps.logger?.info({ verb }, 'refused: human declined the gated verb');
         throw new CapabilityRefusal(
-          'confirm_denied',
+          'confirm_declined',
           403,
           `The user did not approve ${verb}. This is a final answer, not a transient ` +
             'failure — do NOT retry it and do not look for another way to achieve it. ' +
             'Tell them it was declined and ask what they want instead.',
+          { verb },
+        );
+      }
+      if (verdict !== 'accept') {
+        // NOBODY ANSWERED. Still a refusal, and deliberately a DIFFERENT one:
+        // reporting this as "they said no" fabricates a human judgement.
+        deps.logger?.info({ verb }, 'refused: gated verb went unanswered');
+        throw new CapabilityRefusal(
+          'confirm_unanswered',
+          403,
+          `Nobody answered the confirmation for ${verb} — it timed out, or there was no ` +
+            'window to ask in. This is NOT a refusal: do not tell the user they declined. ' +
+            'Say the request needs their confirmation and ask them to try it again when ' +
+            'they are at the app.',
           { verb },
         );
       }

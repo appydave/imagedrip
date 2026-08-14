@@ -5,6 +5,7 @@ import {
   type Principal,
 } from '../src/main/capability-guard';
 import type { EngineReadiness } from '../src/main/engine-readiness';
+import type { GateVerdict } from '../src/shared/chat';
 
 /**
  * Authorization, beneath every adapter.
@@ -32,7 +33,7 @@ const READY: EngineReadiness = { ready: true, state: 'ready' } as EngineReadines
 
 function guardWith(opts: {
   engine?: EngineReadiness;
-  confirm?: boolean | 'throw';
+  confirm?: GateVerdict | 'throw';
   onAsk?: (verb: string) => void;
 } = {}) {
   return createCapabilityGuard({
@@ -43,7 +44,7 @@ function guardWith(opts: {
         : async (call) => {
             opts.onAsk?.(call.verb);
             if (opts.confirm === 'throw') throw new Error('the renderer blew up');
-            return opts.confirm as boolean;
+            return opts.confirm as GateVerdict;
           },
   });
 }
@@ -99,7 +100,7 @@ describe('what stays principal-dependent, and why', () => {
     // A person clicking `▶ Run theme…` HAS confirmed. A second dialog is a
     // control to learn, which the North Star rules out.
     const asked: string[] = [];
-    const guard = guardWith({ engine: READY, confirm: true, onAsk: (v) => asked.push(v) });
+    const guard = guardWith({ engine: READY, confirm: 'accept', onAsk: (v) => asked.push(v) });
 
     await guard.authorize(call('imagedrip:run:stop', 'run.stop', HUMAN));
     expect(asked).toEqual([]);
@@ -107,7 +108,7 @@ describe('what stays principal-dependent, and why', () => {
 
   it('holds the same verb for the PANE agent', async () => {
     const asked: string[] = [];
-    const guard = guardWith({ confirm: true, onAsk: (v) => asked.push(v) });
+    const guard = guardWith({ confirm: 'accept', onAsk: (v) => asked.push(v) });
 
     await guard.authorize(call('imagedrip:run:stop', 'run.stop', PANE));
     expect(asked).toEqual(['run.stop']);
@@ -115,7 +116,7 @@ describe('what stays principal-dependent, and why', () => {
 
   it('does NOT hold it for any other agent — this is what keeps chat:probe headless', async () => {
     const asked: string[] = [];
-    const guard = guardWith({ confirm: true, onAsk: (v) => asked.push(v) });
+    const guard = guardWith({ confirm: 'accept', onAsk: (v) => asked.push(v) });
 
     await guard.authorize(call('imagedrip:run:stop', 'run.stop', API));
     expect(asked).toEqual([]);
@@ -161,7 +162,7 @@ describe('what stays principal-dependent, and why', () => {
 
   it('denies repo.attach to the PANE outright, without asking anybody', async () => {
     const asked: string[] = [];
-    const guard = guardWith({ confirm: true, onAsk: (v) => asked.push(v) });
+    const guard = guardWith({ confirm: 'accept', onAsk: (v) => asked.push(v) });
 
     const refusal = await refusalOf(
       guard.authorize(call('imagedrip:repo:attach', 'repo.attach', PANE, '/tmp/repo')),
@@ -190,22 +191,33 @@ describe('fail closed', () => {
     expect(refusal.message).toMatch(/could not be checked/i);
   });
 
-  it('denies when the confirm channel throws', async () => {
+  it('a confirm channel that THREW is unanswered, not declined', async () => {
+    // It told us nothing about what the human wants, so it must not claim they
+    // refused. Still denies — it just stops inventing a decision.
     const guard = guardWith({ confirm: 'throw' });
     const refusal = await refusalOf(guard.authorize(call('imagedrip:run:stop', 'run.stop', PANE)));
-    expect(refusal.code).toBe('confirm_denied');
+    expect(refusal.code).toBe('confirm_unanswered');
   });
 
   it('denies when there is no confirm channel — absent consent is not consent', async () => {
+    // And absent consent is not a REFUSAL either: nobody was asked.
     const guard = guardWith({});
     const refusal = await refusalOf(guard.authorize(call('imagedrip:run:stop', 'run.stop', PANE)));
-    expect(refusal.code).toBe('confirm_denied');
+    expect(refusal.code).toBe('confirm_unanswered');
+    expect(refusal.message).toMatch(/not a refusal/i);
+  });
+
+  it('an explicit no IS a decline, and says so finally', async () => {
+    const guard = guardWith({ confirm: 'decline' });
+    const refusal = await refusalOf(guard.authorize(call('imagedrip:run:stop', 'run.stop', PANE)));
+    expect(refusal.code).toBe('confirm_declined');
+    expect(refusal.message).toMatch(/do NOT retry/i);
   });
 
   it('checks the engine BEFORE troubling a human', async () => {
     // Never spend someone's attention approving a call that cannot succeed.
     const asked: string[] = [];
-    const guard = guardWith({ engine: SIGNED_OUT, confirm: true, onAsk: (v) => asked.push(v) });
+    const guard = guardWith({ engine: SIGNED_OUT, confirm: 'accept', onAsk: (v) => asked.push(v) });
 
     const refusal = await refusalOf(
       guard.authorize(call('imagedrip:run:start', 'run.start', PANE)),

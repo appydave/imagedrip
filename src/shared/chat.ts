@@ -96,3 +96,19 @@ export interface ChatGateDecision {
   id: string;
   allow: boolean;
 }
+
+/**
+ * How a gated call was resolved — THREE outcomes, because two were a lie.
+ *
+ * `ChatGateDecision.allow` is the RENDERER's channel and stays a boolean: a
+ * person either pressed Allow or they did not. This is the CALLER's channel, and
+ * it has to carry a third case the renderer never sees — nobody answered at all.
+ *
+ * Until v5 Phase 0.3 both collapsed into `false`, and the MCP proxy labelled the
+ * resulting 403 *"a human was asked and said no"* — false whenever the confirm
+ * timed out or there was no window. Mirrors MCP elicitation's own
+ * `accept` / `decline` / `cancel`, which exists for this exact reason.
+ *
+ * All three still DENY. Only `decline` is a decision.
+ */
+export type GateVerdict = 'accept' | 'decline' | 'cancel';

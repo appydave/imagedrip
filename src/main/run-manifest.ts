@@ -88,6 +88,10 @@ export class RunRecorder {
       counts: { total: info.prompts.length, harvested: 0, refused: 0 },
       reprimes: [],
       pauses: [],
+      // v5 Phase 0.3 — declare the run OPEN before anything is fed, so that from
+      // here on an absent `outcome` can only mean a pre-0.3 manifest. The flush
+      // below is what makes it true on disk even if the process dies next.
+      outcome: 'open',
     };
     await this.flush();
     this.logger?.info({ runId }, 'run manifest opened');

@@ -34,7 +34,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Logger } from '@appydave/core';
-import type { ChatGateRequest } from '../shared/chat.js';
+import type { ChatGateRequest, GateVerdict } from '../shared/chat.js';
 /**
  * The shape a gated call arrives in. Declared here rather than imported from
  * the HTTP adapter — the gate is asked by the capability guard now, and a
@@ -66,9 +66,32 @@ export interface ChatGateOptions {
   logger?: Logger;
 }
 
+/**
+ * What came back from the gate. THREE outcomes, not two.
+ *
+ * `ask()` returned a boolean until v5 Phase 0.3, and `false` meant both "a human
+ * said no" and "no human said anything" — a timeout, a missing window, a second
+ * confirm arriving while one was pending, or teardown. The control surface then
+ * turned every one of those into a 403 that the MCP proxy labelled *"DECLINED BY
+ * THE USER — a human was asked and said no."*
+ *
+ * **That sentence is FALSE in the timeout case**, and confidently so: it tells an
+ * agent a person considered the request and refused, when nobody was there. The
+ * agent then correctly stops and reports a decision that never happened.
+ *
+ * The split matches MCP elicitation's own `accept` / `decline` / `cancel`, which
+ * exists for exactly this reason.
+ *
+ *   accept   a human was asked and said yes
+ *   decline  a human was asked and said no — FINAL, do not retry
+ *   cancel   nobody answered. Timed out, nowhere to ask, or superseded. NOT a
+ *            decision, and must never be reported as one
+ */
+export type { GateVerdict };
+
 export interface ChatGate {
   /** Hold one gated call until a human answers, or until it expires. */
-  ask(call: GatedCall): Promise<boolean>;
+  ask(call: GatedCall): Promise<GateVerdict>;
   /** The renderer's answer. Ignored unless it names the pending request. */
   decide(id: string, allow: boolean): void;
   /** Deny anything pending — teardown, or the chat session going away. */
@@ -115,36 +138,41 @@ export function createChatGate(options: ChatGateOptions): ChatGate {
 
   interface Held {
     request: ChatGateRequest;
-    settle: (allow: boolean) => void;
+    settle: (verdict: GateVerdict) => void;
     timer: NodeJS.Timeout;
   }
   let held: Held | null = null;
 
   /** Resolve the pending question exactly once and clean up after it. */
-  function close(allow: boolean, why: string): void {
+  function close(verdict: GateVerdict, why: string): void {
     const current = held;
     if (!current) return;
     held = null;
     clearTimeout(current.timer);
     options.dismiss(current.request.id);
     options.logger?.info(
-      { verb: current.request.verb, allow, why },
-      allow ? 'gate: allowed by the human' : 'gate: denied',
+      { verb: current.request.verb, verdict, why },
+      verdict === 'accept'
+        ? 'gate: allowed by the human'
+        : verdict === 'decline'
+          ? 'gate: declined by the human'
+          : 'gate: unanswered — nobody decided',
     );
-    current.settle(allow);
+    current.settle(verdict);
   }
 
   return {
     pending: () => held?.request ?? null,
 
-    ask(call: GatedCall): Promise<boolean> {
-      // Property 3: never two questions at once.
+    ask(call: GatedCall): Promise<GateVerdict> {
+      // Property 3: never two questions at once. `cancel`, not `decline` — the
+      // person never saw this one, so nobody refused it.
       if (held) {
         options.logger?.warn(
           { verb: call.verb, pending: held.request.verb },
-          'gate: denied — another confirm is already in front of the user',
+          'gate: unanswered — another confirm is already in front of the user',
         );
-        return Promise.resolve(false);
+        return Promise.resolve('cancel');
       }
 
       const request: ChatGateRequest = {
@@ -159,12 +187,14 @@ export function createChatGate(options: ChatGateOptions): ChatGate {
       // timer, so an unshowable question fails immediately rather than making
       // the agent wait two minutes to be told nobody was home.
       if (!options.present(request)) {
-        options.logger?.warn({ verb: call.verb }, 'gate: denied — no window to ask in');
-        return Promise.resolve(false);
+        options.logger?.warn({ verb: call.verb }, 'gate: unanswered — no window to ask in');
+        return Promise.resolve('cancel');
       }
 
-      return new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => close(false, 'timed out'), timeoutMs);
+      return new Promise<GateVerdict>((resolve) => {
+        // Still a DENY at the call site — property 1 is unchanged. What changes
+        // is that it no longer masquerades as a person's decision.
+        const timer = setTimeout(() => close('cancel', 'timed out'), timeoutMs);
         // A pending confirm must never be the reason the app will not quit.
         timer.unref?.();
         held = { request, settle: resolve, timer };
@@ -178,11 +208,13 @@ export function createChatGate(options: ChatGateOptions): ChatGate {
         options.logger?.info({ id }, 'gate: ignoring an answer to a question that is no longer open');
         return;
       }
-      close(allow, 'answered');
+      // A human was looking at it and pressed something. This is the ONLY path
+      // that can produce `decline`.
+      close(allow ? 'accept' : 'decline', 'answered');
     },
 
     cancelAll(reason: string): void {
-      close(false, reason);
+      close('cancel', reason);
     },
   };
 }

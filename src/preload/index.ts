@@ -123,8 +123,10 @@ const imagedrip: ImagedripApi = {
   setBounds: (bounds: Rect): Promise<void> => ipcRenderer.invoke(IPC.harnessSetBounds, bounds),
   setPanelVisible: (visible: boolean): Promise<void> =>
     ipcRenderer.invoke(IPC.harnessSetVisible, visible),
-  newConversation: (): Promise<void> => ipcRenderer.invoke(IPC.harnessNewConversation),
-  feed: (prompt: string): Promise<void> => ipcRenderer.invoke(IPC.harnessFeed, prompt),
+  // newConversation / feed deliberately NOT bridged — see the note in
+  // `ImageDripApi` (shared/ipc.ts). They were unguarded second writers to the
+  // ChatGPT view, called by nothing. The renderer reaches those steps through
+  // the runner or not at all.
   stop: (): Promise<void> => ipcRenderer.invoke(IPC.harnessStop),
   onEvent: (cb: (e: HarnessEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: HarnessEvent): void => cb(payload);

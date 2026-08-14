@@ -5,7 +5,7 @@
  */
 
 import type { ChatEvent, ChatGateRequest } from './chat';
-import type { DomainState } from './domain';
+import type { DomainState, PromptStatus } from './domain';
 import type { SnagInput, UatCounts, VerdictInput } from './live-uat';
 
 export const IPC = {
@@ -277,12 +277,30 @@ export interface RunPromptRecord {
   id: string;
   subject: string;
   text: string;
-  status: 'queued' | 'harvested' | 'refused';
+  /** The SAME union the live queue uses — see `PromptStatus` in `shared/domain.ts`. */
+  status: PromptStatus;
   /** Harvested filename, relative to the run folder (e.g. `kangaroo.png`). */
   file?: string;
   /** Feed → image-done, ms. */
   generationMs?: number;
 }
+
+/**
+ * How a run ended — or that it has not.
+ *
+ * `open` is written by `RunRecorder.start()` BEFORE the first prompt is fed
+ * (v5 Phase 0.3), and that is the whole point of it: once every run declares
+ * itself open, **an absent `outcome` can only mean a manifest written by a
+ * pre-0.3 build**. Before this, absence meant "still running", "crashed",
+ * "quit without flushing" and "old file" all at once, and `runs.list` could not
+ * tell a run that never delivered from one still delivering. Three of the four
+ * manifests on David's disk carry no outcome for exactly that reason.
+ *
+ * A run left `open` whose process is gone IS a crashed run — but nothing can
+ * know that at write time, so it is not a value. `open` says "we never heard
+ * the end of this", which is the truth and is readable as such.
+ */
+export type RunOutcome = 'open' | 'complete' | 'stopped';
 
 /**
  * `<outputDir>/<run-id>/manifest.json` — everything needed to reproduce or
@@ -297,7 +315,12 @@ export interface RunManifest {
   mode?: 'auto' | 'dial-in';
   startedAt: number;
   finishedAt?: number;
-  outcome?: 'complete' | 'stopped';
+  /**
+   * Always written from v5 Phase 0.3 onward — `open` at start, then `complete`
+   * or `stopped`. Optional ONLY so pre-0.3 manifests still parse; absence now
+   * means "legacy file", never "still going". See `RunOutcome`.
+   */
+  outcome?: RunOutcome;
   /** The exact composed primer text (brand body + project body as posted). */
   primer: string;
   prompts: RunPromptRecord[];
@@ -315,7 +338,8 @@ export interface RunSummary {
   mode?: 'auto' | 'dial-in';
   startedAt: number;
   finishedAt?: number;
-  outcome?: 'complete' | 'stopped';
+  /** See `RunOutcome`. Absent = a pre-0.3 manifest, not a live run. */
+  outcome?: RunOutcome;
   harvested: number;
   total: number;
 }
@@ -563,10 +587,26 @@ export interface ImagedripApi {
    * not detach — the session and any running generation continue.
    */
   setPanelVisible(visible: boolean): Promise<void>;
-  /** Open a fresh chat before a batch. */
-  newConversation(): Promise<void>;
-  /** Submit one prompt via synthesized clipboard-paste + Enter. */
-  feed(prompt: string): Promise<void>;
+  /**
+   * `newConversation()` and `feed()` USED TO BE HERE, and were removed in
+   * v5 Phase 0.3 (2026-08-14).
+   *
+   * Both reached `WebviewHarness` directly, bypassing every latch the runner
+   * owns: the synchronous `busy` claim, the `feeding` re-entrancy guard, the
+   * `seen` de-dupe set, the `awaiting` gate, the run manifest and the stall
+   * budget. Nothing in the renderer called either — they were dormant second
+   * writers, safe only because nobody used them.
+   *
+   * `feed` mid-run is the observed `"EmuEmu"` double-paste (`batch-runner.ts`).
+   * `newConversation` mid-run is worse and quieter: it navigates the view out
+   * from under a live `awaiting`, so the generation never lands and the run
+   * sits until the stall cap fires — **a destroyed run and a slow one look
+   * identical**, which is the failure this repo forbids by name.
+   *
+   * The renderer gets these steps through the RUNNER or not at all. The main
+   * handlers still exist, still sit in `NEVER_EXPOSED`, and are now run-state
+   * guarded — see `src/main/index.ts`.
+   */
   /** Halt: detach the view, dispose observers/timers. Session (login) stays intact. */
   stop(): Promise<void>;
   /** Subscribe to harness events; returns an unsubscribe fn. */
