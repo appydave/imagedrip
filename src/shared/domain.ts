@@ -97,6 +97,33 @@ export interface Template {
   importFormat: ImportFormat;
   /** The "ask ChatGPT for N items" helper, tuned per artifact. `{count}`/`{subject}` tokens. */
   listPrompt?: string;
+  /**
+   * The RECIPE, applied to every prompt — not just the primer.
+   *
+   * Until this existed, a Template contributed to the primer and to nothing
+   * else. It shaped the composed sentence posted once per conversation and
+   * then was never seen again, so "a Comic Page looks like THIS" had nowhere
+   * to live except a message that dies at the next conversation boundary.
+   *
+   * David's framing, 2026-08-14, and it is the reason this field exists:
+   * brand is the LOOK (Golden Age of Comics), template is the RECIPE (a comic
+   * page, six panels, hand-lettered captions), and the prompt is the varying
+   * content (a woman and a cat · a dog and a bird · a car and a horse). The
+   * prompts were never meant to be simplistic — they are short when only the
+   * scene varies, and that is a property of the work, not a design goal.
+   *
+   *   promptShape: 'A full comic page in the house style. Six panels,
+   *                 varied shot sizes, hand-lettered captions.
+   *                 Scene: {prompt}'
+   *   queue item:  'a woman and a cat'
+   *   posted:      the shape, with {prompt} filled in
+   *
+   * Empirically motivated: the 0a check (2026-08-14) showed ChatGPT does NOT
+   * carry a look between conversations, even inside one Project. The recipe
+   * therefore has to travel with the prompt rather than rely on a primer
+   * surviving. See `docs/phase-0-checks/README.md`.
+   */
+  promptShape?: string;
   /** Hard constraints, composed into the primer after the recipe. */
   negatives?: string;
   /** WP2 — the `templates/<id>/` folder this template is read from / written to. */
@@ -277,6 +304,50 @@ export function compose(
  */
 export const DEFAULT_LIST_PROMPT =
   'Give me a list of {count} {subject}. Names only, one per line, in a code block, no commentary.';
+
+/** The tokens a `promptShape` may carry. Two, deliberately. */
+export const PROMPT_TOKEN = '{prompt}';
+export const SUBJECT_TOKEN = '{subject}';
+
+/**
+ * renderPrompt — what actually gets posted for one queue item.
+ *
+ * Three rules, and each one is a failure that would otherwise be silent:
+ *
+ * 1. **No shape → the prompt, unchanged.** Byte-identical to every run made
+ *    before this field existed. Same mechanism as `templateFragment`'s empty
+ *    fragment: the feature has to cost nothing when unused, or it is not safe
+ *    to add to a tool with live projects in it.
+ *
+ * 2. **A shape with NO token APPENDS the prompt; it never swallows it.** The
+ *    obvious implementation — replace and return — turns a shape somebody
+ *    forgot to put `{prompt}` in into a run where every single image is the
+ *    recipe with no subject. Twelve identical pictures, a full manifest, and
+ *    nothing anywhere saying the prompts were dropped. That is exactly the
+ *    failure this repo forbids, and it is one typo away, so the fallback is
+ *    structural rather than a warning.
+ *
+ * 3. **`{subject}` is filled too**, so a shape can name the thing separately
+ *    from describing it — `Title: {subject}` above `Scene: {prompt}`.
+ */
+export function renderPrompt(
+  shape: string | null | undefined,
+  prompt: Pick<Prompt, 'text' | 'subject'>,
+): string {
+  const recipe = shape?.trim();
+  if (!recipe) return prompt.text;
+
+  const filled = recipe
+    .split(PROMPT_TOKEN)
+    .join(prompt.text)
+    .split(SUBJECT_TOKEN)
+    .join(prompt.subject);
+
+  // Rule 2 — the prompt must reach the chat even when the shape forgot to ask
+  // for it. Appending is visibly odd; dropping it is invisibly wrong.
+  if (!recipe.includes(PROMPT_TOKEN)) return `${filled}\n\n${prompt.text}`;
+  return filled;
+}
 
 export function renderListPrompt(count: number, subject: string, template?: string): string {
   return (template?.trim() || DEFAULT_LIST_PROMPT)

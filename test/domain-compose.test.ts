@@ -4,6 +4,7 @@ import {
   NEGATIVES_HEADING,
   compose,
   renderListPrompt,
+  renderPrompt,
   templateFragment,
   type Brand,
   type Project,
@@ -214,5 +215,61 @@ describe('renderListPrompt', () => {
 
   it('treats a blank tuned ask as absent', () => {
     expect(renderListPrompt(3, 'x', '   ')).toBe(renderListPrompt(3, 'x'));
+  });
+});
+
+describe('renderPrompt — the recipe wrapped around every prompt', () => {
+  const p = { text: 'a woman and a cat', subject: 'woman and cat' };
+
+  it('with NO shape, returns the prompt byte-identical', () => {
+    // The back-compat guarantee. Every project that existed before this field
+    // must feed exactly what it fed yesterday.
+    expect(renderPrompt(undefined, p)).toBe('a woman and a cat');
+    expect(renderPrompt('', p)).toBe('a woman and a cat');
+    expect(renderPrompt('   \n  ', p)).toBe('a woman and a cat');
+  });
+
+  it('fills {prompt} with the queue item — David’s comic-page example', () => {
+    const shape = 'A full comic page in the house style. Six panels.\nScene: {prompt}';
+    expect(renderPrompt(shape, p)).toBe(
+      'A full comic page in the house style. Six panels.\nScene: a woman and a cat',
+    );
+  });
+
+  it('fills {subject} too, so a shape can name and describe separately', () => {
+    expect(renderPrompt('Title: {subject}\nScene: {prompt}', p)).toBe(
+      'Title: woman and cat\nScene: a woman and a cat',
+    );
+  });
+
+  it('fills EVERY occurrence, not just the first', () => {
+    expect(renderPrompt('{prompt} — again: {prompt}', p)).toBe(
+      'a woman and a cat — again: a woman and a cat',
+    );
+  });
+
+  it('APPENDS the prompt when the shape forgot the token — never swallows it', () => {
+    // The failure this rule exists for: replace-and-return would turn a shape
+    // missing `{prompt}` into a run where every image is the recipe with no
+    // subject — twelve identical pictures and a manifest that asserts twelve
+    // different ones. Appending is visibly odd; dropping is invisibly wrong.
+    expect(renderPrompt('A full comic page. Six panels.', p)).toBe(
+      'A full comic page. Six panels.\n\na woman and a cat',
+    );
+  });
+
+  it('still appends when the shape has {subject} but no {prompt}', () => {
+    // {subject} is a label, not the content. A shape carrying only the label
+    // would otherwise lose the actual prompt.
+    expect(renderPrompt('Title: {subject}', p)).toBe('Title: woman and cat\n\na woman and a cat');
+  });
+
+  it('carries a multi-line prompt through intact', () => {
+    // Prompts were never meant to be simplistic — `blocks` import exists so a
+    // prompt can be a paragraph. The shape must not flatten it.
+    const multi = { text: 'a woman and a cat\n\nrain outside, lamplight', subject: 'woman' };
+    expect(renderPrompt('Scene: {prompt}', multi)).toBe(
+      'Scene: a woman and a cat\n\nrain outside, lamplight',
+    );
   });
 });

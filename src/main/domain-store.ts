@@ -498,6 +498,7 @@ export async function saveTemplate(patch: {
   body?: string;
   importFormat?: ImportFormat;
   listPrompt?: string;
+  promptShape?: string;
   negatives?: string;
 }): Promise<DomainState> {
   const name = patch.name?.trim();
@@ -515,6 +516,7 @@ export async function saveTemplate(patch: {
                 ...(name ? { name } : {}),
                 ...(patch.importFormat ? { importFormat: patch.importFormat } : {}),
                 ...(patch.listPrompt !== undefined ? { listPrompt: patch.listPrompt } : {}),
+                ...(patch.promptShape !== undefined ? { promptShape: patch.promptShape } : {}),
                 ...(patch.negatives !== undefined ? { negatives: patch.negatives } : {}),
               }
             : t,

@@ -178,10 +178,49 @@ apart is the point of writing it this way.
 
 ### 0a — ChatGPT Projects
 
-- **Status:** ⬜ not run
+- **Status:** ✅ **RUN 2026-08-14 by David — RESULT: NO.** Projects do **not** carry visual style
+  across conversations.
+- **Setup:** project `image-drift-test`, primer = the `PhilipinoStyle` brand body (classic Pinoy
+  Komiks — deliberately extreme, so a null result would mean something).
 - **Outcome:**
-- **Control arm behaved as:**
-- **Decision it drives (cancel 2c / keep 2c):**
+
+  | Arm | Where | Prompt | Result |
+  |---|---|---|---|
+  | **A** | in project, chat "Pinoy Komiks Style" | primer, then `lime` | ✅ **full komiks page** — ink linework, panels, Tagalog captions. Exactly on-style |
+  | **B** | in project, **new chat**, **no primer** | `lemon` | ❌ **stock photorealistic lemon** on marble. **No trace of the primer from chat A** |
+  | **Control** | ordinary chat, outside any project | `lemon` | text only — *"🍋 Lemon."* No image generated at all |
+
+- **⭐ The nuance, and it is the interesting part.** Chat B did **not** inherit the *style* — but it
+  did inherit the **task convention**. Inside the project, the bare noun `lemon` was read as *"make
+  me an image of this"*; the identical prompt outside the project was read as *"define this word"*
+  and produced a sentence.
+
+  So project memory carried **what kind of work we are doing**, and did **not** carry **what it
+  should look like**. That is a sharper answer than a flat no: the documented claim that *"chats can
+  reference other conversations within the same project"* is true, and it operates on conversational
+  context, not on the image model's visual conditioning.
+
+- **Decision it drives:** **2c STANDS — it is not cancelled.** Reference images remain the only
+  candidate mechanism for cross-conversation consistency. And §6.4's *"drive a ChatGPT Project URL
+  instead of bare `chatgpt.com/`"* is **dead as a drift fix** (it may still have value as
+  organisation, but it buys nothing for the look).
+
+- **It also strengthens 2a.** The primer demonstrably does **not** survive a conversation boundary,
+  even inside a project that can see the previous chat. Every new conversation needs the style
+  restated — which is what re-priming already does, and what a re-baked invariant block would
+  reinforce at every prompt.
+
+- **What this did NOT establish:**
+  - **n=1.** One style, one primer, one subject pair, one account, one day.
+  - **The control is weak** — it produced no image, so it says nothing about style outside a
+    project. It does cleanly establish the task-convention difference above, which is what it ended
+    up being useful for.
+  - **Account-level memory was not disabled**, so it cannot be ruled out as a contributor to arm A.
+    It does not threaten the finding: the result is a *negative*, and memory could only have helped.
+  - ~~Chat ordering is inferred, not observed~~ — **CONFIRMED by David, 2026-08-14**: the komiks
+    (primer) chat was created first, the bare-`lemon` chat second. This was the one thing the result
+    hinged on — a lemon chat created *before* the primer would have proved nothing. The id ordering
+    (`6a7ef4e7` < `6a7ef506` < `6a7ef53b`) agrees with him.
 
 ### 0b — composer image paste
 

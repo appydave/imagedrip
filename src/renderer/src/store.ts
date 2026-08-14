@@ -64,6 +64,7 @@ interface AppState {
     body?: string;
     importFormat?: ImportFormat;
     listPrompt?: string;
+    promptShape?: string;
     negatives?: string;
   }) => Promise<boolean>;
   createTemplate: (name: string) => Promise<void>;

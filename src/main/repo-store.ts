@@ -78,6 +78,7 @@ interface TemplateJson {
   name?: string;
   importFormat?: ImportFormat;
   listPrompt?: string;
+  promptShape?: string;
   negatives?: string;
 }
 
@@ -168,6 +169,7 @@ export async function writeTemplate(root: string, template: Template): Promise<s
     name: template.name,
     importFormat: template.importFormat,
     ...(template.listPrompt ? { listPrompt: template.listPrompt } : {}),
+    ...(template.promptShape ? { promptShape: template.promptShape } : {}),
     ...(template.negatives ? { negatives: template.negatives } : {}),
   };
   await write(join(dir, 'template.md'), template.body);
@@ -187,6 +189,7 @@ export async function readTemplate(dir: string): Promise<Template | null> {
     body,
     importFormat: json.importFormat === 'blocks' ? 'blocks' : 'lines',
     ...(json.listPrompt ? { listPrompt: json.listPrompt } : {}),
+    ...(json.promptShape ? { promptShape: json.promptShape } : {}),
     ...(json.negatives ? { negatives: json.negatives } : {}),
     sourcePath: dir,
   };

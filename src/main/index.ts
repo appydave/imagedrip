@@ -427,6 +427,10 @@ function getRunner(): BatchRunner {
   runner = new BatchRunner({
     harness: getHarness(),
     getPrimer: composePrimer,
+    // The active project's template, or none. Read through `getDomain()` so it
+    // follows `project.templateId` exactly the way the primer does — a run and
+    // its prompts must never be shaped by two different templates.
+    getPromptShape: async () => (await getDomain()).template?.promptShape,
     getQueue,
     markHarvested: async (id, relPath) => {
       await markHarvested(id, relPath);
@@ -686,6 +690,7 @@ const desktop = createConsole({
         body?: string;
         importFormat?: 'lines' | 'blocks';
         listPrompt?: string;
+        promptShape?: string;
         negatives?: string;
       },
       DomainState
@@ -696,6 +701,7 @@ const desktop = createConsole({
         body: z.string().optional(),
         importFormat: z.enum(['lines', 'blocks']).optional(),
         listPrompt: z.string().optional(),
+        promptShape: z.string().optional(),
         negatives: z.string().optional(),
       }),
       handle: (patch) => {

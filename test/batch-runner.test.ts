@@ -42,7 +42,7 @@ interface Fake {
 function makeFake(
   prompts: Prompt[] = PROMPTS,
   primer = 'PRIMER',
-  opts: { feedDelayMs?: number; failFeedFrom?: number } = {},
+  opts: { feedDelayMs?: number; failFeedFrom?: number; promptShape?: string } = {},
 ): Fake {
   const feeds: string[] = [];
   const harvests: string[] = [];
@@ -87,6 +87,7 @@ function makeFake(
   const runner = new BatchRunner({
     harness,
     getPrimer: async () => primer,
+    getPromptShape: async () => opts.promptShape,
     getQueue: async () => prompts,
     markHarvested: async () => {},
     emit: (s: RunStatus) => {
@@ -461,5 +462,39 @@ describe('a run that completes stops being live', () => {
 
     expect(f.statuses[f.statuses.length - 1].phase).toBe('paused');
     expect(f.runner.running).toBe(true);
+  });
+});
+
+describe('the template shapes every prompt, not just the primer', () => {
+  it('feeds the RECIPE with the queue item in it, not the bare item', async () => {
+    // The gap this closes: a Template contributed to the primer and to nothing
+    // else, so "a comic page looks like THIS" survived only as long as the
+    // conversation did — and the 0a check showed a look does not cross a
+    // conversation boundary at all.
+    const f = makeFake(PROMPTS, 'PRIMER', {
+      promptShape: 'A full comic page. Six panels.\nScene: {prompt}',
+    });
+    await f.runner.start({ ...FAST, entry: 'continue' });
+    await settle();
+
+    expect(f.feeds).toEqual(['A full comic page. Six panels.\nScene: a kangaroo']);
+  });
+
+  it('with no shape, feeds the prompt exactly as before', async () => {
+    const f = makeFake();
+    await f.runner.start({ ...FAST, entry: 'continue' });
+    await settle();
+    expect(f.feeds).toEqual(['a kangaroo']);
+  });
+
+  it('shapes a dial-in inject the same way — the manual path has parity', async () => {
+    // Parity runs both ways: a step the machine performs must be operable by
+    // hand, and the hand-operated version must do the SAME thing. A dial-in
+    // prompt that skipped the recipe would produce an off-style image with no
+    // sign of why.
+    const f = makeFake(PROMPTS, 'PRIMER', { promptShape: 'Scene: {prompt}' });
+    await f.runner.injectOne(PROMPTS[0].id);
+    await settle();
+    expect(f.feeds).toEqual(['Scene: a kangaroo']);
   });
 });

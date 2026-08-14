@@ -888,6 +888,7 @@ function ContextPanel(props: {
     importFormat?: 'lines' | 'blocks';
     listPrompt?: string;
     negatives?: string;
+    promptShape?: string;
   }) => Promise<boolean>;
   onCreateTemplate: (name: string) => void;
   onSwitchTemplate: (id: string | null) => void;
@@ -1646,6 +1647,7 @@ function TemplateCard(props: {
     importFormat?: 'lines' | 'blocks';
     listPrompt?: string;
     negatives?: string;
+    promptShape?: string;
   }) => Promise<boolean>;
   onCreate: (name: string) => void;
   onSwitch: (id: string | null) => void;
@@ -1654,6 +1656,9 @@ function TemplateCard(props: {
   const name = useAutosave(template?.name ?? '', (v) => props.onSave({ name: v }));
   const body = useAutosave(template?.body ?? '', (v) => props.onSave({ body: v }));
   const negatives = useAutosave(template?.negatives ?? '', (v) => props.onSave({ negatives: v }));
+  const promptShape = useAutosave(template?.promptShape ?? '', (v) =>
+    props.onSave({ promptShape: v }),
+  );
   const listPrompt = useAutosave(template?.listPrompt ?? '', (v) =>
     props.onSave({ listPrompt: v }),
   );
@@ -1663,8 +1668,11 @@ function TemplateCard(props: {
     name.state !== 'saved' ||
     body.state !== 'saved' ||
     negatives.state !== 'saved' ||
-    listPrompt.state !== 'saved';
-  const saving = [name, body, negatives, listPrompt].some((f) => f.state === 'saving');
+    listPrompt.state !== 'saved' ||
+    promptShape.state !== 'saved';
+  const saving = [name, body, negatives, listPrompt, promptShape].some(
+    (f) => f.state === 'saving',
+  );
 
   return (
     <div className="rounded-lg border border-edge bg-cream p-2.5">
@@ -1763,6 +1771,31 @@ function TemplateCard(props: {
             placeholder="template.md — the recipe: what KIND of image this makes…"
             className="mt-2 h-20 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber disabled:opacity-60"
           />
+
+          {/* THE RECIPE, applied to every prompt rather than only to the primer.
+              Until this field existed a template shaped the composed sentence
+              posted once per conversation and then was never seen again — so
+              "a comic page looks like THIS" survived only as long as the chat
+              did, and the 0a check showed a look does not cross a conversation
+              boundary at all. `{prompt}` is where the queue item lands. */}
+          <div className="mt-2 font-mono text-[10px] text-muted">
+            prompt shape — the recipe wrapped around every prompt
+          </div>
+          <textarea
+            value={promptShape.value}
+            onChange={(e) => promptShape.onChange(e.target.value)}
+            onBlur={promptShape.flush}
+            disabled={props.locked}
+            placeholder={'e.g. A full comic page in the house style. Six panels…\nScene: {prompt}'}
+            className="mt-1 h-16 w-full resize-none rounded-md border border-edge bg-cream p-2 font-mono text-[11px] text-brown outline-none focus:border-amber disabled:opacity-60"
+          />
+          <div className="mt-1 font-mono text-[10px] leading-relaxed text-muted opacity-80">
+            {promptShape.value.trim() === ''
+              ? 'empty — prompts are fed exactly as written, as before.'
+              : promptShape.value.includes('{prompt}')
+                ? '{prompt} is replaced with each queued item. {subject} is its short label.'
+                : '⚠ no {prompt} token — the queued item will be appended underneath, not dropped.'}
+          </div>
 
           {/* The artifact kind decides how a list is cut up — an infographic is
               inherently multi-line, a character list is one-per-line. Choosing

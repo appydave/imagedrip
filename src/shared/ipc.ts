@@ -500,6 +500,7 @@ export interface ImagedripApi {
       body?: string;
       importFormat?: 'lines' | 'blocks';
       listPrompt?: string;
+      promptShape?: string;
       negatives?: string;
     }): Promise<DomainState>;
   };

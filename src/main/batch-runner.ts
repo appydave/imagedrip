@@ -1,6 +1,6 @@
 import type { Logger } from '@appydave/core';
 import type { Prompt } from '../shared/domain.js';
-import { slugify } from '../shared/domain.js';
+import { renderPrompt, slugify } from '../shared/domain.js';
 import type { RunConfig, RunStatus } from '../shared/ipc.js';
 import { RateLimitGuard } from './rate-limit-guard.js';
 import { BOOTSTRAP_CADENCE, computeCadence } from './cadence.js';
@@ -41,6 +41,12 @@ export interface BatchRunnerDeps {
   harness: WebviewHarness;
   /** primer = compose(Brand, Project) — posted once per conversation. */
   getPrimer: () => Promise<string>;
+  /**
+   * The active template's `promptShape` — the RECIPE wrapped around every
+   * prompt. Optional: with no shape, prompts are fed exactly as they are
+   * today, which is what keeps every existing project byte-identical.
+   */
+  getPromptShape?: () => Promise<string | undefined>;
   /** The queued prompts, in run order (snapshot taken at start). */
   getQueue: () => Promise<Prompt[]>;
   /** Persist a harvested prompt (status + saved rel path). */
@@ -72,6 +78,14 @@ export class BatchRunner {
 
   private queue: Prompt[] = [];
   private primer = '';
+  /**
+   * Snapshotted at run start, alongside the primer and for the same reason:
+   * the recipe a run was STARTED with is the recipe it should finish with.
+   * Editing a template mid-run must not silently change what later images in
+   * the same run are asked for — that would make one run's images
+   * inconsistent with each other AND with its own manifest.
+   */
+  private promptShape: string | undefined;
   private idx = 0;
   private harvestedCount = 0;
   private readonly seen = new Set<string>();
@@ -175,6 +189,7 @@ export class BatchRunner {
       return;
     }
     this.primer = await this.d.getPrimer();
+    this.promptShape = await this.d.getPromptShape?.();
     this.idx = 0;
     this.harvestedCount = 0;
     // WP5: only a FRESH chat may forget seen srcs. On 'continue' the chat still
@@ -205,7 +220,12 @@ export class BatchRunner {
       try {
         this.runPrefix = await this.d.recorder.start({
           primer: this.primer,
-          prompts: this.queue,
+          // The manifest records what was POSTED, not what sits in the queue.
+          // `verb-policy` calls it "the provenance source — quote it rather
+          // than recomposing", and a manifest holding `a woman and a cat` for
+          // an image generated from a full comic-page recipe would attribute
+          // that image to text it was never generated from.
+          prompts: this.queue.map((p) => ({ ...p, text: renderPrompt(this.promptShape, p) })),
           mode: 'auto',
         });
         this.recorderActive = true;
@@ -332,7 +352,16 @@ export class BatchRunner {
         }
       }
       this.runPrefix = this.manualRunId;
-      this.recordSafe((r) => r.addPrompt(prompt));
+      // Read ONCE, used for both the record and the feed. Reading it twice
+      // would let an edit between the two calls produce a manifest that
+      // disagrees with what was actually posted — a manifest that lies is
+      // worse than no manifest, because it is believed.
+      //
+      // Fetched fresh rather than snapshotted: dial-in IS the mode where you
+      // tweak the recipe and fire one prompt to see what it did. Matching
+      // `injectPrimer`, which also reads the primer at the moment you press it.
+      const shape = await this.d.getPromptShape?.();
+      this.recordSafe((r) => r.addPrompt({ ...prompt, text: renderPrompt(shape, prompt) }));
 
       // Single-item "run" through the normal machinery. seen is NOT cleared —
       // images already in the chat stay known and can never be mis-attributed.
@@ -346,7 +375,7 @@ export class BatchRunner {
       this.phase = 'feeding';
       this.emit();
       try {
-        await this.feedGuarded(prompt.text);
+        await this.feedGuarded(renderPrompt(shape, prompt));
       } catch (err) {
         // The feed never reached the chat — roll back to idle, don't wedge.
         this.stopped = true;
@@ -437,7 +466,7 @@ export class BatchRunner {
 
     this.feeding = true;
     try {
-      await this.feedGuarded(prompt.text);
+      await this.feedGuarded(renderPrompt(this.promptShape, prompt));
     } catch (err) {
       // `feed` now VERIFIES delivery and throws when the prompt did not reach
       // the chat. Without this catch that throw escapes as an unhandled
