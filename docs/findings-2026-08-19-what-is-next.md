@@ -35,8 +35,9 @@ blocking-the-drift-strategy.
 
 Two things follow, and they point in opposite directions from "build the next feature":
 
-1. **The two commits of 2026-08-14 have never been exercised in the running app.** `Template.promptShape`
-   — the mechanism David asked for by name — is live in code and set on **zero of nine templates**.
+1. ~~**The two commits of 2026-08-14 have never been exercised in the running app.**~~
+   **✅ DONE 2026-08-19 — see §8.** Both were driven through the live control surface. `promptShape`
+   persists, renders, and leaves the primer untouched. What still needs a human is the feed itself.
 2. **Phase 0's checks can cancel or double whole phases**, and two of the three are still open. The
    research document says it plainly: *"prove the re-prime fires before modelling it."*
 
@@ -305,19 +306,15 @@ Ranked by what unblocks the most — not by effort, and not by how much airtime 
 **`[D]` = decided one to two weeks ago and simply unbuilt. `[R]` = analysed but never ruled.
 `[N]` = new from this pass.**
 
-### 1 · Launch the app and exercise `promptShape` — one evening `[N]`
+### 1 · ~~Launch the app and exercise `promptShape`~~ — ✅ **DONE 2026-08-19** `[N]`
 
-**Nothing below is safely sequenced until this happens.** Two commits landed on 2026-08-14 and
-**neither has run in the app**: the Phase 1 honesty fixes and `Template.promptShape`. Zero of nine
-templates sets a shape. The app has not started since 08-11 and has produced no image since 08-10.
+Done, as far as it can go without a live feed. **§8 records exactly what was and was not
+established.** The headline: the app runs, the surface answers, `promptShape` persists and renders,
+and `/v1/health` reports `running: false` — which is Phase 0.1's acceptance criterion, the one
+`5f80eca` recorded as *"NOT yet proven in the app"*, proven.
 
-This is not throat-clearing — it is the repo's own rule. `5f80eca` records that its acceptance
-criterion was *"NOT yet proven in the app"*. A plan built on two unexercised commits inherits a
-fiction, which is precisely what v5 §2 was written to prevent.
-
-**Concretely:** put a recipe with a `{prompt}` token on one real template, queue three subjects,
-run them from Dial-in. That exercises `promptShape`, the `outcome:'open'` manifest write, the shared
-`PromptStatus` union, and the run-completes-truthfully fix, in one pass.
+**What is left of this item needs David at the screen:** one Dial-in feed, to see a shaped prompt
+actually reach ChatGPT and land as an image. That is the half no agent may do.
 
 ### 2 · Run Phase 0c — the chunk-size experiment `[D, prepared 2026-08-14]`
 
@@ -479,8 +476,64 @@ is exactly the kind of thing this repo refuses everywhere else.
 
 ---
 
-## 7 · The one-line version
+## 7 · Verified in the running app — 2026-08-19
+
+The app was started (`npm run dev:clean`) for the first time since 2026-08-11 and driven through the
+loopback control surface. **Nothing was fed to ChatGPT**; `run.start`, `run.pause`, `run.resume`,
+`run.stop` and `prompts.clear` were not called.
+
+### Established
+
+| # | Claim | Evidence |
+|---|---|---|
+| 1 | Typecheck clean, **462/462 tests pass** | `npm run typecheck`, `npm test` |
+| 2 | The app boots and publishes its surface | `control.json` written at **mode 0600**, port 7180, 64-hex token |
+| 3 | **Phase 0.1 is proven in the app** — the acceptance criterion `5f80eca` said was *"NOT yet proven"* | `GET /v1/health` → `{"ok":true,"version":"0.1.0","running":false}` |
+| 4 | Auth is enforced | unauthenticated `POST /v1/call/domain.get` → **401** |
+| 5 | **The published surface is 33 verbs**, not the 35 the v5 doc quotes | `GET /v1/verbs` |
+| 6 | `context.get` answers with live state and engine readiness | returned active brand/template/project/mode + `engine:{ready:true}` |
+| 7 | **`Template.promptShape` persists through the surface** | `template.save` → on disk verbatim, incl. the `\nScene: {prompt}` newline |
+| 8 | **The shape renders exactly as designed** | `renderPrompt()` run against the live store: each of 3 queue rows → recipe + `Scene: <the queue line>` |
+| 9 | **The primer is unchanged by the shape** — the back-compat property | `domain.compose-primer` returns brand + template body, no shape |
+| 10 | **`Project.brandId` travels** (Item 3, `82d9dde`) | new project came back carrying `brandId: copilot` |
+| 11 | **Phase 0.2 is live** — a forensic trail exists | `logs/imagedrip-2026-08-19.log` captured the whole session, including `control surface listening` |
+| 12 | **Phase 1 (1e) holds** — both unguarded preload paths are gone | `src/preload/index.ts:126` carries only a comment |
+| 13 | `renderPrompt`'s three rules are unit-covered | `test/domain-compose.test.ts:221-271` |
+
+### Not established — and two need a human, not more work
+
+- **No image has been generated.** The feed path, the harvest gate, the manifest's `outcome:'open'`
+  write and the run-completes-truthfully fix **all require a real `run.start`**, which is David's to
+  press. Everything above is the configuration half.
+- **`reprimes: []` still stands** — now on **five** manifests, not three. And the mechanical reason
+  is established: default `chunkSize` is **18**, the boundary fires on `harvested % chunkSize === 0`,
+  and **the longest run ever queued 15 prompts**. The re-prime has never been *reachable*.
+
+### Two things found in passing
+
+- **`domain.get`'s `templates[]` is a switcher list — `{id, name}` only.** Reading it to check a
+  field returns nothing and looks exactly like the field being unset. The active template's full
+  record is at `result.template`; **there is no verb that returns a non-active template's fields**.
+  An agent asked *"does template X have a shape?"* cannot answer it for any template but the active
+  one. Named, not fixed — it is a surface gap, and surface changes wait on R16.
+- **`subject` is the first three words of the prompt.** `"a woman and a cat"` → subject `"a woman
+  and"`. Harmless with a `{prompt}` shape; **a `{subject}` shape would render that verbatim.**
+  Pre-existing (`parsePromptList`), and the same weakness the research doc names for lime/lemon.
+
+### Left in the store, for David to clear
+
+A project and template both named **`Verify PromptShape 0819`**, carrying the comic-page shape and a
+3-prompt queue, and left **active** so it is visible on opening the app. Its output dir
+`~/Pictures/ImageDrip/verify-promptshape-0819/` was created and git-initialised, and holds no images.
+Say the word and I will delete all three.
+
+---
+
+## 8 · The one-line version
 
 **The thinking is not lost — it is in `docs/research-imagedrip-architecture.md`, and it is waiting
-on seventeen rulings and one afternoon of measurement. The cheapest thing that unblocks the most is
-not code: it is starting the app, proving the re-prime fires, and naming the segment.**
+on rulings and on one afternoon of measurement. The app has now been started and the two unexercised
+commits check out (§7). What is left that unblocks the most is not code: it is
+[`rulings-open.md`](rulings-open.md) — fifteen decisions, one sitting — and
+[`phase-0-checks/RUNBOOK.md`](phase-0-checks/RUNBOOK.md), which proves whether the re-prime fires
+at all.**
