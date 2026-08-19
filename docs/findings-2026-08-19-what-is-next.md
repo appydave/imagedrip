@@ -49,8 +49,8 @@ Four sources were swept in parallel. Three returned; one is recorded as unknown 
 | Source | Result |
 |---|---|
 | **M4 Mini** transcripts (`100.82.235.39`) | **The design session lived here.** Session `a3bea582-3fe9-4a8a-8478-86cad2e82fa0`, 2026-08-14 02:31Z → 11:24Z. 119 project dirs / 13,056 transcripts swept; 163 mention ImageDrip, 94 in window |
-| **Roamy** transcripts | ImageDrip work runs 2026-08-06 → 2026-08-11 (`2dba3c1e`, `be535c2d`, `cbcef959`, `1cfe8f00`). **Nothing after 08-11** |
-| **`agent-first-architecture` brain** | Carries ImageDrip as a case study — and is **nine days stale** on its central claim. See §3.3 |
+| **Roamy** transcripts | Six substantive sessions, 2026-08-06 → 2026-08-11. **Nothing between 11 Aug 20:35 and today** — enumerated, not assumed (§6 #1) |
+| **`agent-first-architecture` brain** | Carries ImageDrip as a case study — and is **nine days stale** on its central claim. See §3.4 |
 | **The repo** | 48 commits since 2026-07-29; 33 published verbs; all handlers in the Electron **main** process |
 
 ### 1.1 The brief's premise was wrong in one way and right in another
@@ -76,12 +76,14 @@ Session dates are evidence. `M4` / `Roamy` marks which machine holds the transcr
 | 2026-08-04 | M4 `32007c48` | **npm only** — pnpm 10+ blocks the postinstall that fetches Electron | ✅ pinned + KDD learning |
 | 2026-08-05 | M4 `32007c48` | `repo.attach` publishes anything unsourced — **accepted as a known, visible defect** | ⚠️ still defective, still gated |
 | 2026-08-06/07 | M4 `5944cb00` | *"The embedded ChatGPT can never be the operator — **not because of where it sits, but because it cannot see the app**"* → the resident-chat pattern | ✅ became v4 |
-| 2026-08-06 | Roamy `cbcef959` | The control-surface plan: loopback HTTP mirroring `IpcRouter`, MCP proxy, headless probe | ✅ shipped `3fbe28a` |
-| 2026-08-08 | Roamy `2dba3c1e` | **North Star ratified — interviewed, not derived.** A first derived pass was materially wrong | ✅ `docs/north-star.md` |
+| 2026-08-06 | Roamy `cbcef959` | The control-surface plan **executed** here; the plan itself was authored elsewhere (§6 #2) | ✅ shipped `3fbe28a` |
+| 2026-08-07 | Roamy `cbcef959` | **The control-seam ruling:** *"the HTTP control surface is the remote-control mechanism. CDP is a test tier. AppleScript is retired."* Plus **B1** do not widen the bind, and **B4** no renderer-state verbs — *"it is the failure the drivable skill exists to prevent: a harness that tests its own hook"* | ✅ holds |
+| 2026-08-08 | Roamy `51bdcf64` (brains) | **North Star interviewed, then ratified.** A first *derived* pass was materially wrong and David said so. His own words include two clauses that outrank most of this backlog: *"maybe even have some interpolation variables"* and *"My agents should be able to control it. It will ultimately have API endpoints that are drivable for agents to control as well."* He also struck one line: *"drop 'free to run'"* | ✅ `docs/north-star.md` (`d4ded7d`) |
 | 2026-08-09 | Roamy | **Bearing ruled:** unattended leads, distribution follows. *"Nobody is waiting"* for a second install | ✅ in the Star |
 | 2026-08-09 | Roamy | v5 phased plan: Phase 0 stop lying → 1 walk away → 2 travel → 3 distribute → 4 feedback loop | Partly built |
 | 2026-08-10 | Roamy | **Parity rule ruled:** *"every automated step is operable by hand, and every manual step is automatable… you cannot test what you cannot drive yourself"* | ✅ added to the Star |
 | 2026-08-10 | Roamy | v5.1: Items 2 and 3 were **already built**; only Item 1 (resume) is genuinely new | ✅ Items 2, 3 shipped |
+| **2026-08-11** | Roamy `2dba3c1e` + `3e436644` | **The agent-first ruling**, from the capability sweep, verbatim: *"So: not 'build a sidecar.' Reshape the verbs into capabilities, and move authorization beneath the adapter. The server is done."* **Three named gaps**, and **three fields named as missing from every contract: `previousValue`, `idempotencyKey`, `dryRun`** | ⚠️ **two of three gaps closed; the contract fields dropped** — see §3.3 |
 | 2026-08-11 | Roamy | Authorization moves beneath every adapter; `chat.gate-decide` de-published; pickers de-catalogued | ✅ `3f274d3` |
 | **2026-08-14** | **M4 `a3bea582`** | **The design session.** See §2.1 | Mostly **unruled** |
 
@@ -168,7 +170,34 @@ here."* The live half (`probe-attach-live.cjs`) has **not been run**.
 | 4 | `ede7b46` — the template shapes **every** prompt | `verb-policy.ts:322` — `template.save`'s **agent-facing description omits `promptShape`**. The Zod schema accepts it, so the JSON Schema exposes it; the prose an agent reads to decide *when* to call the verb never mentions the newest and most significant field it can write |
 | 5 | v5.1 §1.4 — `brandId` starts UNSET, never inferred | ✅ Held. 3 of 10 projects carry a `brandId`; 7 are correctly `(none)` |
 
-### 3.3 Where the brain and the primary record disagree — the brain loses
+### 3.3 The 2026-08-11 agent-first ruling — two thirds built, and no document tracked the rest
+
+Recovered from the Roamy transcript, not from any document. The capability sweep of 2026-08-11
+named **three gaps**, and David ruled on the conclusion. Their status today:
+
+| Gap named 2026-08-11 | Status |
+|---|---|
+| *"Authorization sits inside `control-surface.ts`"* — breaks silently at the second adapter; fix is one `executeCapability(principal, capability, input)` in main | ✅ **BUILT** — `capability-guard.ts`, `3f274d3`, the same day |
+| *"Two verbs cannot work headlessly"* | ✅ **BUILT** — both pickers de-catalogued, `3f274d3` |
+| *"Verbs are **CRUD-shaped, not intention-shaped**"* | ❌ **NOT BUILT, and never re-raised** |
+| *"Missing from every contract: `previousValue`, `idempotencyKey`, `dryRun`"* | ❌ **NOT BUILT.** One preview verb exists in a surface of 33 |
+
+**This matters for how §5 is read.** Two items I would otherwise have proposed fresh — dry-run
+coverage and the reversibility/idempotency fields — were **decided nine days ago** and simply
+dropped between the sweep and the v5.1 re-plan. They are not new ideas; they are unfinished ones.
+
+The CRUD-vs-intention gap is `capability-model.md` §2 exactly: *"a capability should be something a
+competent user would ask the application to accomplish — not a function that happens to exist in the
+source."* ImageDrip's surface is `domain.save-project` / `template.save` / `brand.switch` — the
+second column of the brain's own example. **It is not on any phase plan.** Naming it here rather
+than ranking it: it is a refactor of a working surface, it fails the Star's throughput test on its
+face, and it is David's call whether the agent-first bet is worth that. *(The same transcript
+records him framing agent-first as a **"graded bet"**, with **"recipes come later"** — which reads
+as a deliberate go-slow, not an oversight.)*
+
+---
+
+### 3.4 Where the brain and the primary record disagree — the brain loses
 
 `~/dev/ad/brains/agent-first-architecture/` names ImageDrip *"the sharpest test — the verified
 **inverted** case, with no external control surface of any kind"* (`INDEX.md:171-174`), and
@@ -261,7 +290,10 @@ accomplish"*, not a function that happens to exist. Classes per `agent-safety.md
 | **`repo.import`** + **`project.publish` / `template.publish`** — split the defective `repo.attach` into import-only plus explicit per-record publish | `import` = `reversible-write`; `publish` = **`external-side-effect`** (writes into a directory outside the app) | **Mandatory.** §4 names preview as first-class for exactly this class; today the one verb that writes into a foreign repo has none | main | **Agreed 2026-08-05**, unblocked by `brandId` 2026-08-10, unbuilt |
 | **End-of-run signal** — native notification on complete / paused / stalled, with the reason | `read-only` (emits) | — | main | **Decided 2026-08-09** (Phase 1.3), unbuilt |
 | **`Segment` record** below a reopenable `Run` | a record, not a verb — **no operator-visible control** | — | main | **Proposed 2026-08-14, unruled** — the load-bearing choice |
-| **`dryRun` on the destructive verbs** — `repo.attach`, `project.delete`, `run.start` | — | *"Would remove: 17 prompts · 3 run folders"*; **answerable in advance, never a `--yes` that suppresses the question** | main | **New from this pass** |
+| **`dryRun` on the destructive verbs** — `repo.attach`, `project.delete`, `run.start` | — | *"Would remove: 17 prompts · 3 run folders"*; **answerable in advance, never a `--yes` that suppresses the question** | main | **Decided 2026-08-11**, unbuilt (§3.3) |
+| **`previousValue` on every `reversible-write`** | — | *the* thing that makes reversibility real — `agent-safety.md` §1: reversible *"is a property of the operation plus what you kept"* | main | **Decided 2026-08-11**, unbuilt |
+| **`idempotencyKey` on meaningful-effect verbs** | — | returns the original result on retry | main | **Decided 2026-08-11**, unbuilt |
+| **Intention-shaped verbs** — replace CRUD verbs with what a user asks for | — | — | main | **Named 2026-08-11**, unbuilt, unranked — see §3.3 |
 | **MCP tool annotations** | — | — | `scripts/imagedrip-mcp.mjs` projection | Noted 2026-08-14 as a "small honesty bug"; **unruled** |
 | **Preload bridges for the four agent-only verbs** | — | — | preload + renderer | **New from this pass** (parity rule, ruled 2026-08-10) |
 
@@ -356,7 +388,17 @@ publish). This is the item where the safety brain has most to say and the repo h
 into a foreign directory is `external-side-effect`, the class the brain says can *never* be silently
 retried and *must* carry a preview — and today it has neither.
 
-### 7 · The honesty batch — an hour, no design required `[N]`
+### 7 · Finish the 2026-08-11 contract work `[D, 2026-08-11]`
+
+`previousValue`, `idempotencyKey` and `dryRun` were named as missing from **every** contract on
+2026-08-11; the other two gaps from that ruling shipped the same day and these were dropped. They
+are cheap, they are the `agent-safety.md` §8 gate's own rows, and `dryRun` on `repo.attach` is a
+prerequisite of item 6 rather than a nicety — you cannot preview a publish that has no preview form.
+
+**Not** ranked here: reshaping CRUD verbs into intention-shaped ones. Real, named the same day,
+and a refactor of a working surface that fails the Star's throughput test on its face. §3.3.
+
+### 8 · The honesty batch — an hour, no design required `[N]`
 
 Small, and every one of them is the repo's own rule applied to itself:
 
@@ -387,14 +429,15 @@ Small, and every one of them is the repo's own rule applied to itself:
 
 | # | What | Status |
 |---|---|---|
-| 1 | **The Roamy transcript sweep did not return.** The delegated agent never reported | I ran a **fallback sweep myself**: 74 project dirs, 150 transcripts mentioning ImageDrip, 86 in window, filtered on **in-file timestamps**. It found the Roamy sessions in §1 and nothing after 2026-08-11. **That is a shallower sweep than the M4 got** — I did not extract decisions from each transcript. Roamy 08-06 → 08-11 is covered by commit messages, which in this repo carry the reasoning; but a Roamy-only decision that never reached a commit **would not have been found** |
-| 2 | Discussions in **Codex, Open Design, or ChatGPT itself** | Not swept. Jan works in Open Design and the design session reviewed *his* artifacts — if he recorded rationale there, it is outside everything checked |
-| 3 | The **other three machines** (M2, mac-mini-jan, mac-mini-mary) | Not swept |
-| 4 | Whether **`~/dev/image-projects/` should exist on Roamy** | It **does not exist here**. The M4 has five `i-*` dirs, 7 files, six `ji*` jump aliases, no git. The research doc's §4.5 layout is marked `[exists]` on the strength of an **M4-only check**, while Roamy is the declared source of truth for media. **Which machine is right is unresolved** |
-| 5 | Whether **ChatGPT summarises or truncates a long conversation** — and so whether lime/lemon was a compression artefact | Hypothesis, not finding. The page 403s |
-| 6 | The **live paste probe** and the **chunk experiment** | Prepared, never run. §5 items 2 |
-| 7 | Whether the **packaged app can spawn its MCP proxy from inside `app.asar`** | Never tested. `npm run package` has never been run |
-| 8 | Whether the app has **genuinely not run since 08-11** | Inferred from the absence of a log file after `imagedrip-2026-08-11.log` and `domain.json` last written 08-11 20:33. The log tee shipped 08-09, so the gap is meaningful — **but a launch that failed before the logger initialised would look identical** |
+| 1 | **2026-08-14 on Roamy** | **Confirmed absent, not unknown.** Every `*.jsonl` in the ImageDrip project dir was enumerated by real in-transcript time (21 files, none between 11 Aug 20:35 and today), and all project dirs swept for ImageDrip mentions. The design session was on the M4 |
+| 2 | **2026-08-03 → 08-05 on Roamy** — the whole v3 template / brand-repo vocabulary | **Gap, M4-shaped.** The v4 plan *authoring* is also absent here: `585d9a5` and `3fbe28a` landed before the first local transcript of that day. Roamy holds the **execution**, not the design |
+| 3 | Discussions in **Codex, Open Design, or ChatGPT itself** | Not swept. Jan works in Open Design and the design session reviewed *his* artifacts — if he recorded rationale there, it is outside everything checked |
+| 4 | The **other three machines** (M2, mac-mini-jan, mac-mini-mary) | Not swept |
+| 5 | Whether **`~/dev/image-projects/` should exist on Roamy** | It **does not exist here**. The M4 has five `i-*` dirs, 7 files, six `ji*` jump aliases, no git. The research doc's §4.5 layout is marked `[exists]` on the strength of an **M4-only check**, while Roamy is the declared source of truth for media. **Which machine is right is unresolved** |
+| 6 | Whether **ChatGPT summarises or truncates a long conversation** — and so whether lime/lemon was a compression artefact | Hypothesis, not finding. The page 403s |
+| 7 | The **live paste probe** and the **chunk experiment** | Prepared, never run. §5 item 2 |
+| 8 | Whether the **packaged app can spawn its MCP proxy from inside `app.asar`** | Never tested. `npm run package` has never been run |
+| 9 | Whether the app has **genuinely not run since 08-11** | Inferred from the absence of a log file after `imagedrip-2026-08-11.log` and `domain.json` last written 08-11 20:33. The log tee shipped 08-09, so the gap is meaningful — **but a launch that failed before the logger initialised would look identical** |
 
 **Two closed by this pass, both previously listed as unanswerable:**
 
@@ -404,7 +447,29 @@ Small, and every one of them is the repo's own rule applied to itself:
   empty org look identical from here" no longer applies — this was queried directly.)*
 - **`~/dev/image-projects/` does not exist on Roamy.** See #4.
 
-### Method note — one deviation from the read-only brief
+### Two attributions that are inferred, not proven
+
+- **The North Star interview session.** `d4ded7d` names `session_01Q52kiMarM7r3yYoxt2eMz7`, which
+  resolves to **no local UUID**. `51bdcf64` was identified as the authoring session by **content and
+  timing** — strong, but inferred. Cite it that way.
+- **Chat as the default tab** (2026-08-08, `23dd822`). The agent asked which tab David wanted, **he
+  never answered in prose**, and it shipped Chat-default under the Star's authority. It inverted the
+  drafted spec. It may well be right; it is not on the record as a ruling.
+
+### Method note — the tools, and one deviation from the read-only brief
+
+**`sesh:session-recall` ran and was inadequate** — it missed five of six substantive Roamy sessions,
+including the North Star interview, because David rarely types "imagedrip" while sitting *inside* the
+ImageDrip repo, so the term scores only at the weakest tier. **`sesh:session-archaeology` could not
+run at all**: it requires the `Workflow` tool, which is not available inside a subagent. The sweep
+fell back to direct enumeration plus whole-corpus grep with in-transcript timestamps. Worth fixing in
+the skills, not here — a recall that misses the highest-value session in the window is a recall you
+would have trusted.
+
+**A red herring I introduced:** I passed the sweep four session ids from this machine's registry
+(`imagedrip-swag`, `imagedrip-orc`, and two others). Those are **Remote Control ids in a different id
+space** and appear nowhere on disk. Resolved by name, `imagedrip-orc` and `imagedrip-swag` are
+**28–30 July** — a Swagger/Chaperone build program, not this discussion.
 
 The M4 sweep was briefed read-only. It **created one file on the M4** — `/tmp/x_id_hits.txt`, via a
 shell redirect — and self-disclosed it immediately; every subsequent command was read-only. Nothing
