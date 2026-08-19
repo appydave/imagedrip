@@ -41,7 +41,15 @@ Use **`npm run dev:clean`** (stop, then start).
 quietly disappears is worse than none, because it is believed."* A run that did not deliver must
 never look like one that did.
 
-`repo.attach` is **knowingly defective and gated** — it publishes every unsourced project and
-template into whichever repo you point at, stamped with the active brand. Do not un-gate it.
+`repo.attach` is **knowingly defective** — it publishes every unsourced project and template into
+whichever repo you point at, stamped with the active brand. Do not un-gate it.
+
+**But "gated" means less than it sounds, and the difference matters.** The confirm is raised for the
+**in-app chat pane only** — where it is a hard denial, not a prompt. A human clicking in the UI is
+not gated (they have already confirmed), and **every other agent client — a terminal Claude Code
+session through `.mcp.json`, Codex through `.codex/config.toml`, or plain `curl` — gets no
+confirmation at all.** For those callers the only thing in the way is a CONFIRM-FIRST banner in the
+tool description, which is advisory text. This is true of every gated verb, `run.start` included.
+See `src/main/capability-guard.ts:217`.
 
 `git log` carries the reasoning, not just the change.

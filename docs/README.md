@@ -13,10 +13,17 @@ logged-in ChatGPT session instead of a paid image API. It feeds prompts in at a
 human-like pace, watches for each finished image, and downloads, names and files it
 automatically.
 
-**Status:** the pipeline is proven — a real theme has been run end to end against a live
-ChatGPT session. Current work is **v2 (Usability & Project Identity)**: WP1–WP5 built and
-awaiting an in-app acceptance pass; WP6 (wider panel, account switcher) and WP7 (design
-polish) not started.
+**Status (2026-08-19):** the pipeline is proven — a real theme has been run end to end against a
+live ChatGPT session. v2, v3 and v4 have all shipped since this line last said otherwise: Template
+is a first-class axis, and the app carries an external **control surface** (33 verbs on loopback)
+with an MCP proxy, a contained CLI and a human confirmation gate.
+
+**Current work is not a version — it is a set of decisions.** v5 Phase 0 and Phase 1 landed
+(2026-08-09 → 08-14); everything structural after them waits on rulings that have not been made.
+
+- **[rulings-open.md](rulings-open.md)** — the open decisions, in one sheet, ordered by what they block. **Start here.**
+- **[findings-2026-08-19-what-is-next.md](findings-2026-08-19-what-is-next.md)** — how the current state was arrived at, and what is verified vs believed
+- **[phase-0-checks/RUNBOOK.md](phase-0-checks/RUNBOOK.md)** — the one measurement that unblocks the most, ready to run
 
 ---
 

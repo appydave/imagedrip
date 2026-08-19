@@ -71,7 +71,7 @@ wrong-repo writes. **Fits** — it adds no control to learn.
 
 | | |
 |---|---|
-| **Built and verified** | The whole of v4. Control surface (35 verbs, loopback, bearer), MCP proxy, contained CLI in main (D2), the D1 human gate, and the `CHAT ｜ CONTEXT` tab with chat as the default half. Driven end to end in the real app on 2026-08-08 — a `text_delta` stream reaching React, a gated call held 34.8s and denied as `403`. `npm run chat:probe` 13/13. |
+| **Built and verified** | The whole of v4. Control surface (35 verbs at the time; **33 today** — the two native folder pickers were de-catalogued on 2026-08-11, `3f274d3`), loopback, bearer), MCP proxy, contained CLI in main (D2), the D1 human gate, and the `CHAT ｜ CONTEXT` tab with chat as the default half. Driven end to end in the real app on 2026-08-08 — a `text_delta` stream reaching React, a gated call held 34.8s and denied as `403`. `npm run chat:probe` 13/13. |
 | **Gap — amnesia** | **The transcript does not persist.** It lives in the zustand store for the life of the window. A run's provenance survives in `manifest.json`; the conversation that *configured* that run does not survive a restart. (v4 §10 Q5, wp4 research §7 Q4 — both left open.) |
 | **Gap — verb holes** | No verb edits ONE queued prompt (`docs/review-usability-and-product-fit.md`, matrix: *"Edit one queued prompt — ❌ not at all, ✏️ domain.json"*). So "change the third one to say X" cannot be done by talking, only by re-importing the list. |
 | **Gap — the chat cannot see** | `harvest.thumb` returns one image as a data URL. The chat can read *that* an image landed, never look at it. Judging output stays a human-only loop. |
@@ -131,7 +131,7 @@ sequenced accordingly in §3.
 
 | | |
 |---|---|
-| **Built and proven** | This is the strongest-served claim in the whole Star. The control surface is exactly that API: 35 verbs mirrored from the live IPC registry, JSON-Schema'd from the same Zod schemas the UI is held to, with `gated` / `requiresEngine` policy published alongside. `chat:probe` demonstrates an agent driving it headlessly, checking every claim against the surface rather than against what the agent said. |
+| **Built and proven** | This is the strongest-served claim in the whole Star. The control surface is exactly that API: 33 verbs mirrored from the live IPC registry (35 when this was written; the two native folder pickers were de-catalogued on 2026-08-11, `3f274d3`), JSON-Schema'd from the same Zod schemas the UI is held to, with `gated` / `requiresEngine` policy published alongside. `chat:probe` demonstrates an agent driving it headlessly, checking every claim against the surface rather than against what the agent said. |
 | **Scope, by decision** | Loopback only. Widening the bind was ruled out (`docs/handover-2026-08-07-product-fixes.md`, "Ruled out"); SSH port-forward is the sanctioned remote path. "Directly" is satisfied on-machine. |
 | **Gap** | An agent cannot ask *"is this image any good?"* — see §1.2. And a *second* agent cannot drive the pane's chat (correct: `chat.*` is `NEVER_EXPOSED`). |
 
