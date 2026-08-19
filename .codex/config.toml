@@ -1,0 +1,3 @@
+[mcp_servers.imagedrip]
+command = "node"
+args = ["./scripts/imagedrip-mcp.mjs"]
