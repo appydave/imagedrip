@@ -42,6 +42,7 @@ import {
   getQueue,
   importPrompts,
   markHarvested,
+  onDomainChanged,
   renameTheme,
   resetRun,
   saveBrand,
@@ -117,6 +118,29 @@ let guard: CapabilityGuard;
 function pushChatEvents(events: ChatEvent[]): void {
   if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.chatEvent, events);
 }
+
+/**
+ * Tell the window the domain moved — no matter WHICH client moved it.
+ *
+ * Registered at module scope, not in `onReady`, so there is no window in which
+ * a write can land unannounced: `hostWindow` is read at call time, and a push
+ * before the window exists is simply a no-op (the renderer's `init()` reads the
+ * current state anyway).
+ *
+ * It must never throw. The mutation has ALREADY persisted by the time this
+ * runs, so a failed push that propagated would report a failure for a write
+ * that succeeded — the exact confusion this defect caused in the first place
+ * (the operator concluded the agent's writes had failed when they had not).
+ * A broken push is a logged warning and a stale pane, and it is logged
+ * precisely because this repo does not let a control disappear quietly.
+ */
+onDomainChanged((state: DomainState) => {
+  try {
+    if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.domainChanged, state);
+  } catch (err) {
+    logger?.warn({ err: String(err) }, 'domain change not pushed to the window — panes may be stale');
+  }
+});
 
 /**
  * Put a confirm in front of the human, and say whether that was possible.

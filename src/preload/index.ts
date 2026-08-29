@@ -42,6 +42,14 @@ const imagedrip: ImagedripApi = {
       ipcRenderer.invoke(IPC.domainSaveBrand, patch),
     composePrimer: (): Promise<string> => ipcRenderer.invoke(IPC.domainComposePrimer),
     resetRun: (): Promise<DomainState> => ipcRenderer.invoke(IPC.domainResetRun),
+    // The fourth push channel, wired exactly like run.onStatus and chat.onEvent.
+    // Its reason for existing is the other client: a domain write made over the
+    // loopback control surface has no renderer call to return through.
+    onChanged: (cb: (state: DomainState) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, payload: DomainState): void => cb(payload);
+      ipcRenderer.on(IPC.domainChanged, listener);
+      return () => ipcRenderer.removeListener(IPC.domainChanged, listener);
+    },
   },
   projects: {
     create: (input: { name: string; outputDir?: string }): Promise<DomainState> =>

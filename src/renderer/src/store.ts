@@ -178,6 +178,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       // A finished/stopped run just wrote its manifest — refresh history.
       if (['done', 'stopped'].includes(status.phase)) void get().loadRuns();
     });
+    // Every domain mutation, whoever made it. The panes used to be fed ONLY by
+    // the return value of the renderer's own call, so a write from the other
+    // client — an agent on the loopback control surface — updated the document
+    // and left this window showing the previous brand, template, project,
+    // output folder and queue (2026-08-29; docs/spec-control-surface-ui-staleness.md).
+    // Main is the authority, so the payload is adopted whole: no merge, last
+    // write wins.
+    window.imagedrip.domain.onChanged((domain) => {
+      const previous = get().domain;
+      set({ domain });
+      // Run history is per-PROJECT, and an agent can switch projects. Without
+      // this the lanes would repaint while the history pane below kept listing
+      // another project's runs — a half-repainted cockpit is its own lie.
+      if (previous && previous.activeProjectId !== domain.activeProjectId) {
+        set({ runs: null, runView: null, status: null });
+        void get().loadRuns();
+      }
+    });
     // v4 WP4 — chat stream frames, subscribed HERE and not in the pane: they
     // arrive whether or not the Chat tab is mounted, and a reply that streamed
     // while the user was looking at Context must still be in the transcript

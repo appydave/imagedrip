@@ -30,6 +30,22 @@ export const IPC = {
   domainSaveBrand: 'imagedrip:domain:save-brand',
   domainComposePrimer: 'imagedrip:domain:compose-primer',
   domainResetRun: 'imagedrip:domain:reset-run',
+  /**
+   * main → renderer push of the whole domain view, on EVERY mutation.
+   *
+   * Not a convenience. The renderer used to learn about domain changes only as
+   * the RETURN VALUE of its own IPC call, which meant a write arriving on the
+   * other client — the loopback control surface — updated the document, the
+   * disk and `domain.get`, and left the window showing the previous values.
+   * Every pane in the control column at once, including the highlighted
+   * segmented control (reproduced 2026-08-29, `docs/spec-control-surface-ui-staleness.md`).
+   *
+   * That is worse than cosmetic: the control surface exists so an agent stages
+   * a run and a HUMAN eyeballs it before pressing Run, and `run.start` is gated
+   * on that human. A stale window breaks the check in the worst direction —
+   * the operator approves what they see and something else runs.
+   */
+  domainChanged: 'imagedrip:domain:changed',
 
   // ── ImageDrip: brand identity (WP2) — Brand is run-locked, not read-only ──
   brandCreate: 'imagedrip:brand:create',
@@ -450,6 +466,16 @@ export interface ImagedripApi {
     composePrimer(): Promise<string>;
     /** Re-queue every prompt so the theme can be run again; returns the new state. */
     resetRun(): Promise<DomainState>;
+    /**
+     * Subscribe to EVERY domain mutation, whoever made it — this window, the
+     * chat pane, or an agent on the loopback control surface. Returns an
+     * unsubscribe. Built exactly like `run.onStatus` and `chat.onEvent`.
+     *
+     * The payload is the whole `DomainState`, not a delta: it is the same view
+     * `domain.get()` returns, so the renderer can adopt it wholesale and main
+     * stays the single authority. Last write wins.
+     */
+    onChanged(cb: (state: DomainState) => void): () => void;
   };
   /**
    * Project identity (WP1). A project is not real until created here — the

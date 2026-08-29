@@ -87,15 +87,51 @@ async function persisted(): Promise<PersistedDomain> {
 }
 
 /**
+ * Told on every domain write, whoever caused it. Null until wired (tests, and
+ * the window's first moments); a write with no listener is normal, not an error.
+ */
+let notifyChanged: ((state: DomainState) => void) | null = null;
+
+/**
+ * Wire the main → renderer push channel (`IPC.domainChanged`).
+ *
+ * The listener is installed HERE, at the store, rather than at each entry
+ * point, and that is the whole fix rather than an implementation detail.
+ * ImageDrip has one API and two clients (the window over IPC, an agent over the
+ * loopback control surface), and the renderer used to learn about a change only
+ * from the return value of its OWN call. So an agent's write landed in the
+ * document and on disk while the window kept showing the previous values —
+ * reproduced 2026-08-29, `docs/spec-control-surface-ui-staleness.md`.
+ *
+ * Notifying from `updateDoc` means the caller's entry point cannot bypass it:
+ * anything that changed the document necessarily went through here.
+ *
+ * The callback must not throw — see the wiring in `index.ts`. A failed push is
+ * a logged warning, never a failed (but already persisted) mutation.
+ */
+export function onDomainChanged(listener: ((state: DomainState) => void) | null): void {
+  notifyChanged = listener;
+}
+
+/**
  * Every mutation derives its result from the update() CLOSURE ARGUMENT — never
  * from a pre-read snapshot (advisory-1 #2). Two concurrent autosaves (Brand +
  * Project debounce both firing) must both survive; a stale-snapshot spread
  * would silently discard whichever landed first.
+ *
+ * It is also the ONE place the document is written, which is why the change
+ * notification is emitted here (see `onDomainChanged`).
  */
 async function updateDoc(fn: (s: PersistedDomain) => PersistedDomain): Promise<DomainState> {
   await persisted(); // migration (with backup) happens before structural edits
   const next = await domain().update((s) => fn(normalize(s)));
-  return view(next);
+  const state = view(next);
+  // A multi-step mutation (`attachRepo`, `switchBrand` + `hydrateActive`) emits
+  // more than once. That is intended and safe: every emit is a whole, valid
+  // snapshot and the last one wins, which is cheaper to reason about than
+  // deciding which step counts as "the" change.
+  notifyChanged?.(state);
+  return state;
 }
 
 function activeRecord(s: PersistedDomain): ProjectRecord {

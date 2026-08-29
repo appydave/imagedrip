@@ -124,11 +124,11 @@ export const NEVER_EXPOSED: readonly string[] = [
    */
   'imagedrip:chat:gate-decide',
   /**
-   * The four PUSH channels — main → renderer, via `webContents.send`.
+   * The five PUSH channels — main → renderer, via `webContents.send`.
    *
    * These are not verbs and never were: nothing registers a handler on them,
    * so `listVerbs` has never published them. They are listed anyway because
-   * `isExposed()` said **true** for all four, and "safe because nobody
+   * `isExposed()` said **true** for all of them, and "safe because nobody
    * registered a handler yet" is an accident, not a policy. The moment someone
    * adds a handler on one — to let a client pull the last status, say — it
    * becomes an agent-facing verb with no decision having been made.
@@ -141,6 +141,9 @@ export const NEVER_EXPOSED: readonly string[] = [
   'imagedrip:harness:event',
   'imagedrip:chat:event',
   'imagedrip:chat:gate',
+  // Added 2026-08-29 with the domain push channel. An agent has `domain.get`
+  // for reading; this one exists so the WINDOW hears about the agent's writes.
+  'imagedrip:domain:changed',
   /**
    * ── The native file pickers — unpublished 2026-08-11 ──
    *
