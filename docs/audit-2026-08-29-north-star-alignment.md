@@ -29,8 +29,13 @@ purpose: score every shipped verb, panel, setting and surface against the North 
 **⚠️ The precedence rule is still unruled.** `docs/rulings-open.md` **R10** exists because the two
 halves of the test fire on the same feature and the Star says which wins for neither. Where a
 score below turns on that, it is marked **[R10]** and both readings are given. **This audit does
-not rule R10.** Six items are marked; if David rules R10 the "parity wins" way, four of them move
-from *violates* to *serves*.
+not rule R10.** **Four** items are marked — Dial-in⇄Auto as a mode, the COPY OUT card, the
+`Popover`/`Modal` z-order components, and the Context｜Chat tab — and all four move from *violates*
+to *serves* if the parity clause wins.
+
+*(This header said "six" until 2026-08-29. Four is the count in the table. An inventory mismatch in
+the audit that spent twenty findings on inventory mismatches — corrected, and left visible, because
+the lesson is that hand-counted totals drift even when you are actively looking for drift.)*
 
 ---
 
@@ -61,7 +66,7 @@ source, each anchored to `file:line`.
 | Surfaces scored | **72** |
 | **Serves** the Star | 38 (53%) |
 | **Neutral** | 16 (22%) |
-| **Violates** — adds a control to learn | 18 (25%), of which **6 are [R10]-dependent** |
+| **Violates** — adds a control to learn | 18 (25%), of which **4 are [R10]-dependent** |
 | **Exist only because of the embedded ChatGPT panel** | **31 (43%)** |
 
 **The single finding.** Of the 18 surfaces that sit furthest from the Star, **11 exist only to
