@@ -64,12 +64,13 @@ them and are not repeated in each entry:
 |---|---|
 | Docs in scope | **46** |
 | Claims decomposed and checked | ~180 |
-| **FALSE** | **17** — 4 critical · 9 major · 4 minor |
+| **FALSE** | **20** — 7 critical · 9 major · 4 minor |
 | **UNVERIFIABLE** | **9** |
 | Load-bearing TRUE (spot-listed below) | 11 |
 | Overall corpus verdict | **DRIFTING** |
-| Cheaper fix = change the doc | **16 of 17** |
-| Cheaper fix = change the code | **1 of 17** (DD-017) |
+| Cheaper fix = change the doc | **19 of 20** |
+| Cheaper fix = change the code | **1 of 20** (DD-017) |
+| **Of the 7 critical, how many are safety claims** | **4** — DD-017, DD-021, DD-022, DD-023 |
 
 **The dominant drift class is `status` / `date_stale`, not `stale_reference`.** The docs describe
 the *mechanics* of this codebase accurately — the specs, the two-clocks explainer and the KDD
@@ -97,6 +98,8 @@ claim that this pass could locate — which, per limit 1 above, is not the same 
 | `docs/user-guide.md` | DRIFTING | 2 | 1 | 2026-08-07 | 2026-08-29 | Self-declares v2-era; no Template, no control surface |
 | `docs/north-star.md` | DRIFTING | 1 | 2 | 2026-08-10 | — | Its founding constraint is what Part 3 proposes to reverse |
 | `docs/rulings-open.md` | DRIFTING | 1 | 1 | 2026-08-19 | 2026-08-29 | Counts computed on 5 manifests; there are now 11 |
+| `.github/PULL_REQUEST_TEMPLATE.md` | **STALE** | 2 | 0 | 2026-08-06 | 2026-08-29 | **A checklist, not a reference.** Both findings critical — teaches a reviewer the pre-`3f274d3` architecture |
+| `docs/requirements-v4-resident-chat.md` | **STALE** | 1 | 0 | 2026-08-06 | 2026-08-29 | AC-5 states a confirmation guarantee that holds for the pane only |
 | `docs/two-clocks.md` | CURRENT | 0 | 1 | 2026-08-04 | 2026-08-29 | Accurate; about to become historical (Part 3) |
 | `docs/specs/webview-harness-spec.md` | CURRENT | 0 | 2 | 2026-07-29 | 2026-08-07 | Accurate to source; its *live* claims are unverifiable by design |
 
@@ -481,6 +484,89 @@ thing in the way is a banner" clause), **1 UNVERIFIABLE**.
 
 ---
 
+### DD-021 · The PR template's safety guidance describes the architecture as it was before 2026-08-11
+
+- **Severity**: **critical**
+- **Doc**: `.github/PULL_REQUEST_TEMPLATE.md:77-81` → "Safety review"
+- **Claim (verbatim)**: *"**Today**, for the engine gate, the D1 human gate and
+  `PANE_DENIED_VERBS`, the answer is **no** — they live inside the adapter. That is sound only
+  while there is exactly one non-UI adapter. The second adapter is where it breaks, and it breaks
+  silently."*
+- **Code truth**: **the refactor the template warns must happen has already happened**, and the
+  template is the last place still saying otherwise. `src/main/capability-guard.ts:1-30` — the
+  file's own header: *"The capability guard — authorization, **beneath every adapter**… Until
+  2026-08-11 three checks lived INSIDE `control-surface.ts`… So the checks move here, and both
+  adapters call in."* `src/main/control-surface.ts:273`: `// ── Authorization — NOT here ──`.
+  The move is commit `3f274d3`, *"authorization moves beneath the adapters — and closes a live
+  hole"*, 2026-08-11 — **18 days before this audit**.
+- **Classification**: stale_reference
+- **Cheaper fix**: **change the doc.** The code is already in the state the template demands.
+- **Why this is critical rather than major**: this is not a reference doc, it is **a checklist a
+  human follows while reviewing a PR**. It currently teaches a reviewer that adapter-level
+  authorization is the status quo — so a PR that puts a new check inside `control-surface.ts`
+  would read as *consistent with the template* and pass review. A stale README misinforms; a stale
+  checklist actively approves the defect it was written to prevent.
+- **What this check did NOT establish**: whether *every* check now sits beneath the adapter. The
+  engine gate (`capability-guard.ts:178`), the D1 gate (`:217-263`) and `PANE_DENIED_VERBS`
+  (`:201-211`) were confirmed there. `control-surface.ts` was not enumerated line by line to prove
+  no check remains in it.
+
+### DD-022 · The PR template names two verbs as "catalogued, gated" that are neither — and reports its own adopted fix as an outstanding wart
+
+- **Severity**: **critical**
+- **Doc**: `.github/PULL_REQUEST_TEMPLATE.md:44-48` → "The physical-location rule"
+- **Claim (verbatim)**: *"ImageDrip already has two of these — `project.choose-output-dir` and
+  `repo.choose-root` both call `dialog.showOpenDialog`. They are **catalogued, gated**, and cannot
+  succeed headlessly. Their descriptions say so, which is honest and is still the wrong resolution:
+  **don't warn about it, don't catalogue it.** Do not add a third."*
+- **Code truth**: both are in `NEVER_EXPOSED` — `src/main/verb-policy.ts:176-177` — so they are
+  **not catalogued at all**, and neither appears in `GATED_VERBS` (`:206-223`), so neither is
+  gated. `verb-policy.ts:150-177` documents the change in full and reaches the template's own
+  conclusion verbatim: *"**The rule is not 'warn about it' — it is 'do not catalogue it.'**"*
+- **Classification**: inventory_mismatch
+- **Cheaper fix**: **change the doc** — and rewrite it as a *resolved precedent* rather than a live
+  complaint. "We hit this, here is what we did" is stronger guidance for a reviewer than "we still
+  have this problem", and it is also what is true.
+- **What this check did NOT establish**: whether a third dialog-bound verb has since been added.
+  Only these two names were checked.
+
+### DD-023 · v4's AC-5 states a confirmation guarantee that holds for one client out of three
+
+- **Severity**: **critical**
+- **Doc**: `docs/requirements-v4-resident-chat.md:308` → §7 acceptance criteria; reinforced at
+  `:262` (§6.2) and `:318` (§8)
+- **Claims (verbatim)**: AC-5: *"**The run gate.** 'Start the run' must ask before feeding the live
+  session, **every time**."* §6.2: `run.start` — *"Begins feeding a live ChatGPT session.
+  **Never auto-run.**"* §8: *"**No autonomous runs.** The chat proposes; David disposes. **AC-5 is
+  the mechanism.**"*
+- **Code truth**: `src/main/capability-guard.ts:217` — `if (principal.kind !== 'pane-agent')
+  return;`. The confirm is raised **only** for the in-app chat pane. A terminal Claude Code session
+  through `.mcp.json`, Codex through `.codex/config.toml`, or plain `curl` starts a run with **no
+  confirmation**; past the loopback bearer token and the engine precondition, the only thing in the
+  way is advisory banner text in the verb description. The code says so deliberately at `:213-216`.
+- **Classification**: behavior_mismatch
+- **The honest verdict, because this one is genuinely ambiguous**: **FALSE as written; TRUE if read
+  as scoped to the pane.** v4 is the *resident chat* requirements document, so "the chat proposes;
+  David disposes" plausibly means the pane and only the pane — and for the pane the guarantee does
+  hold exactly. But AC-5 says *"every time"* and §6.2 says *"Never auto-run"* as properties of the
+  **verb**, with no client qualifier anywhere. A reader asking "is `run.start` safe against
+  autonomous invocation?" and checking AC-5 gets *yes*, universally. **That is the wrong answer.**
+- **Cheaper fix**: **change the doc** — add the client scope to AC-5 and §6.2. `CLAUDE.md` already
+  carries the corrected version of exactly this fact (see § below), which means the repo currently
+  holds an accurate statement and an inaccurate one about the same guard, and the inaccurate one is
+  in the requirements document of record.
+- **What this check did NOT establish**: whether v4's authors intended the narrow reading. §8's
+  framing suggests they did; the wording of AC-5 does not carry it. Nobody was asked.
+
+> **These three are the answer to "find any other doc claim of the same shape."** All three are
+> safety claims, all three overstate a guarantee, and two of them sit in a checklist a human is
+> meant to *act on* rather than read. Note the pattern: `CLAUDE.md` was corrected (commit `00c96b4`)
+> and the documents around it were not, so the corpus now disagrees with itself about the same
+> guard — which is worse than being uniformly wrong, because one of the two is right and a reader
+> cannot tell which without reading `capability-guard.ts`.
+
+---
+
 ## The gating claim, forensically
 
 `CLAUDE.md` was singled out for verification. Its paragraph, verbatim:
@@ -620,6 +706,20 @@ index omits a learning (DD-005), the docs index lists 14 of 46 documents (DD-018
 entries. **Hand-maintained completeness claims are the single most reliable drift generator in this
 corpus**, and they will keep generating findings until they are either machine-generated or stop
 claiming completeness.
+
+**The safety claims are the worst-drifted class in the corpus, and that inverts the usual
+assumption.** Four of the seven critical findings are safety claims that overstate a guarantee
+(DD-017, DD-021, DD-022, DD-023) — and **two of them sit in `.github/PULL_REQUEST_TEMPLATE.md`, a
+checklist a human follows while approving a change.** A stale reference doc misinforms a reader; a
+stale checklist approves the very defect it exists to catch. The template currently tells a
+reviewer that authorization *"lives inside the adapter"*, 18 days after commit `3f274d3` moved it
+beneath every adapter, and flags an already-adopted fix as an outstanding wart.
+
+**Worse than being wrong: the corpus disagrees with itself about one guard.** `CLAUDE.md` states
+the pane-only confirmation accurately (it was corrected in `00c96b4`); `requirements-v4`'s AC-5
+states it as *"every time"* with no client qualifier. One is right, one is not, and a reader cannot
+tell which without opening `capability-guard.ts`. **When a fact is corrected in one document, the
+documents that repeat it need finding — that is the process gap this whole audit keeps re-finding.**
 
 **One finding points at code, and it is the most serious in the audit.** DD-017: `brand.delete`,
 `template.delete`, `project.delete` and `theme.rename` are reachable by a terminal agent over

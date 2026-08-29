@@ -337,6 +337,18 @@ exists" rationale invert), `docs/user-guide.md` (sign-in, Dial-in, troubleshooti
 `docs/north-star.md` (see §4.1 — **David's call, not an agent's**), `CLAUDE.md`,
 `docs/imagedrip-plan.md` §7 and §9 (the ToS and cost case).
 
+**⚠️ A second document states this move as a non-goal, and it is not the North Star.**
+`docs/requirements-v4-resident-chat.md:316-317`, §8:
+
+> - **Not replacing the ChatGPT panel. It stays; it is the engine.**
+> - **No image generation via API. The founding constraint is unchanged.**
+
+So the reversal has to be ratified in **two** places, not one. v4 is a shipped requirements
+document, so the honest edit is a dated supersession note rather than a rewrite —
+*"§8's first two non-goals were overturned on <date> by <ruling>; see the provider brief"* — which
+preserves the record of what was believed when the chat pane was built. **The same document also
+carries AC-5, which Part 1 (DD-023) finds overstated**; if it is being touched, fix both at once.
+
 **Amend:** `docs/README.md`, `docs/working-rules.md`, `docs/live-uat.md`, `docs/rulings-open.md`
 (R4, R5 and R12 are all about drift inside a conversation and change shape entirely),
 `docs/phase-0-checks/README.md` + `RUNBOOK.md` (the chunk-size experiment measures a phenomenon
