@@ -22,6 +22,11 @@ with an MCP proxy, a contained CLI and a human confirmation gate.
 (2026-08-09 → 08-14); everything structural after them waits on rulings that have not been made.
 
 - **[rulings-open.md](rulings-open.md)** — the open decisions, in one sheet, ordered by what they block. **Start here.**
+- **The 2026-08-29 audit (3 parts)** — docs vs reality, goal alignment, and the provider decision.
+  Findings only; nothing was built or changed. Read part 3 first if you are ruling on the engine.
+  [1 · docs ↔ reality](audit-2026-08-29-docs-vs-reality.md) ·
+  [2 · North Star alignment](audit-2026-08-29-north-star-alignment.md) ·
+  [3 · provider decision brief](audit-2026-08-29-provider-decision-brief.md)
 - **[findings-2026-08-19-what-is-next.md](findings-2026-08-19-what-is-next.md)** — how the current state was arrived at, and what is verified vs believed
 - **[phase-0-checks/RUNBOOK.md](phase-0-checks/RUNBOOK.md)** — the one measurement that unblocks the most, ready to run
 
@@ -75,6 +80,9 @@ with an MCP proxy, a contained CLI and a human confirmation gate.
 | [working-rules.md](working-rules.md) | Standing rules for how work is done on this project (light theme, no "generating" state, refine-don't-replace, confirm before building). |
 | [kdd/](kdd/README.md) | **What we learned the expensive way.** Four learnings + one ADR. Read the frontend ones before touching the ChatGPT panel or any floating UI — both failures are silent and look like something else. |
 | [live-uat.md](live-uat.md) | The in-app judgment-capture layer: what gets flagged, the two records, the sidecar, and what is deliberately out of scope. |
+| [audit-2026-08-29-docs-vs-reality.md](audit-2026-08-29-docs-vs-reality.md) | **Part 1 of the 2026-08-29 audit.** Every doc claim checked against code and marked TRUE / FALSE / UNVERIFIABLE, with the cheaper fix named for each. Includes the forensic reading of `CLAUDE.md`'s gating paragraph. |
+| [audit-2026-08-29-north-star-alignment.md](audit-2026-08-29-north-star-alignment.md) | **Part 2.** Every shipped verb, panel, setting and surface scored against the North Star's own test, ranked by distance from it. Names the 31 surfaces that exist only because of the embedded ChatGPT panel. |
+| [audit-2026-08-29-provider-decision-brief.md](audit-2026-08-29-provider-decision-brief.md) | **Part 3. Awaiting David's ruling.** The evidence for retiring the embedded panel, the deprecation checklist, the provider seam, what it costs the user, and a staged plan with its point of no return. |
 | [handover-webview-harness-g3.md](handover-webview-harness-g3.md) | The earlier brief that produced the ChatGPT driver. Historical. |
 | [../probe/README.md](../probe/README.md) | The three probes that de-risked the approach, and how to re-run them to re-pin ChatGPT's selectors. |
 
