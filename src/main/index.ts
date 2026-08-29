@@ -54,7 +54,13 @@ import {
 } from './domain-store.js';
 import { BatchRunner } from './batch-runner.js';
 import { SwappableFileAuthor } from './output-router.js';
-import { RunRecorder, listRunDirNames, listRuns, readRunManifest } from './run-manifest.js';
+import {
+  RunRecorder,
+  listRunDirNames,
+  listRuns,
+  markLiveRun,
+  readRunManifest,
+} from './run-manifest.js';
 import { WebviewHarness } from './webview-harness.js';
 import { CHATGPT_SELECTORS } from './chatgpt-selectors.js';
 
@@ -391,7 +397,9 @@ async function ensureOutputRoot(): Promise<string> {
 
 function pushRunStatus(s: RunStatus): void {
   lastRunPhase = s.phase;
-  if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.runStatus, s);
+  // `runStatusPush`, not `runStatus`: the latter is now the PULL verb agents
+  // call. The push is internal and renderer-only.
+  if (hostWindow && !hostWindow.isDestroyed()) hostWindow.webContents.send(IPC.runStatusPush, s);
 }
 
 /**
@@ -792,7 +800,24 @@ const desktop = createConsole({
     // ── ImageDrip run history (WP1) ──
     ipc.register<void, RunSummary[]>({
       channel: IPC.runsList,
-      handle: async () => listRuns(await ensureOutputRoot()),
+      /**
+       * Rows off disk, plus `live` for the one run that is actually in this
+       * process right now.
+       *
+       * `listRuns` stays a pure manifest read: liveness is not in the file and
+       * must not be written there. A paused run's manifest says `outcome:
+       * 'open'` — correct, because it may yet resume — but `open` is also what
+       * a crashed run says, so the two were the same row over the API while the
+       * runner had already logged `WARN stall — pausing`
+       * (`docs/spec-stall-budget-visibility.md` Part 2). The runner is the only
+       * thing that knows, so it is asked here rather than guessed there.
+       */
+      handle: async () =>
+        markLiveRun(
+          await listRuns(await ensureOutputRoot()),
+          runner?.runId ?? null,
+          runner?.paused ? 'paused' : 'running',
+        ),
     });
     ipc.register<string, RunManifest | null>({
       channel: IPC.runsManifest,
@@ -834,6 +859,21 @@ const desktop = createConsole({
     ipc.register<void, { primed: boolean }>({
       channel: IPC.runChatState,
       handle: () => ({ primed: runner?.chatIsPrimed ?? false }),
+    });
+    /**
+     * `run.status` — what the runner knows, for whoever asks (Part 2 of
+     * `docs/spec-stall-budget-visibility.md`).
+     *
+     * `null` when no run is live, which is a real answer and not an error: the
+     * question "is it stuck?" has "nothing is running" as a valid reply, and
+     * throwing would invite a retry against a state that will never change.
+     *
+     * Read-only and ungated — it computes nothing, changes nothing, and touches
+     * neither the domain nor the ChatGPT view.
+     */
+    ipc.register<void, RunStatus | null>({
+      channel: IPC.runStatus,
+      handle: () => (runner && runner.running ? runner.snapshot() : null),
     });
     // ── Dial-in manual injection (WP4) ──
     ipc.register<void, void>({

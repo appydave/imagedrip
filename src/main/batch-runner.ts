@@ -693,9 +693,21 @@ export class BatchRunner {
     this.timers.clear();
   }
 
-  private emit(nextFeedInMs?: number): void {
+  /**
+   * The run's state RIGHT NOW, built fresh on every call.
+   *
+   * Extracted from `emit` so the PULL verb (`run.status`) and the PUSH channel
+   * answer with the same object built the same way. Two builders would have
+   * been two chances to disagree, and the whole complaint behind
+   * `docs/spec-stall-budget-visibility.md` is a client that could not find out
+   * what the runner knew.
+   *
+   * Built fresh — never cached — because `stallRemainingMs` is only true at the
+   * instant it is read.
+   */
+  snapshot(nextFeedInMs?: number): RunStatus {
     const remainingToChunk = this.cfg.chunkSize - (this.harvestedCount % this.cfg.chunkSize);
-    this.d.emit({
+    return {
       phase: this.phase,
       total: this.queue.length,
       harvested: this.harvestedCount,
@@ -707,8 +719,30 @@ export class BatchRunner {
       stallMs: this.stallMs,
       cadence: this.effectiveCadence(),
       nextFeedInMs: nextFeedInMs ?? null,
+      // Only while a generation is actually outstanding. `feedAt` survives past
+      // the image that cleared it, so gating on `awaiting` is what stops a
+      // finished run reporting a budget quietly draining on nothing.
+      stallRemainingMs: this.awaiting
+        ? Math.max(0, this.stallMs - (Date.now() - this.feedAt))
+        : null,
+      runId: this.runPrefix || this.manualRunId || null,
       note: this.note,
       at: Date.now(),
-    });
+    };
+  }
+
+  /** The live run's id, or null when nothing is running. */
+  get runId(): string | null {
+    if (this.stopped) return null;
+    return this.runPrefix || this.manualRunId || null;
+  }
+
+  /** Is the live run paused (rate-limit or operator)? False when none is live. */
+  get paused(): boolean {
+    return !this.stopped && this.phase === 'paused';
+  }
+
+  private emit(nextFeedInMs?: number): void {
+    this.d.emit(this.snapshot(nextFeedInMs));
   }
 }

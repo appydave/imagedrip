@@ -18,6 +18,50 @@ function rectOf(el: HTMLElement): Rect {
   };
 }
 
+/** "4m52s" / "48s" — compact enough to sit inline in the footer activity line. */
+function clock(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(total / 60);
+  return m ? `${m}m${String(total % 60).padStart(2, '0')}s` : `${total}s`;
+}
+
+/**
+ * "4m52s of 9m36s" while an image is generating — elapsed against the derived
+ * stall cap, or null in every other phase.
+ *
+ * ── Why this INTERPOLATES instead of rendering `stallRemainingMs` ──
+ * A `RunStatus` is pushed on transitions, not on a timer. `nextFeedInMs` has
+ * the same property and gets away with it because its wait is ~11 seconds; the
+ * generation wait was measured at 328.9s on the run that prompted this, so a
+ * raw render would freeze on one number for five and a half minutes — which is
+ * exactly the "is it waiting or is it stuck?" it exists to answer. So the value
+ * is aged off `status.at` and re-rendered on a local 1s tick.
+ *
+ * ── Why a countdown and not a spinner ──
+ * A spinner says "something is happening", and says precisely the same thing
+ * when nothing is. A number moving toward a KNOWN limit separates the two. The
+ * limit has to be on screen next to it because the cap is derived per run
+ * (575s that day) — nobody can hold it in their head.
+ */
+function useStallCountdown(status: RunStatus | null): string | null {
+  const awaiting = status?.phase === 'awaiting' && status.stallRemainingMs !== null;
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!awaiting) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [awaiting]);
+
+  if (!status || !awaiting || status.stallRemainingMs === null) return null;
+  // Clamped at the cap: a status that arrived a while ago must never render an
+  // elapsed BIGGER than the budget it is measured against — the runner declares
+  // the stall, the footer does not get to pre-empt it.
+  const remaining = Math.max(0, status.stallRemainingMs - (now - status.at));
+  const elapsed = Math.min(status.stallMs, status.stallMs - remaining);
+  return `${clock(elapsed)} of ${clock(status.stallMs)}`;
+}
+
 export default function App(): JSX.Element {
   const {
     domain,
@@ -142,6 +186,7 @@ export default function App(): JSX.Element {
   const totalN = status && isRunning ? status.total : prompts.length;
   const avgLabel = status?.avgMs ? `${(status.avgMs / 1000).toFixed(1)}s/img` : '—s/img';
   const reprimeLabel = isRunning && status ? String(status.reprimeInImages) : '—';
+  const stallLabel = useStallCountdown(status);
 
   // A short live-activity string for the footer (what the run is doing right now).
   const activity =
@@ -151,7 +196,7 @@ export default function App(): JSX.Element {
       : phase === 'feeding'
         ? `feeding: ${status?.currentSubject ?? ''}`
         : phase === 'awaiting'
-          ? `awaiting image: ${status?.currentSubject ?? ''}`
+          ? `awaiting image: ${status?.currentSubject ?? ''}${stallLabel ? ` · ${stallLabel}` : ''}`
           : phase === 'waiting'
             ? `next in ${Math.round((status?.nextFeedInMs ?? 0) / 1000)}s`
             : null);

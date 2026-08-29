@@ -262,6 +262,9 @@ describe('requiresEngine', () => {
       'template.save',
       'project.create',
       'run.chat-state',
+      // Asking WHETHER a run is stuck must not itself require a healthy engine
+      // — a signed-out engine is one of the things it is used to diagnose.
+      'run.status',
       'runs.manifest',
     ]) {
       expect(requiresEngine(verb)).toBe(false);
@@ -317,7 +320,11 @@ describe('the published surface is a deliberate list, not a side effect', () => 
     'harvest.thumb',
     'project.create', 'project.delete', 'project.reveal-output-dir', 'project.switch',
     'repo.attach',
-    'run.chat-state', 'run.pause', 'run.resume', 'run.start', 'run.stop',
+    // `run.status` added 2026-08-29 with docs/spec-stall-budget-visibility.md
+    // Part 2: a paused run and a healthy one were the same `runs.list` row, so
+    // the only way to answer "is it stuck?" was to tail a log. Read-only and
+    // ungated — it computes nothing and changes nothing.
+    'run.chat-state', 'run.pause', 'run.resume', 'run.start', 'run.status', 'run.stop',
     'runs.list', 'runs.manifest', 'runs.reveal',
     'template.create', 'template.delete', 'template.save', 'template.switch',
     'theme.rename',

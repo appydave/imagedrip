@@ -97,8 +97,8 @@ const imagedrip: ImagedripApi = {
       ipcRenderer.invoke(IPC.runInjectPrompt, promptId),
     onStatus: (cb: (s: RunStatus) => void): (() => void) => {
       const listener = (_e: IpcRendererEvent, payload: RunStatus): void => cb(payload);
-      ipcRenderer.on(IPC.runStatus, listener);
-      return () => ipcRenderer.removeListener(IPC.runStatus, listener);
+      ipcRenderer.on(IPC.runStatusPush, listener);
+      return () => ipcRenderer.removeListener(IPC.runStatusPush, listener);
     },
   },
   chat: {

@@ -104,8 +104,25 @@ export const IPC = {
   runInjectPrimer: 'imagedrip:run:inject-primer',
   /** Dial-in (WP4): feed ONE queued prompt and harvest its image. */
   runInjectPrompt: 'imagedrip:run:inject-prompt',
-  /** main → renderer push of run status snapshots. */
+  /**
+   * `run.status` — the live RunStatus, PULLED. Read-only and ungated.
+   *
+   * Everything an operator needs to answer "is it stuck?" — phase,
+   * currentSubject, stallMs, stallRemainingMs, avgMs, timings — existed and was
+   * IPC-only, so the window could see it and nothing else could. `runs.list`
+   * answers `{harvested, total, outcome}`, in which a PAUSED run and a healthy
+   * one are the same row: at the moment the runner had logged
+   * `WARN stall — pausing`, it still read `1/4 outcome=open`. The only way to
+   * tell was to tail the log, which is archaeology, not an interface.
+   * (`docs/spec-stall-budget-visibility.md` Part 2.)
+   *
+   * It takes the name `imagedrip:run:status` because the verb is the PUBLIC
+   * contract and the channel name is what `toVerb` derives it from; the push
+   * channel below — internal, renderer-only — was renamed to free it.
+   */
   runStatus: 'imagedrip:run:status',
+  /** main → renderer push of run status snapshots. Internal; never a verb. */
+  runStatusPush: 'imagedrip:run:status-push',
   /** Read a harvested image (rel to the harvest root) → data URL for the grid. */
   harvestThumb: 'imagedrip:harvest:thumb',
 
@@ -358,6 +375,20 @@ export interface RunSummary {
   outcome?: RunOutcome;
   harvested: number;
   total: number;
+  /**
+   * What this run is doing IN PROCESS right now — set only on the live run,
+   * absent on every historical one.
+   *
+   * Deliberately NOT a fourth `RunOutcome`. An outcome is written to the
+   * manifest on disk, and a `paused` written there would survive a crash and
+   * claim forever that a dead run was merely resting — the same lie `open`
+   * already tells. Liveness is not a property of the file; it is a property of
+   * the process, so it is answered by the runner at read time or not at all.
+   *
+   * Tri-state rather than `paused: boolean` because `false` would be ambiguous
+   * between "live and running" and "not the live run".
+   */
+  live?: 'running' | 'paused';
 }
 
 export type RunPhase =
@@ -402,6 +433,27 @@ export interface RunStatus {
   cadence: { baseMs: number; jitterMs: number };
   /** When `waiting`, ms until the next feed (for a live countdown). */
   nextFeedInMs: number | null;
+  /**
+   * When `awaiting`, ms left before the stall cap fires — correct as of `at`.
+   *
+   * The expensive wait had no counterpart to `nextFeedInMs`: a generation
+   * measured at 328.9s showed the static string `awaiting image: <subject>`,
+   * so a healthy slow render and a dead one looked identical for five and a
+   * half minutes. It is `stallMs - (now - feedAt)`, clamped at 0.
+   *
+   * Consumers must INTERPOLATE from `at` rather than display this raw, because
+   * a status is pushed on transitions and not on a timer — a raw render would
+   * sit frozen for the whole wait, which is the failure it exists to fix.
+   * (`nextFeedInMs` has the same property; it gets away with it because its
+   * wait is ~11s.) `stallMs` carries the cap to measure it against.
+   */
+  stallRemainingMs: number | null;
+  /**
+   * The run this status belongs to (the run-id / harvest subfolder), or null
+   * when no recorder is attached. Present so a client can line a status up
+   * against the `runs.list` row for the same run.
+   */
+  runId: string | null;
   /** Human-readable note (pause reason, refusal skip, harvest error). */
   note?: string;
   at: number;

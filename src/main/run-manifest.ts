@@ -222,6 +222,29 @@ export async function listRuns(outputDir: string): Promise<RunSummary[]> {
   return out.sort((a, b) => b.startedAt - a.startedAt);
 }
 
+/**
+ * Stamp the live run's in-process state onto its row.
+ *
+ * Pure, and separate from `listRuns`, because the two answer different
+ * questions from different sources: the manifest on disk says what was
+ * RECORDED, the runner says what is HAPPENING. Conflating them is the defect —
+ * `outcome: 'open'` is written for a run in flight and stays written for one
+ * that was paused, stopped mid-flight, or killed with the app, so all four read
+ * identically to a client (`docs/spec-stall-budget-visibility.md` Part 2).
+ *
+ * `liveId` of null means no run is live, and every row comes back untouched.
+ * A `liveId` matching nothing on disk also touches nothing: a run whose folder
+ * has not been written yet is not a row to invent.
+ */
+export function markLiveRun(
+  rows: RunSummary[],
+  liveId: string | null,
+  live: 'running' | 'paused',
+): RunSummary[] {
+  if (!liveId) return rows;
+  return rows.map((r) => (r.runId === liveId ? { ...r, live } : r));
+}
+
 /** Read one run's manifest; null when missing/unparsable/escaping the root. */
 export async function readRunManifest(
   outputDir: string,

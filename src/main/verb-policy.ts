@@ -137,7 +137,10 @@ export const NEVER_EXPOSED: readonly string[] = [
    * truthfully for every channel the app declares, which is what lets the
    * pinned-set test below use the whole `IPC` map as its population.
    */
-  'imagedrip:run:status',
+  // The PUSH half of run status. `imagedrip:run:status` itself is now a real
+  // pull verb (`run.status`) — see shared/ipc.ts; only this internal
+  // renderer-bound channel stays unpublished.
+  'imagedrip:run:status-push',
   'imagedrip:harness:event',
   'imagedrip:chat:event',
   'imagedrip:chat:gate',
