@@ -176,10 +176,22 @@ By bucket, the strict set:
 |---|---|---|
 | Manual per-machine sign-in / auth precondition | 4 | `3dc0395` *treat the ChatGPT sign-in as state, not an undocumented precondition*; `3f274d3` *authorization moves beneath the adapters — and closes a live hole* (a human clicking `▶ Run theme…` against a signed-out ChatGPT met no check at all) |
 | Session/auth rejection, "logged in but empty" | 3 | `67945c3` *fix ChatGPT panel showing a logged-in session with no state* |
-| Single-instance lock / partition contention | 2 | `68f2e76` *dev:stop / dev:clean — stop before start*; KDD `one-persist-partition-one-process.md` |
-| Stall / timeout / pacing / duplicate sends | 6 | `88cba99` *fix duplicate prompt sends ("EmuEmu") and stalls on slow images*; `7abab23` *fix the adaptive stall budget causing the stalls it prevents*; `9fabdf8`; `34ceeda`; `c2c2624` |
-| DOM-scraping fragility | 3 | `29e7981` *re-pin ChatGPT selectors — Probe C verified against live DOM*; `9f49732` *feed now verifies delivery* |
-| Z-order / native-view compositing | 2 | `d6aa934`, `f597d72` *live UAT round 2 — stop fighting the z-index, move out of its way* |
+| Single-instance lock / partition contention | 2 | `67945c3` (added `requestSingleInstanceLock`, `index.ts:1174`); `68f2e76` *dev:stop / dev:clean — stop before start* |
+| **Stall / timeout / pacing / duplicate sends** | **9 — the largest bucket** | `88cba99` *fix duplicate prompt sends ("EmuEmu") and stalls on slow images*; `9fabdf8` *derive the stall budget from measured generations*; `7abab23` *fix the adaptive stall budget causing the stalls it prevents*; `34ceeda`; `c2c2624` |
+| DOM-scraping fragility | 5 | `554dc0e` *build webview-harness — **feed mechanism corrected by probe*** (a synthesized Cmd+V turned out to be a no-op); `29e7981` *re-pin ChatGPT selectors* (`[data-message-author-role="assistant"]` was matching **zero** elements); `9f49732` *feed now verifies delivery* |
+| Z-order / native-view compositing | 2 | `d6aa934` *round 1 — z-order, resizable panels*; `f597d72` *round 2 — stop fighting the z-index, move out of its way* |
+| Other panel-caused | 6 | `e261931` (the KDD itself); `ede7b46` (`promptShape` exists because a check proved ChatGPT Projects do **not** carry the look); `3fbe28a` (six harness channels never published — *"a second writer voids the ToS mitigation"*) |
+
+**Two data points inside those buckets say more than the totals do**, and both were verified
+against `git log` directly:
+
+- **A fix for the pacing engine needed its own fix the same afternoon.** `9fabdf8` landed at
+  **10:47**; `7abab23` — *"fix the adaptive stall budget **causing the stalls it prevents**"* —
+  landed at **13:16**, two and a half hours later, on 2026-08-03.
+- **The z-order fix took two rounds because the first one did not work.** `f597d72`'s own body:
+  *"Round 1 tried to fix the popover-behind-ChatGPT bug by hiding the native view. **It didn't
+  work** — the run-entry chooser was still swallowed."* The eventual fix was structural: nothing
+  that can open a menu is allowed near the panel any more.
 
 **Three of the seven KDD learnings are unambiguously panel-caused — and they are the three most
 severe in the whole KDD:**
@@ -241,22 +253,44 @@ excluding `node_modules`. **83 files.**
 | File | Lines | Note |
 |---|---|---|
 | `src/main/webview-harness.ts` | 517 | The driver. Everything |
+| `src/preload/webview-preload.ts` | 163 | The in-page observer |
 | `src/main/chatgpt-selectors.ts` | 105 | Pure ChatGPT DOM |
-| `src/preload/webview-preload.ts` | — | The in-page observer |
 | `src/main/image-harvest.ts` | 69 | **Split, don't delete** — `harvestImage` is session-coupled (`session.fetch`, `:37`); `appendProvenance` (`:61`) is provider-neutral and must survive |
-| `src/main/cadence.ts` | — | **Only meaningful as ToS mitigation.** No cadence is needed against an API |
-| `src/main/rate-limit-guard.ts` | — | Replaced by HTTP 429 handling, not deleted outright |
+| **Unambiguous total** | **854** | |
+
+Panel-*motivated* but engine-agnostic — decide each deliberately rather than sweeping them out:
+
+| File | Lines | Call |
+|---|---|---|
+| `src/main/cadence.ts` | 72 | **Strongest delete.** Human-cadence pacing is purely the ToS mitigation; an API needs concurrency, not politeness |
+| `src/main/stall-budget.ts` | 118 | Becomes a request timeout. The *statistics* (median generation, the phantom-sample lesson in `two-clocks.md`) are worth keeping |
+| `src/main/rate-limit-guard.ts` | — | Replaced by HTTP 429 handling with a real `retryAfter`, not deleted outright |
+| `scripts/dev-stop.mjs` | 177 | Exists because of the single-instance lock, which exists because of the `persist:` partition, which exists for the ChatGPT session. Goes with them |
+
+**⚠️ One disagreement worth recording.** The parallel sweep listed
+`src/main/engine-readiness.ts` (118 lines) as a delete candidate. **I do not agree, and the file
+says why itself** (`:21-24`): *"Pure by the same argument as `context-snapshot.ts` — no Electron,
+no DOM, no clock of its own. The caller supplies the probe; this file only decides what the probe
+MEANS."* It is already the provider-neutral half of a deliberate split — `EngineReadiness`
+(`:52-60`) is exactly the verdict-with-a-hint an API adapter needs for "no key / no credits", and
+`capability-guard.ts:178` and `context.get` already consume it. **Delete the probe that feeds it
+(`EngineProbeReport`, DOM-shaped); keep the file.** Deleting it would throw away the one piece of
+this subsystem already built to survive an engine swap.
 
 ### 2.2 Source — edit candidates (reference the panel)
 
-`src/main/batch-runner.ts` (7 hits — the loop itself), `src/main/index.ts` (14 — wiring, window,
-attach), `src/shared/ipc.ts` (15 — channels, `EngineProbeReport`, `RunStatus`),
-`src/main/verb-policy.ts` (11 — `NEVER_EXPOSED` harness channels, `ENGINE_REQUIRED_VERBS`, verb
-docs), `src/main/engine-readiness.ts` (8 — becomes "is the API key valid?"),
-`src/main/stall-budget.ts` (becomes a request timeout), `src/main/capability-guard.ts` (5),
-`src/main/output-router.ts`, `src/main/domain-migrate.ts`, `src/main/chat-gate.ts`,
-`src/main/claude-cli.ts`, `src/main/ipc-router.ts`, `src/shared/domain.ts` (5),
-`src/preload/index.ts` (3).
+The four that carry real work, with anchors:
+
+| File | Where the panel is wired in |
+|---|---|
+| `src/main/index.ts` | `:27`, `:64-65` imports · `:78-83` lazy harness · `:157` the z-order warning · `:410-431` `getEngineReadiness()` · `:435-444` `getHarness()` · `:958-1013` the six `harness:*` handlers · `:1114` global STOP · `:1159` partition note · `:1174-1180` single-instance lock |
+| `src/shared/ipc.ts` | `:129-138` harness channels · `:181-231` the whole `WEBVIEW` block · `:234-239` `WebviewInbound` · `:265` `EngineProbeReport` · `:277-278` `HarnessEvent` · `:494-500` *"Thin control surface over the WebviewHarness"* · `:673-692` the deliberately-unbridged note |
+| `src/main/batch-runner.ts` | `:8` type import · `:41` `harness: WebviewHarness` · `:156-159`, `:211`, `:416`, `:439`, `:532`, `:544` call sites |
+| `src/main/verb-policy.ts` | `:60-79` `NEVER_EXPOSED` · `:181-199` `ENGINE_REQUIRED_VERBS` · `:346`, `:351`, `:353` verb descriptions |
+
+Lighter: `src/main/capability-guard.ts` (5 hits), `src/shared/domain.ts` (5),
+`src/preload/index.ts` (3), `src/main/output-router.ts`, `domain-migrate.ts`, `chat-gate.ts`,
+`claude-cli.ts`, `ipc-router.ts`.
 
 Renderer: `src/renderer/src/App.tsx` (**26 hits**, 2,715 lines — the reserved rect, the bounds-sync
 effect, the ChatGPT column, Dial-in, COPY OUT, the re-prime warning), `Popover.tsx`,
