@@ -64,25 +64,26 @@ them and are not repeated in each entry:
 |---|---|
 | Docs in scope | **46** |
 | Claims decomposed and checked | ~180 |
-| **FALSE** | **20** — 7 critical · 9 major · 4 minor |
+| **FALSE** | **23** — 9 critical · 10 major · 4 minor |
 | **UNVERIFIABLE** | **9** |
 | Load-bearing TRUE (spot-listed below) | 11 |
 | Overall corpus verdict | **DRIFTING** |
-| Cheaper fix = change the doc | **19 of 20** |
-| Cheaper fix = change the code | **1 of 20** (DD-017) |
-| **Of the 7 critical, how many are safety claims** | **4** — DD-017, DD-021, DD-022, DD-023 |
+| Cheaper fix = change the doc | **22 of 23** |
+| Cheaper fix = change the code | **1 of 23** (DD-017) |
+| **Of the 9 critical, safety claims** | **4** — DD-017, DD-021, DD-022, DD-023 |
+| **Of the 9 critical, "nothing built" on shipped work** | **4** — DD-001, DD-002, DD-025, DD-026 |
 
 **The dominant drift class is `status` / `date_stale`, not `stale_reference`.** The docs describe
 the *mechanics* of this codebase accurately — the specs, the two-clocks explainer and the KDD
 learnings are unusually well anchored. What they get wrong is **what has and has not shipped**.
-Nine of the seventeen FALSE findings are a document announcing a state of the world that its own
-commit disproved.
+**Twelve of the twenty-three FALSE findings are a document announcing a state of the world that its
+own commit disproved**, and four of those twelve are "nothing built" banners on work that shipped.
 
 ---
 
 ## Per-doc verdicts
 
-Only docs carrying a finding are listed. The 21 docs not listed carried no FALSE or UNVERIFIABLE
+Only docs carrying a finding are listed. The docs not listed carried no FALSE or UNVERIFIABLE
 claim that this pass could locate — which, per limit 1 above, is not the same as being correct.
 
 | Doc | Verdict | False | Unver. | Last doc change | Newest code it describes | Note |
@@ -99,7 +100,9 @@ claim that this pass could locate — which, per limit 1 above, is not the same 
 | `docs/north-star.md` | DRIFTING | 1 | 2 | 2026-08-10 | — | Its founding constraint is what Part 3 proposes to reverse |
 | `docs/rulings-open.md` | DRIFTING | 1 | 1 | 2026-08-19 | 2026-08-29 | Counts computed on 5 manifests; there are now 11 |
 | `.github/PULL_REQUEST_TEMPLATE.md` | **STALE** | 2 | 0 | 2026-08-06 | 2026-08-29 | **A checklist, not a reference.** Both findings critical — teaches a reviewer the pre-`3f274d3` architecture |
-| `docs/requirements-v4-resident-chat.md` | **STALE** | 1 | 0 | 2026-08-06 | 2026-08-29 | AC-5 states a confirmation guarantee that holds for the pane only |
+| `docs/requirements-v4-resident-chat.md` | **STALE** | 2 | 0 | 2026-08-06 | 2026-08-29 | AC-5 overstates the gate, **and the doc says of itself "nothing built, nothing decided"** while all of v4 shipped |
+| `docs/requirements-v3-templates-and-repos.md` | **STALE** | 1 | 1 | 2026-08-04 | 2026-08-29 | Contradicts itself in 11 lines; WP1–WP3 all shipped |
+| `docs/spec-control-surface-ui-staleness.md` | **STALE** | 1 | 0 | 2026-08-29 | 2026-08-29 | Second same-day spec shipped with a "Nothing built" banner |
 | `docs/two-clocks.md` | CURRENT | 0 | 1 | 2026-08-04 | 2026-08-29 | Accurate; about to become historical (Part 3) |
 | `docs/specs/webview-harness-spec.md` | CURRENT | 0 | 2 | 2026-07-29 | 2026-08-07 | Accurate to source; its *live* claims are unverifiable by design |
 
@@ -128,6 +131,9 @@ Ordered by severity. IDs are stable — cite them when ruling.
 > This one matters out of proportion to its size. It is the newest commit on `main`, and the
 > drift was born inside the commit that fixed the thing. Any process that catches drift only at
 > review time will not catch this class.
+>
+> **And it is not unique — see DD-026.** A second spec dated 2026-08-29 shipped the same way, the
+> same day. Two of the four specs created today carry a false "Nothing built" banner.
 
 ### DD-002 · Live UAT is documented as unbuilt; it shipped 26 days ago and has been used
 
@@ -558,6 +564,77 @@ thing in the way is a banner" clause), **1 UNVERIFIABLE**.
 - **What this check did NOT establish**: whether v4's authors intended the narrow reading. §8's
   framing suggests they did; the wording of AC-5 does not carry it. Nobody was asked.
 
+### DD-024 · `requirements-v3` contradicts itself within eleven lines, and all three of its built work packages shipped
+
+- **Severity**: major
+- **Doc**: `docs/requirements-v3-templates-and-repos.md` → frontmatter and line 11
+- **Claims (verbatim)**: frontmatter — `status: approved — WP1–WP3 ready to build; WP4–WP5
+  follow-on`. Body line 11 — *"**Status:** proposed. Nothing here is built."* **The document says
+  two different things about itself before its first heading.**
+- **Code truth**: WP1–WP3 all shipped. WP1: `src/shared/domain.ts:90` (`export interface
+  Template`), `:289` (`compose(brand, template, project)`). WP2: `src/main/repo-store.ts` and
+  `src/main/domain-store.ts` (`sourcePath` read/write). WP3: `src/main/git-scope.ts:23`
+  (`isInsideWorkTree`), called at `src/main/index.ts:370`. Only WP4 and WP5 remain, and the code
+  says so itself — `repo-store.ts:30` *"`library.json` ← WP4, not yet"* and `:356` *"repo is WP5's
+  decision"*.
+- **A third place repeats it**: `docs/README.md` describes v3 as *"**Proposed, not started.**"*
+  So the repo asserts in three places that Template is unbuilt, while Template is a first-class
+  axis with its own UI card (`App.tsx:1724`), five verbs, and `promptShape` — the feature Part 2
+  scores as the clearest "widens what a run can express" in the product.
+- **Classification**: behavior_mismatch / version_stale
+- **Cheaper fix**: **change the doc** — one frontmatter line and one body line, plus the
+  `docs/README.md` row. The frontmatter is already closer to right than the body.
+- **What this check did NOT establish**: whether WP2 has ever round-tripped a real brand repo.
+  `~/dev/image-projects/` **does not exist on this machine** — which `docs/rulings-open.md` R6
+  already flags as an M4-vs-Roamy split. The code exists; its exercise against a real repo is
+  unverified here.
+
+### DD-025 · `requirements-v4` says of itself "nothing built, nothing decided" — and it is the document carrying AC-5
+
+- **Severity**: **critical**
+- **Doc**: `docs/requirements-v4-resident-chat.md` → frontmatter and line 11
+- **Claims (verbatim)**: `status: PROPOSED — nothing built, nothing decided. Draft for David's
+  review.` · body: *"**Status:** proposed. Nothing here is built."* · frontmatter
+  `predecessor: requirements-v3-templates-and-repos.md (**also proposed, also unbuilt**)` — a stale
+  claim about a second document, inside the first.
+- **Code truth**: the whole of v4 shipped. The control surface — `src/main/control-surface.ts`
+  (loopback `:47`, `control.json` `:66`, `randomBytes(32)` `:389`, `0o600` `:377`, the 404/422/409/500
+  split `:261`/`:269`/`:306`/`:394`). The MCP proxy — `scripts/imagedrip-mcp.mjs`, wired in both
+  `.mcp.json` and `.codex/config.toml`. The contained CLI — `src/main/claude-cli.ts`,
+  `claude-stream.ts`, `npm run chat:probe`. The Context｜Chat tab — `src/renderer/src/store.ts` and
+  `App.tsx:416`. The human gate — `src/main/chat-gate.ts`, with `test/chat-gate.test.ts` (14 tests).
+- **Classification**: behavior_mismatch
+- **Cheaper fix**: **change the doc** — two lines.
+- **Why this is critical and DD-024 is only major**: **this is the document that carries AC-5**
+  (DD-023). A requirements document whose own status field says *"nothing decided"* is
+  simultaneously the stated source of the confirmation guarantee that §8 calls *"the mechanism"*
+  for no autonomous runs. Either the document is a draft and AC-5 binds nothing, or it is the
+  record and AC-5 needs its client scope. It cannot be both, and today it claims to be the first
+  while being used as the second.
+- **What this check did NOT establish**: whether every v4 work package shipped, or only WP1–WP5.
+  Five were traced to code; the document's later sections were not enumerated.
+
+### DD-026 · A second spec written today also shipped carrying "Nothing built" — so DD-001 is a pattern, not an incident
+
+- **Severity**: **critical**
+- **Doc**: `docs/spec-control-surface-ui-staleness.md` → frontmatter
+- **Claim (verbatim)**: `status: OPEN — defect report + proposed fix. Nothing built.`,
+  `created: 2026-08-29`
+- **Code truth**: fixed the same day in commit `6f7993a` *"fix: the window now hears about writes
+  it did not make"* — `IPC.domainChanged` declared at `src/shared/ipc.ts:48`, emitted at
+  `src/main/index.ts:145`, bridged at `src/preload/index.ts:50-51`, consumed in
+  `src/renderer/src/store.ts`, and covered by `test/domain-push-channel.test.ts` (5 tests, passing).
+- **Classification**: behavior_mismatch / date_stale
+- **Cheaper fix**: **change the doc** — one line.
+- **Why this changes the audit's conclusion**: DD-001 found one spec written and implemented on
+  2026-08-29 that still says *"Nothing built."* **This is the second, on the same day.** Two of the
+  four specs dated today carry a false status banner, and both were falsified by the commit that
+  implemented them. That is no longer a slip — it is what this repo's spec workflow currently does
+  by default, and it is the strongest evidence for the structural recommendation in the Summary.
+- **What this check did NOT establish**: whether the *proposed fix* in the spec is the fix that
+  shipped. The channel exists and is tested; whether it resolves the staleness the spec describes
+  was not exercised in the running app.
+
 > **These three are the answer to "find any other doc claim of the same shape."** All three are
 > safety claims, all three overstate a guarantee, and two of them sit in a checklist a human is
 > meant to *act on* rather than read. Note the pattern: `CLAUDE.md` was corrected (commit `00c96b4`)
@@ -715,11 +792,19 @@ stale checklist approves the very defect it exists to catch. The template curren
 reviewer that authorization *"lives inside the adapter"*, 18 days after commit `3f274d3` moved it
 beneath every adapter, and flags an already-adopted fix as an outstanding wart.
 
-**Worse than being wrong: the corpus disagrees with itself about one guard.** `CLAUDE.md` states
-the pane-only confirmation accurately (it was corrected in `00c96b4`); `requirements-v4`'s AC-5
-states it as *"every time"* with no client qualifier. One is right, one is not, and a reader cannot
-tell which without opening `capability-guard.ts`. **When a fact is corrected in one document, the
-documents that repeat it need finding — that is the process gap this whole audit keeps re-finding.**
+**Worse than being wrong: the corpus states the same guard three times and gets it right twice.**
+
+| Doc | Says | Verdict |
+|---|---|---|
+| `CLAUDE.md` | the confirm is raised "for the in-app chat pane only" | **right** (corrected in `00c96b4`) |
+| `docs/requirements-v5-unattended-and-portable.md:109` | *"D1 makes `run.start` human-approved **from the pane**. From any other client it stays advisory — an autonomous agent on the control surface can still start a run without a human. That is D1 as decided… recorded here as a known residual, not reopened."* | **right, and the best-written of the three** |
+| `docs/requirements-v4-resident-chat.md:308` (AC-5) | *"must ask before feeding the live session, **every time**"* | **wrong** |
+
+Two correct, one wrong — **and the wrong one is the acceptance criterion**, which is precisely the
+line someone checks to verify the guarantee. A reader cannot tell which is authoritative without
+opening `capability-guard.ts`. **When a fact is corrected in one document, the documents that
+repeat it need finding.** v5 §1.4 shows the project already knows how to write this fact honestly,
+including naming the residual risk rather than hiding it; v4 §7 simply never got the amendment.
 
 **One finding points at code, and it is the most serious in the audit.** DD-017: `brand.delete`,
 `template.delete`, `project.delete` and `theme.rename` are reachable by a terminal agent over

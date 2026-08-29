@@ -337,13 +337,21 @@ exists" rationale invert), `docs/user-guide.md` (sign-in, Dial-in, troubleshooti
 `docs/north-star.md` (see §4.1 — **David's call, not an agent's**), `CLAUDE.md`,
 `docs/imagedrip-plan.md` §7 and §9 (the ToS and cost case).
 
-**⚠️ A second document states this move as a non-goal, and it is not the North Star.**
+**⚠️ Two further documents state this move as a non-goal, and neither is the North Star.**
+
 `docs/requirements-v4-resident-chat.md:316-317`, §8:
 
 > - **Not replacing the ChatGPT panel. It stays; it is the engine.**
 > - **No image generation via API. The founding constraint is unchanged.**
 
-So the reversal has to be ratified in **two** places, not one. v4 is a shipped requirements
+`docs/requirements-v5-unattended-and-portable.md:107`, §1.4, which goes further and marks it as a
+*verified* property of the codebase:
+
+> **Built and honoured** — The engine is the embedded ChatGPT session. **No image API exists
+> anywhere in the codebase**, and the six webview writers are `NEVER_EXPOSED` so no agent can reach
+> them.
+
+So the reversal has to be ratified in **three** places, not one. v4 is a shipped requirements
 document, so the honest edit is a dated supersession note rather than a rewrite —
 *"§8's first two non-goals were overturned on <date> by <ruling>; see the provider brief"* — which
 preserves the record of what was believed when the chat pane was built. **The same document also
