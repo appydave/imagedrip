@@ -3,15 +3,18 @@ doc: research
 project: imagedrip
 status: RESEARCH — analysis only. Nothing renamed, nothing created, no schema changed. For David's ruling.
 created: 2026-08-29
-purpose: four boundary questions — Storyline's model, where characters belong, whether brands need an
-  IMAGE.md, and whether two proposed renames are worth their refactor
+purpose: six boundary questions — Storyline's model, where characters belong, whether brands need an
+  IMAGE.md, whether two proposed renames are worth their refactor, whether animation is an axis, and
+  whether the root is Brand or Project
 scope_note: touches the brand-file family (appydave-plugins) and Storyline (flivideo) as REFERENCE.
   No file outside this document was modified.
 ---
 
 # Brand-file family, characters, and the Storyline boundary
 
-Four questions, four verdicts. Each section closes with what the investigation did **not** establish.
+Six questions, six verdicts. Each section closes with what the investigation did **not** establish.
+Sections 5 and 6 were added after the first four, as David ruled on them — §6 records an argument
+that was **withdrawn**, kept because the reason it failed is more useful than the claim was.
 
 **Headline, before the detail:**
 
@@ -22,6 +25,7 @@ Four questions, four verdicts. Each section closes with what the investigation d
 | 3 | Add `IMAGE.md` to brands? | **Yes — where there is stable content. Not as a mandatory slot.** 2 of 3 brands tested have content waiting; 1 has none |
 | 4 | Rename `VIDEO.md` and `VERBAL-STYLE.md`? | **No to both.** 69 files, 235 mentions, plus a skill rename — and the names are not the actual problem |
 | 5 | Is animation an axis of ImageDrip? | **No — and it is not homeless either. `Template` already absorbs it.** Added after David's ruling of 2026-08-29 |
+| 6 | Is the root Brand or Project? | **Both, for different questions.** Brand roots the estate; Project is the unit of selection. Records a withdrawn argument, because the withdrawal is the useful part |
 
 ---
 
@@ -410,6 +414,109 @@ should model it.
 - **This corrects a published artefact.** The axes artefact scored Motion as an axis and Strain D as
   hitting six of seven runs. Both were withdrawn in its rev 3. The withdrawal is kept visible on that
   page rather than deleted, for the same reason it is recorded here.
+
+---
+
+## 6 · Root and parent — Brand or Project?
+
+**Added 2026-08-29.** Nothing in this document or the axes artefact ever asserted the claim below —
+it was made in conversation and withdrawn in conversation. It is recorded here because the *reason*
+it was wrong is the instructive part, and because a conclusion that only exists in a chat is exactly
+what this project keeps losing.
+
+### 6.1 The argument I made, and why it fails
+
+> *"A project can exist with `brandId: null`. A child cannot exist without its parent. Therefore
+> Brand is not Project's parent — it is a reference."*
+
+The premise is true and the conclusion does not follow. **A nullable field is a permitted state, not
+a meaningful one**, and the difference is the whole failure mode this audit has been documenting
+elsewhere.
+
+`brand.switch`'s own description gives the real reason the field is nullable, and it is data hygiene:
+
+> *"null is a real choice, not an absence… **do not leave a project on the seeded demo brand just
+> because something has to be selected.**"*
+
+That is "don't force a fake selection." It is not "here is a workflow with no brand."
+
+### 6.2 David's counter is stronger, and the code confirms it
+
+> *"Our repositories where we store stuff are at a brand level. If you can't store something, then
+> we've got a problem."*
+
+Verified:
+
+| Check | Result |
+|---|---|
+| Where a brandless project's files go | `~/Pictures/ImageDrip/<slug>` — `domain-store.ts:49-51`, the **standalone fallback**, outside the brand-repo estate |
+| What lands in `project.json` | `repo-store.ts:225` writes `brand: brandId` **only when a brand exists** — no brand, no field |
+| Whether the brand-repo estate exists here | **`~/dev/image-projects/` does not exist on this machine at all.** Every project is in the Pictures fallback |
+
+So a brandless project does not get a different home. It gets **no home in the estate** — only the
+un-managed fallback. The objection holds.
+
+### 6.3 The examples, and none is good enough
+
+| Candidate | Verdict |
+|---|---|
+| Probe / test runs (`probe-spring-nails-*`, `verify-promptshape-0819`) | Genuinely brandless — and **you do not shape a schema around testing the app** |
+| Pre-brand client work — a new client with no `DESIGN.md` yet | Plausible; nobody has described one. Speculative |
+| One-off utility images — a diagram, a placeholder | Weak. It has a brand; nobody bothered to set it |
+
+**Verdict: brand is effectively mandatory for real work.** The nullable field should be read as an
+escape hatch for a forced choice, not as evidence of a brandless workflow.
+
+### 6.4 The answer that survives — two roots, two questions
+
+The confusion dissolves once the question is split. From David's own reason for the v5.1 ruling:
+
+> *"I needed some sort of container to hold everything together. **I didn't want to have to pick
+> project and brand.**"*
+
+That is about **selection**, not containment. `Project` carries brand so the operator picks once. It
+does not make brand a child; it makes brand a property that **travels with** the selection.
+
+| Question | Root | Why |
+|---|---|---|
+| Where do files live? What is the git boundary, the distribution unit, the thing with a `DESIGN.md`? | **Brand** | v3's shipped layout: `i-<brand>/` → `templates/` + `projects/<project>/` |
+| What do I pick? What does a deliverable belong to? | **Project** | v5.1, ruled: *"The unit already has a name, and it is `Project`"* |
+
+**`Brand → Project → Run → Image` is the real drill-down.** The app does not make you walk it because
+Project denormalises brand — which is the ruling working as intended, not a modelling error.
+
+### 6.5 Templates are global *and* brand-scoped *and* project-born — and that is a scope field, not a hierarchy
+
+David: *"templates, in my opinion, can be a combination of global and/or project-related. They could
+be even brand-related. I'm not sure."* The v3 worked samples settle it — all three are real:
+
+| Scope | Evidence from v3 §4 |
+|---|---|
+| **Global** | `storyboard` listed under AppyDave, AITLDR **and** vOz. `character-sheet` under AITLDR and vOz |
+| **Shared between siblings** | `promo-tile` under **both** Beauty & Joy and Joy Juice |
+| **Brand-specific** | `nail-art-tile` means nothing outside B&J. Challenge DV's `stat-card` carries the big-purple-number treatment |
+| **Project-born, potentially global** | `isolated-depth-plate` was written for the agent office; the technique is reusable by anyone doing multiplane |
+
+So **scope is a property of the template, not a position in a tree.** One `scope` field plus an owner
+id expresses all four rows without adding an axis, and storage follows scope. That is strictly
+simpler than R8's shared-repo proposal, which exists only because a template belonging to no brand
+has nowhere to live on a brand-rooted disk.
+
+**Not a recommendation to build it** — R11 parked template scoping and it stays parked. Recorded
+because "it is all three" is the correct answer and the current model (global only) is a deliberate
+simplification, not an oversight.
+
+### 6.6 What §6 did NOT establish
+
+- **No brandless project was tested end to end.** That `brandId: null` composes a valid primer is
+  asserted by `compose()`'s signature and by `brand.switch`'s description; no run was executed with a
+  null brand to confirm the whole path works.
+- **The estate was checked on Roamy only.** `~/dev/image-projects/` is absent here; `rulings-open.md`
+  R6 records that it exists on the M4 with five `i-*` directories. **The storage argument may look
+  different on the machine where the estate actually exists.**
+- **Template scoping was not costed.** A `scope` field sounds cheap; whether the store, the repo
+  writer and the switcher absorb it cheaply was not examined.
+- **Nothing here is a ruling.** R11 (global vs brand-scoped templates) remains open and unchanged.
 
 ---
 
