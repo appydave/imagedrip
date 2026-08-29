@@ -21,6 +21,7 @@ Four questions, four verdicts. Each section closes with what the investigation d
 | 2 | Does ImageDrip need a Character record? | **No.** Prose in `Project.body` already covers it. One real gap, and it is not a Character entity |
 | 3 | Add `IMAGE.md` to brands? | **Yes — where there is stable content. Not as a mandatory slot.** 2 of 3 brands tested have content waiting; 1 has none |
 | 4 | Rename `VIDEO.md` and `VERBAL-STYLE.md`? | **No to both.** 69 files, 235 mentions, plus a skill rename — and the names are not the actual problem |
+| 5 | Is animation an axis of ImageDrip? | **No — and it is not homeless either. `Template` already absorbs it.** Added after David's ruling of 2026-08-29 |
 
 ---
 
@@ -340,13 +341,86 @@ Do `VIDEO.md` alone — 29 files, no skill rename, no code consumer, and mechani
 
 ---
 
+## 5 · Is animation part of ImageDrip? No — and Template already absorbs it
+
+**Added 2026-08-29, after the first four sections.** David raised it and the answer changed the axis
+count, so it is recorded here rather than left in a conversation.
+
+### 5.1 The question
+
+An earlier pass listed **Motion** as a sixth axis with no slot, and scored a "Strain D" against six of
+seven worked runs. David's objection:
+
+> *"We don't actually do animation the way you might do with an animation prompt. It's really an
+> external coded system of JavaScript, so I don't know that animation makes sense."*
+
+### 5.2 There are two kinds of animation in this estate and neither belongs to ImageDrip
+
+| | Mechanism | Lives in | Prompt-driven? |
+|---|---|---|---|
+| **Coded motion** | multiplane parallax, camera drift, per-layer travel | `scene/config.js` — `travel`, `bob`, camera scale/drift, CSS filters (Hyperframes / GSAP) | **No.** JavaScript config |
+| **Generated motion** | a video model animates a still | Storyline's `AnimationPrompt { shotNumber, variationNumber, prompt }`, aimed at Sora / Runway / Kling per its own CLAUDE.md | Yes — **but it is Storyline's, not ImageDrip's** |
+
+ImageDrip generates still images. It touches neither.
+
+### 5.3 The decisive point: the motion decision is already expressed, as the Template
+
+`isolated-depth-plate` **is** a motion decision. Its body specifies one depth band per image, a flat
+magenta `#FF00FF` field for keying, and paint order back-to-front — every rule there because of
+parallax. **ImageDrip does not need to know why.** It needs to know what shape to make, which is
+exactly what an artifact kind is.
+
+Tested against every technique in `animation-techniques.md`:
+
+| Technique | What the generator must do differently | Where it lives |
+|---|---|---|
+| Multiplane parallax | separate depth bands, magenta key | **Template** — `isolated-depth-plate` |
+| Cut-out puppet rig | limbs, head, jaw as separate elements | **Template** |
+| Sprite animation on twos | 2–3 pose frames per action | **Template** |
+| Stop-motion substitution | discrete pose variants | **Template** |
+| Gentle dolly / Ken Burns | *nothing* | — |
+| Kinetic type / number count-up | *nothing* | — |
+
+**Every technique either implies an artifact kind, or asks nothing of the generator at all.** There
+is no case in the six where motion needs a slot of its own. `Template` absorbs it correctly, and the
+run manifest already records which template a run used — so a folder of magenta plates still explains
+itself months later.
+
+### 5.4 What survives — a sequencing rule, not schema
+
+The technique must be chosen **before** the prompts are written, because the cut cannot be recovered
+afterwards. `animation-techniques.md` establishes this by measurement rather than assertion:
+
+> *"This is **regeneration, not conversion**. Nothing below can be extracted from what we already
+> have."* — the 38 existing images are JPEG/sRGB, three channels, no alpha.
+
+That is a workflow note for whoever writes the prompts. It is not an axis, and nothing in ImageDrip
+should model it.
+
+### 5.5 What §5 did NOT establish
+
+- **It does not cover prompt-driven video generation.** If ImageDrip were ever asked to produce
+  clips rather than stills, `AnimationPrompt` becomes relevant and this verdict would need
+  re-opening. Nobody has asked, and this section assumes the still-image scope the North Star states.
+- **The six techniques come from one document.** `animation-techniques.md` covers the six agent-office
+  styles. A seventh technique that needs something Template cannot express is not ruled out — it is
+  merely not present in anything examined.
+- **No technique was executed.** The mapping is read from the plan, not from a rendered scene. Only
+  style 06 reached generation, and it harvested 1 image of 9 attempted.
+- **This corrects a published artefact.** The axes artefact scored Motion as an axis and Strain D as
+  hitting six of seven runs. Both were withdrawn in its rev 3. The withdrawal is kept visible on that
+  page rather than deleted, for the same reason it is recorded here.
+
+---
+
 ## What this document does not do
 
 It recommends. It does not act. Nothing outside this file was created, renamed, or modified —
 no `IMAGE.md` was written, no brand file was touched, Storyline was read and not changed, and
 ImageDrip's schema is exactly as it was.
 
-**Four rulings are now waiting on David**, and only the third has any urgency:
+**Four rulings are waiting on David** — §5 is already ruled and is recorded, not pending. Only the
+third of these has any urgency:
 
 1. Storyline seam — **build it or not** (cheap, and halves the pressure to model narrative in ImageDrip)
 2. Character record — **recommend no**; if character drift becomes the binding problem, build R5 instead
