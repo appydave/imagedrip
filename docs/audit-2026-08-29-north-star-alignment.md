@@ -26,16 +26,19 @@ purpose: score every shipped verb, panel, setting and surface against the North 
 > **does this let a person do something the machine already does, or something new?** The first is
 > parity and it fits; the second is cockpit and it does not.
 
-**⚠️ The precedence rule is still unruled.** `docs/rulings-open.md` **R10** exists because the two
-halves of the test fire on the same feature and the Star says which wins for neither. Where a
-score below turns on that, it is marked **[R10]** and both readings are given. **This audit does
-not rule R10.** **Four** items are marked — Dial-in⇄Auto as a mode, the COPY OUT card, the
-`Popover`/`Modal` z-order components, and the Context｜Chat tab — and all four move from *violates*
-to *serves* if the parity clause wins.
+**✅ The precedence rule was RULED on 2026-08-29: parity wins.** `docs/rulings-open.md` **R10** is
+closed and the rule is now written into `north-star.md` under §The test. Four scores below were
+marked **[R10]** because they turned on it, and **all four move from *violates* to *serves***:
+Dial-in⇄Auto as a mode, the COPY OUT card, the `Popover`/`Modal` z-order components, and the
+Context｜Chat tab. **Their rows are kept in the "violates" table with the ruling applied inline**,
+rather than moved — the reasoning is the useful part, and re-sorting the table would hide why each
+one was ever in question.
 
-*(This header said "six" until 2026-08-29. Four is the count in the table. An inventory mismatch in
-the audit that spent twenty findings on inventory mismatches — corrected, and left visible, because
-the lesson is that hand-counted totals drift even when you are actively looking for drift.)*
+*(Two hand-counts in this document were wrong and are corrected: the header said six [R10] items
+when the table marks four, and the headline said 11 panel-only violations when the table marks 13.
+Both were caught by counting the table with a script instead of by eye. An inventory mismatch inside
+the audit that logged twenty inventory mismatches — left visible, because the lesson is that
+hand-counted totals drift even while drift is the thing you are hunting.)*
 
 ---
 
@@ -64,13 +67,13 @@ source, each anchored to `file:line`.
 | | |
 |---|---|
 | Surfaces scored | **72** |
-| **Serves** the Star | 38 (53%) |
+| **Serves** the Star | **42 (58%)** — 38, plus the 4 the R10 ruling moved |
 | **Neutral** | 16 (22%) |
-| **Violates** — adds a control to learn | 18 (25%), of which **4 are [R10]-dependent** |
+| **Violates** — adds a control to learn | **14 (19%)** — was 18 before the R10 ruling |
 | **Exist only because of the embedded ChatGPT panel** | **31 (43%)** |
 
-**The single finding.** Of the 18 surfaces that sit furthest from the Star, **11 exist only to
-manage the embedded panel** — the two clocks, the entry-mode choice, the re-prime promise, the
+**The single finding.** Of the 14 surfaces that still sit furthest from the Star after the R10
+ruling, **10 exist only to manage the embedded panel** (it was 13 of 18 before the ruling) — the two clocks, the entry-mode choice, the re-prime promise, the
 sign-in state machine, the z-order workarounds, the paste-it-yourself card. They are not design
 mistakes. Every one was added to survive a specific, documented failure of driving a browser by
 hand. **They are the panel's cost, expressed as cockpit.** Deprecating the panel (Part 3) deletes
@@ -93,14 +96,14 @@ Ordered by distance from the Star — worst first. **P** = exists only because o
 | 5 | **The 5 run-tuning fields** — `chunkSize`, `cadenceBaseMs`, `cadenceJitterMs`, `primerSettleMs`, `loadSettleMs` | **P** | `ipc.ts:286-306`, defaults `batch-runner.ts:61-72` | Five numbers whose only job is to make browser automation behave. `primerSettleMs: 9000` and `loadSettleMs: 4000` are literally "wait for a web page" | **Mitigated:** not exposed in the UI — `App.tsx` displays `chunkSize` but offers no editor. They are reachable only programmatically. **[opaque]** — nothing records whether any caller has ever set one |
 | 6 | **The entry-mode choice** — `▶ Run` asks `continue` vs `fresh` | **P** | `App.tsx:538`, `:555`; `ipc.ts:295` | A decision at the moment of running, about conversation state. The operator must hold "is my dial-in still in effect?" in their head | Exists because Auto used to destroy Dial-in (WP5, `b87597c`). A real fix to a real bug — and a control the Star would not have asked for |
 | 7 | **`theme.rename`** | | `verb-policy.ts:338` | A verb for a concept `rulings-open.md` **R3** recommends retiring: `Theme` is a `{name, prompts[]}` wrapper, one per project, used for nothing but minting a run-id string | R3, unruled. The verb's own description admits the trap: *"rename it to what is actually being generated **before** starting a run, not after"* — a control with a hidden ordering requirement |
-| 8 | **Dial-in ⇄ Auto as a persisted mode** | **P** | `App.tsx:234-253`, `store.ts` | **[R10]** A mode is, in David's own words, *"a cursor position that lasts longer."* The app **defaults to Auto**, which *hides* the per-row ⚡ inject buttons — so the default state conceals its own parity controls | `rulings-open.md` **R15** recommends rendering them disabled instead. **[R10] parity reading:** Dial-in *is* the manual equivalent the parity rule protects, so the mode fits and only the hiding violates |
-| 9 | **The "COPY OUT" card (step 4)** — *"to paste into ChatGPT by hand"* | **P** | `App.tsx:1072` | **[R10]** A whole card teaching the operator to do the app's job manually | **[R10] parity reading:** this is the purest parity affordance in the product — the manual equivalent of the automatic step, exactly what *"you cannot test what you cannot drive yourself"* asks for. Under an API it becomes meaningless |
+| 8 | ✅ **RESOLVED — now SERVES.** **Dial-in ⇄ Auto as a persisted mode** | **P** | `App.tsx:234-253`, `store.ts` | **[R10]** A mode is, in David's own words, *"a cursor position that lasts longer."* The app **defaults to Auto**, which *hides* the per-row ⚡ inject buttons — so the default state conceals its own parity controls | `rulings-open.md` **R15** recommends rendering them disabled instead. **[R10] parity reading:** Dial-in *is* the manual equivalent the parity rule protects, so the mode fits and only the hiding violates |
+| 9 | ✅ **RESOLVED — now SERVES.** **The "COPY OUT" card (step 4)** — *"to paste into ChatGPT by hand"* | **P** | `App.tsx:1072` | **[R10]** A whole card teaching the operator to do the app's job manually | **[R10] parity reading:** this is the purest parity affordance in the product — the manual equivalent of the automatic step, exactly what *"you cannot test what you cannot drive yourself"* asks for. Under an API it becomes meaningless |
 | 10 | **The ChatGPT column's resize handle and bounds-sync dependency list** | **P** | `useResizable.tsx`, `App.tsx:127-159` | A draggable panel the operator must position, backed by an effect whose dependency array must be kept complete or *"the overlaid ChatGPT view drifts out of alignment"* (`App.tsx:157-159`) | A comment in shipped code warning a future editor that forgetting a dependency silently misaligns a native view. Zero tests touch the renderer |
-| 11 | **`Popover` and `Modal` — the z-order workarounds** | **P** | `Popover.tsx`; `App.tsx:608`, `:1289` | **[R10]** Two components that exist solely because *"a native view paints above ALL HTML"* — no `z-index` reaches a `WebContentsView` | KDD learning `native-view-paints-above-all-html.md`, severity **high**. `App.tsx:1289`: *"It renders through `Modal`. That component hides the ChatGPT [view]"*. Not operator-facing cost, but permanent structural cost |
+| 11 | ✅ **RESOLVED — now SERVES.** **`Popover` and `Modal` — the z-order workarounds** | **P** | `Popover.tsx`; `App.tsx:608`, `:1289` | **[R10]** Two components that exist solely because *"a native view paints above ALL HTML"* — no `z-index` reaches a `WebContentsView` | KDD learning `native-view-paints-above-all-html.md`, severity **high**. `App.tsx:1289`: *"It renders through `Modal`. That component hides the ChatGPT [view]"*. Not operator-facing cost, but permanent structural cost |
 | 12 | **The engine sign-in state machine** — `ready` / `signed-out` / `detached` / `indeterminate`, plus every hint string | **P** | `engine-readiness.ts:42-60` | Four states the operator (and every agent) must interpret, guarding a precondition no software can satisfy: *"a human opens the app on this machine and logs in by hand"* | `engine-readiness.ts:4-6`. `CLAUDE.md`: *"no agent can do this"*. **`indeterminate` explicitly conflates a timeout with selectors that no longer match** (`:49-50`) |
 | 13 | **`run.chat-state`** | **P** | `verb-policy.ts:352` | Exposes conversation-priming state so a caller can decide whether to continue or start fresh — a question that only exists because the engine is a chat | Its own description warns it *"reports the RUNNER's view, not the browser's"* — two truths about one thing, and the caller must know which they hold |
 | 14 | **The rate-limit guard's 15-minute blind backoff** | **P** | `rate-limit-guard.ts:23` | A 15-minute stall the operator cannot shorten, triggered by scraping a banner out of a page | **[opaque]** — **0 rate-limit pauses across all 11 manifests.** Never fired in production. `rate-limit-guard.test.ts` (6 tests) proves the mechanism, not the detector |
-| 15 | **The Context｜Chat tab switch** | | `App.tsx:416` | **[R10]** A tab. The Star says *"the chat drives the fields"* — so hiding the chat behind a tab makes the primary interface the secondary one | **[R10] serves reading:** the chat pane itself is the Star's *"or just say it in chat"* clause shipping. Only the tab that hides it is the friction |
+| 15 | ✅ **RESOLVED — now SERVES.** **The Context｜Chat tab switch** | | `App.tsx:416` | **[R10]** A tab. The Star says *"the chat drives the fields"* — so hiding the chat behind a tab makes the primary interface the secondary one | **[R10] serves reading:** the chat pane itself is the Star's *"or just say it in chat"* clause shipping. Only the tab that hides it is the friction |
 | 16 | **`domain.reset-run`** | | `verb-policy.ts:315` | Destructive re-queue of a whole theme, confirm-first. Housekeeping, produces no image | Borderline; listed for completeness |
 | 17 | **The single-instance lock's silent surrender** | **P** | `CLAUDE.md`; `scripts/dev-stop.mjs` | The operator must know that `npm run dev` against a running app *silently* serves a build they stopped editing an hour ago | KDD `one-persist-partition-one-process.md`, severity **high**. Mitigated by `dev:clean`, which is itself a thing to know |
 | 18 | **The 5 probes** — `probe-a/b/c`, `probe-attach`, `probe-attach-live`, plus `measure-drift` | **P** | `probe/` | A maintenance ritual the operator inherits: *"every selector lives in one file… `probe-c.cjs` re-pins it"* | Correct and honest tooling (`README.md` calls it *"expected upkeep, not a defect"*) — and it is upkeep that exists **only** because the engine is someone else's web page |
@@ -279,8 +282,8 @@ provenance and the 34-verb agent surface are the Star shipping — 38 surfaces, 
 inventory, and several of them (`promptShape`, the control surface) are the Star quoted almost
 word for word.
 
-Of the 18 surfaces that violate the test, **11 are panel management** and 6 more turn on a ruling
-David has not made (**R10**). Strip the panel and the cockpit gets smaller without a single feature
+Of the 14 surfaces that still violate the test, **10 are panel management**. Four more were
+resolved on 2026-08-29 when David ruled R10 — parity wins — which moved them to *serves*. Strip the panel and the cockpit gets smaller without a single feature
 being cut — which is the rarest kind of simplification available to a product, and the reason Part 3
 matters beyond its cost argument.
 
@@ -292,9 +295,10 @@ generates the image:
    nobody started look the same on disk.
 2. **AF-1** — either make the re-prime reachable (`rulings-open.md` R4's runbook) or stop promising
    it in the UI. A warning that has never fired is believed.
-3. **AF-4** — three destructive verbs are agent-only. Either give the human the buttons, or record
-   why not. Right now a curl call can delete a project and its queue with no confirmation and no
-   undo, and its owner cannot.
+3. **AF-4** — three destructive verbs are agent-only. **The R10 ruling settles the design question:
+   parity wins, so the buttons fit and their absence is the defect.** What remains is to build them
+   (or to record a deliberate reason not to). Right now a curl call can delete a project and its
+   queue with no confirmation and no undo, and its owner cannot. Tracked as R18.
 
 **R10 should be ruled too**, since six scores here hang on it and every future control proposal will
 re-open the same argument.

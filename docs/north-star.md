@@ -7,6 +7,9 @@ parent: /Users/davidcruwys/dev/ad/brains/north-star/north-star.md   # David's ow
 bearing: |
   Make a run something you can start and walk away from — then make the whole configuration
   travel, so a second person can run it on their own machine.
+rulings:
+  - 2026-08-10 — parity: every automated step operable by hand, every manual step automatable
+  - 2026-08-29 — precedence: when a control performs a step the app already performs, parity wins
 bearing_source: 2026-08-09 — RULED by David, not derived. The previous bearing's first clause
   ("finish the chat seat") shipped as v4 WP4 on 2026-08-08. Distribution was explicitly deferred
   in the same ruling: "being installed by other people is not needed just yet."
@@ -59,11 +62,31 @@ unattended, into a folder for that run. Drivable by a person or an agent.**
 If it removes a manual step, widens what a run can express, or lets an agent do something a human
 had to do — it fits. If it adds a control to learn, it does not.
 
-**Read the second half with the parity rule above.** A control that performs a step the app already
-performs by itself is not a new thing to learn — it is the same step, made visible and checkable.
-The test forbids *new cockpit*, not *manual equivalence*. The question to ask of a proposed control
-is: **does this let a person do something the machine already does, or something new?** The first is
-parity and it fits; the second is cockpit and it does not.
+### The precedence rule — parity wins
+
+**Ruled by David, 2026-08-29.** The two halves of the test above fire on the same feature and used
+to disagree, with nothing saying which won. They no longer disagree:
+
+> **When a proposed control performs a step the app already performs by itself, the parity clause
+> wins and the "control to learn" clause does not apply.**
+
+A control that performs a step the app already performs is not a new thing to learn — it is the same
+step, made visible and checkable. The test forbids *new cockpit*, not *manual equivalence*.
+
+**The question to ask of any proposed control:** *does this let a person do something the machine
+already does, or something new?* The first is parity and it fits. The second is cockpit and it does
+not.
+
+**Worked example, live at the time of the ruling.** ImageDrip has no delete buttons: `brand.delete`,
+`template.delete` and `project.delete` are reachable by an agent over the control surface and by
+nobody at the window. Adding the buttons *looks* like three new controls to learn — and under the
+precedence rule it is not, because the app already deletes. It is the manual equivalent of a step
+that already happens, so it fits, and its absence is the actual defect.
+
+**Why this is written down rather than judged case by case.** Without it every UI proposal
+re-litigates the same argument, and the argument had already been settled once in David's own
+words on 2026-08-10 — *"you cannot test what you cannot drive yourself."* This rule is that
+sentence, promoted from a reading to a rule.
 
 **And nothing may fail silently.** This repo's own hardest-won rule: *"a control that quietly
 disappears is worse than none, because it is believed."* A run that did not deliver must never look
@@ -84,6 +107,8 @@ like one that did.
    decides its size: staff take a `.dmg` from a link; a client takes signing, notarization and an
    honest first launch.
 3. **Interpolation variables** — floated, not specified.
+4. ~~The test's two halves conflict and nothing says which wins.~~ **Closed 2026-08-29** — ruled by
+   David: parity wins. See "The precedence rule" above.
 
 *Limits: the Star came from a 2026-08-08 interview. The 54 commits and v1–v4 requirements docs were
 read, and describe a narrower product than the one he wants — treat them as history, not intent.*

@@ -225,7 +225,14 @@ will tell you which run made them. Rescue anything you want *before* the delete,
 
 ## Tier 4 — needed, but nothing waits on them.
 
-### R10 · Amend the Star's test with a precedence rule?
+### R10 · Amend the Star's test with a precedence rule? — ✅ **RULED 2026-08-29: yes, parity wins**
+
+> **Closed.** David ruled it and directed it into the Star. `docs/north-star.md` now carries
+> "The precedence rule — parity wins" under §The test, with the delete-button case as the worked
+> example. Four alignment scores in the audit moved from *violates* to *serves* as a result, and
+> **R18 (the missing delete buttons) is now an easy yes rather than an argument.**
+> The row below is kept as the reasoning that produced the ruling.
+
 
 **Plain words.** The test says *"more images, less touching"* **and** *"if it adds a control to
 learn, it does not fit."* Both halves fire on the same feature and the Star says which wins for
@@ -392,6 +399,11 @@ R17 — it stays true whichever engine generates the images.
 
 **Recommendation: bridge the three deletes to the UI.** They are already gated, already described,
 already tested at the guard; what is missing is the button.
+
+> **The design question is now settled.** R10 was ruled on 2026-08-29 — parity wins — so "three new
+> controls to learn" is no longer an argument against this: the app already deletes, so the buttons
+> are the manual equivalent of an existing step. `north-star.md` uses this exact case as its worked
+> example. **What is left is a build decision, not a design one.**
 
 **The one reason.** Your own parity rule, 2026-08-10: *"every automated step is operable by hand,
 and every manual step is automatable… a step with no manual equivalent is a step nobody can check."*
