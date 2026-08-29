@@ -36,7 +36,10 @@ to repeat one.
 ## Current state (update as it moves)
 - **Chosen design:** light-theme **Pipeline** — `.mochaccino/designs-v2/pipeline-light.html`.
   Being finished to completion. Do not replace it.
-- **Index:** `overview.html` (repo root) — the clickable index of everything.
+- **Index:** `overview.html` (repo root). ⚠️ **Stale since 2026-08-07** — it links 13 of ~48
+  documents and is missing north-star, rulings-open, two-clocks, every `spec-*` and all of `kdd/`.
+  Rule 3 above still stands; the page needs regenerating, and `docs/README.md` is the working
+  index until it is.
 - **v2 (Usability & Project Identity, `docs/requirements-v2-usability.md`):** WP1 + WP2 built —
   WP1: multi-project store (silent migration), visible per-project output dirs
   (default `~/Pictures/ImageDrip/<slug>`), per-run `<outputDir>/<run-id>/` folders with

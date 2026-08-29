@@ -2,7 +2,8 @@
 doc: user-guide
 project: imagedrip
 audience: someone OPERATING ImageDrip (not building it)
-status: current as of v2 WP1–WP5 (usability slice); WP6–WP7 not built
+status: PARTIAL — accurate for what it covers, but written at v2 and never extended. It does not
+  mention Template (a first-class axis since v3), the control surface, or the Context｜Chat tab.
 created: 2026-07-29
 last_updated: 2026-07-29
 pairs_with: imagedrip-plan.md (the why), requirements-v2-usability.md (what's changing next)

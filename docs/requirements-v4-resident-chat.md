@@ -1,15 +1,24 @@
 ---
 doc: requirements
 project: imagedrip
-status: PROPOSED — nothing built, nothing decided. Draft for David's review.
+status: SHIPPED — WP1–WP5 built 2026-08-07 → 08-11. Historical record; see §8 for two non-goals
+  now under review.
 created: 2026-08-06
+last_verified: 2026-08-29
 purpose: give ImageDrip a resident chat operator that can configure the app and drive its verbs
-predecessor: requirements-v3-templates-and-repos.md (also proposed, also unbuilt)
+predecessor: requirements-v3-templates-and-repos.md (WP1–WP3 shipped; WP4–WP5 outstanding)
 ---
 
 # v4 — The Resident Chat Operator
 
-**Status:** proposed. Nothing here is built.
+**Status: shipped.** The control surface (`src/main/control-surface.ts`), the MCP proxy
+(`scripts/imagedrip-mcp.mjs`, wired in `.mcp.json` and `.codex/config.toml`), the contained CLI
+(`src/main/claude-cli.ts`, `claude-stream.ts`), the human gate (`src/main/chat-gate.ts`) and the
+Context｜Chat tab all landed between 2026-08-07 and 08-11.
+
+> **Read §7 AC-5 and §8 with the amendments marked below.** Authorization moved beneath the
+> adapters on 2026-08-11 (`3f274d3`), which narrowed what AC-5 actually guarantees, and two of §8's
+> non-goals are under review as of 2026-08-29. Both are annotated in place.
 
 **This document is self-sufficient.** Everything needed to implement WP1–WP3 is inline — the
 prerequisites (§0), the invocation and stream protocol (§3), the verb surface (§6), and the WP1
@@ -259,10 +268,20 @@ Derived from the existing `imagedrip:*` IPC channels. Two tiers.
 
 | Verb | Backing channel | Why gated |
 |---|---|---|
-| `run.start` | `run:start` | Begins feeding a live ChatGPT session. **Never auto-run.** |
+| `run.start` | `run:start` | Begins feeding a live ChatGPT session. **Never auto-run from the pane** — see AC-5's amendment for what this does and does not cover |
 | `run.stop` / `run.pause` / `run.resume` | `run:stop` etc. | Interrupts a paid-for, in-flight batch |
-| `prompts.clear` | `domain:reset-run` | Destroys a queue |
-| `project.set_output_dir` | `project:choose-output-dir` | Redirects where files land |
+| `prompts.clear` | `domain:reset-run` | Destroys a queue. Shipped as `domain.reset-run` |
+
+> **Amended 2026-08-29.** A fourth row named `project.set_output_dir` backed by
+> `project:choose-output-dir`. Neither exists: the channel is in `NEVER_EXPOSED`
+> (`verb-policy.ts:177`) because a native folder picker cannot succeed headlessly, and the verb was
+> never built. The capability shipped instead as **`domain.save-project` with an `outputDir`**,
+> which is not gated — it is refused with 409 while a run is live.
+>
+> The three destructive verbs that *did* ship gated — `brand.delete`, `template.delete`,
+> `project.delete` — are absent from this table because they came later (A7). **Note that none of
+> the three is reachable from the UI at all**; they have no preload bridge. See the 2026-08-29
+> audit, DD-017.
 
 The split follows the standard rule: promote an action to a gated tool precisely when you need to
 intercept, confirm, or audit it. Everything else runs free, or the chat is useless.
@@ -305,7 +324,21 @@ The agent must report the block plainly and stop — not improvise a workaround 
 This is the discipline that caught a false green in the Open Design UAT (KYB-407), and it is the
 criterion that decides whether the chat is safe to trust.
 
-**AC-5 · The run gate.** *"Start the run"* must ask before feeding the live session, every time.
+**AC-5 · The run gate.** *"Start the run"* must ask before feeding the live session, every time —
+**from the in-app chat pane.**
+
+> **Amended 2026-08-29 — the original wording said "every time" with no client qualifier, and that
+> is not what shipped.** `src/main/capability-guard.ts:217` is
+> `if (principal.kind !== 'pane-agent') return;` — the confirm is raised for the pane and nobody
+> else. A terminal Claude Code session through `.mcp.json`, Codex through `.codex/config.toml`, or
+> plain `curl` starts a run with **no confirmation**; past the loopback bearer token and the engine
+> precondition, the only thing in the way is advisory CONFIRM-FIRST text in the verb description.
+>
+> **This is D1 as decided, not a defect** — it is what keeps `chat:probe` headless and a terminal
+> session unblocked, because there is no human sitting at those to answer a dialog
+> (`capability-guard.ts:213-216`). The residual is real and named:
+> **an autonomous agent on the control surface can start a run without a human.**
+> `requirements-v5-unattended-and-portable.md:109` records it the same way.
 
 ---
 
@@ -313,11 +346,19 @@ criterion that decides whether the chat is safe to trust.
 
 - **Not KyberAgent.** No extension, no mount, no seam. If it ever becomes desirable, a resident
   operator makes it a one-line starter command — but that is not this document.
-- **Not replacing the ChatGPT panel.** It stays; it is the engine.
-- **No image generation via API.** The founding constraint is unchanged.
-- **No autonomous runs.** The chat proposes; David disposes. AC-5 is the mechanism.
+- **Not replacing the ChatGPT panel.** It stays; it is the engine. — **⚠️ UNDER REVIEW 2026-08-29.**
+- **No image generation via API.** The founding constraint is unchanged. — **⚠️ UNDER REVIEW 2026-08-29.**
+- **No autonomous runs.** The chat proposes; David disposes. AC-5 is the mechanism — **for the pane.
+  Read AC-5's amendment**: an agent on the control surface is not covered by it.
 - **No second write path.** The chat mutates through the same verbs the UI uses — one API, two
   clients — or the app has two sources of truth and the provenance log becomes fiction.
+
+> **⚠️ The two non-goals marked above are the subject of an open decision, 2026-08-29.** David has
+> directed that the embedded ChatGPT panel be deprecated in favour of a hosted image-generation API
+> (kie.ai now, Gemini once his paid Gemini access is in place). **Nothing has been built or removed
+> — the brief is awaiting his ruling.** When it is ruled, this section is superseded rather than
+> rewritten: it is the honest record of what was believed when the chat pane was designed.
+> See [audit-2026-08-29-provider-decision-brief.md](audit-2026-08-29-provider-decision-brief.md).
 
 ---
 

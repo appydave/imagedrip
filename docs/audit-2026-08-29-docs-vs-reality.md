@@ -1,7 +1,8 @@
 ---
 doc: audit
 project: imagedrip
-status: FINDINGS — audit only. No source was edited, nothing was removed, no doc was corrected.
+status: ACTED ON 2026-08-29 — the doc fixes below have been applied; see "What was fixed".
+  No source code was edited. DD-017 is a code finding and remains open, awaiting David.
 created: 2026-08-29
 part: 1 of 3
 siblings:
@@ -17,7 +18,14 @@ purpose: every claim the docs make, checked against the code, marked TRUE / FALS
 `skills/recipe/` copies: `CLAUDE.md` (= `AGENTS.md`, a symlink), `README.md`, and 43 files
 under `docs/`, plus `probe/README.md` and `.github/PULL_REQUEST_TEMPLATE.md`.
 
-**Mode.** Report. Nothing was changed. Each finding names the cheaper fix; none was applied.
+**Mode.** Report, then applied. Each finding names the cheaper fix.
+
+> **Status, 2026-08-29 (second pass).** David directed that the documentation be updated. **17 of
+> the 23 false claims have been corrected in place** — see [What was fixed](#what-was-fixed) at the
+> end. The findings are kept in full rather than deleted: they are the record of *how* the corpus
+> drifted, which is the thing worth not repeating. **Three findings are deliberately NOT fixed**:
+> DD-013 (`north-star.md` — David's to re-ratify), DD-017 (a code change, awaiting his ruling), and
+> DD-019 (`overview.html` needs regenerating, not a one-line edit).
 
 **Why this was run again.** Commit `00c96b4` *"four places the docs said more than the code
 does"* (2026-08-19) already fixed one round of exactly this. Ten days later there are more —
@@ -832,3 +840,58 @@ belongs to `appydave:craft-readme`. `docs/README.md`'s internal contradictions (
 progress markers) are navigation quality, which is `appydave:doc-review`, not this skill.
 
 **Nothing in this document has been applied.** No doc was edited, no line deleted, no status flipped.
+
+---
+
+## What was fixed
+
+Applied 2026-08-29, second pass, on David's instruction to update the documentation. **No source
+code was changed.**
+
+### Corrected
+
+| Finding | Doc | What changed |
+|---|---|---|
+| DD-001 | `spec-stall-budget-visibility.md` | `Nothing built` → shipped in `c2c2624`, with the files named |
+| DD-026 | `spec-control-surface-ui-staleness.md` | `Nothing built` → shipped in `6f7993a`, with the wiring named |
+| DD-002 | `live-uat.md` | `not yet built` → built 2026-08-03, with the modules and verbs named |
+| DD-024 | `requirements-v3-templates-and-repos.md` | Frontmatter **and** the contradicting body line → WP1–WP3 shipped, WP4–WP5 not, each anchored |
+| DD-025 | `requirements-v4-resident-chat.md` | `PROPOSED — nothing built, nothing decided` → SHIPPED, with a pointer to the two amendments inside it |
+| DD-023 | `requirements-v4` §7 AC-5 | Now reads *"from the in-app chat pane"*, with an amendment block naming the residual: an agent on the control surface can start a run with no human. Matches how `requirements-v5:109` already states it |
+| DD-023 | `requirements-v4` §6.2 | `Never auto-run` scoped to the pane. Also corrected the row naming `project.set_output_dir` / `project:choose-output-dir` — neither exists; the capability shipped as `domain.save-project`. Added a note that the three shipped destructive verbs are unreachable from the UI (DD-017) |
+| DD-021 | `.github/PULL_REQUEST_TEMPLATE.md` | The authorization test now says the answer **is** yes and must stay yes, names `capability-guard.ts` and `3f274d3`, and reframes the checkbox as a regression check |
+| DD-022 | `.github/PULL_REQUEST_TEMPLATE.md` | The two picker verbs are recorded as a **settled precedent** (`NEVER_EXPOSED`, `verb-policy.ts:176-177`) rather than an outstanding wart, and it says what replaced them |
+| DD-007 | `CLAUDE.md` | The gating paragraph rewritten: prompt for eight verbs, hard denial for `repo.attach` alone, the human still meets the engine precondition, and the token + engine gate named alongside the advisory banner |
+| DD-017 | `CLAUDE.md` | **Added** — the agent-only deletes are now written down as an open, unruled gap rather than being absent |
+| DD-003 | `README.md` | The Status block replaced: v2/v3/v4/v5-Phase-0-1 shipped, current work is decisions, and the provider review is flagged |
+| DD-009 | `README.md` | "both tsconfig projects" → "every tsconfig project" (the number deleted, not corrected) |
+| DD-004 | `docs/README.md` | "33 verbs on loopback" → the number **deleted**; `/v1/verbs` answers it correctly forever |
+| DD-005 | `docs/README.md` + `kdd/README.md` | "Four learnings" → number deleted; the missing seventh learning added to the KDD index |
+| DD-006 | `docs/README.md` + `working-rules.md` | The "live progress marker" pointer replaced with `git log`; the `overview.html` "index of everything" claim marked stale with what it is missing |
+| DD-010 | `docs/README.md` + `user-guide.md` | "The only doc an operator needs" removed; the guide's own status now says it was written at v2 and never extended |
+| DD-014 | `docs/README.md` | `north-star.md` **added to the index** (it was absent entirely) and made canonical for *why*; `imagedrip-plan.md` demoted to the v1 architecture record |
+| DD-018 | `docs/README.md` | "Every document" → "The documents worth reading", with a line saying `find` is the exhaustive list. The heading no longer promises completeness it cannot keep |
+
+### Deliberately not fixed
+
+| Finding | Why |
+|---|---|
+| **DD-013** — `north-star.md`'s "costs nothing per image" | **David's to re-ratify, not an agent's to patch.** It is an interviewed document; its own frontmatter says *"The code is a stale snapshot of intent, the human is not."* It becomes wrong only if he rules for the provider move, and then it needs his words |
+| **DD-017** — the agent-only destructive verbs | **A code change, and an unruled one.** Now documented in `CLAUDE.md` as an open gap so nobody mistakes it for a decision, but no buttons were added and no verb was unpublished |
+| **DD-019** — `overview.html` | Needs regenerating against the real tree, not a one-line edit. `working-rules.md` rule 3 still stands; the claim is now marked stale so it stops being believed |
+| **DD-011** — the `chat-session.ts:247` comment | Source file. Left for whoever next edits that file, and recorded here |
+| **DD-020** — the `appydave:imagedrip` skill's `scripts/idrip` path | Outside this repo |
+| **DD-008, DD-012, DD-015, DD-016** | Info-level or superseded by Part 3's pending ruling |
+
+### What this second pass did NOT do
+
+- **It did not re-audit.** Fixes were applied to the findings as written; no new claims were
+  checked, so the corpus has not been re-verified end to end.
+- **It did not touch the second tier.** The `requirements-v*` documents other than v3 and v4, every
+  `handover-*`, `imagedrip-plan.md`, `ux-and-workflow.md` and the research/review documents were
+  never decomposed (limit 4 above) and were not edited. **Their status fields are unverified, not
+  verified-and-correct.**
+- **It fixed status lines, not bodies.** `requirements-v3` and `v4` now declare themselves shipped;
+  their *contents* still describe the work as future tense throughout. That is normal for a
+  requirements document read as a historical record, and it is why both now carry a pointer to the
+  amendments rather than a claim of currency.

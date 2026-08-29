@@ -15,7 +15,7 @@ automatically.
 
 **Status (2026-08-19):** the pipeline is proven — a real theme has been run end to end against a
 live ChatGPT session. v2, v3 and v4 have all shipped since this line last said otherwise: Template
-is a first-class axis, and the app carries an external **control surface** (33 verbs on loopback)
+is a first-class axis, and the app carries an external **control surface** on loopback
 with an MCP proxy, a contained CLI and a human confirmation gate.
 
 **Current work is not a version — it is a set of decisions.** v5 Phase 0 and Phase 1 landed
@@ -39,30 +39,34 @@ with an MCP proxy, a contained CLI and a human confirmation gate.
 | **Using the app** | **[user-guide.md](user-guide.md)** | Nothing else. It's self-contained. |
 | **New to the project and want to understand it** | [../README.md](../README.md) → [imagedrip-plan.md](imagedrip-plan.md) | [ux-and-workflow.md](ux-and-workflow.md) |
 | **Touching either of the timers** | **[two-clocks.md](two-clocks.md)** | Then `src/main/stall-budget.ts` / `src/main/cadence.ts` |
-| **Picking up the build right now** | **[requirements-v2-usability.md](requirements-v2-usability.md)** + [working-rules.md](working-rules.md) | The "Current state" block at the end of working-rules is the live progress marker. |
+| **Picking up the build right now** | **[rulings-open.md](rulings-open.md)** + [working-rules.md](working-rules.md) | `git log` is the progress marker. working-rules is standing process, and its "Current state" block stopped moving on 2026-08-05. |
 | **Understanding how v1 was built** | [build-handover.md](build-handover.md) | [specs/](#specifications) |
 | **Fixing a broken ChatGPT integration** | [specs/webview-harness-spec.md](specs/webview-harness-spec.md) §4 | [../probe/README.md](../probe/README.md) |
 | **Reviewing the risk / cost case** | [imagedrip-plan.md](imagedrip-plan.md) §7 and §9 | — |
 
 ---
 
-## Every document
+## The documents worth reading
+
+Not an exhaustive list — `find docs -name "*.md"` is. These are the ones that carry
+something you cannot get from the code.
 
 ### For users
 
 | Document | What it covers |
 |---|---|
-| [user-guide.md](user-guide.md) | Install, sign in, import prompts, run a batch, where images land, troubleshooting, known limits. **The only doc an operator needs.** |
+| [user-guide.md](user-guide.md) | Install, sign in, import prompts, run a batch, where images land, troubleshooting, known limits. ⚠️ **Written at v2 and never extended** — it does not cover Template, the control surface or the Chat tab. |
 | [../README.md](../README.md) | The project front door — what ImageDrip is and why, in two minutes. |
 
-### Requirements & design (the Northstar)
+### Requirements & design
 
 | Document | What it covers |
 |---|---|
-| [imagedrip-plan.md](imagedrip-plan.md) | **The Northstar.** Origin, the no-API constraint, the layered Brand/Project/Prompt model, the locked architecture (Approach C), security and ToS risk, cost rationale, v1 scope, locked decisions, open questions. |
-| [requirements-v2-usability.md](requirements-v2-usability.md) | **The current build.** v2 Usability & Project Identity — every finding from a live UAT pass traced to the code that caused it, split into seven work packages with acceptance criteria. |
+| [north-star.md](north-star.md) | **The North Star — canonical for *why*.** Interviewed from David 2026-08-08 and ruled twice since. The three axes, what ImageDrip is not, and the test that settles feature arguments. A first pass *derived* a Star from the commits and got it wrong; this is his answer, not a synthesis. |
+| [imagedrip-plan.md](imagedrip-plan.md) | **The v1 architecture and risk case. Historical** — it predates north-star.md and describes a narrower product. Origin, the no-API constraint, the layered Brand/Project/Prompt model, the locked architecture (Approach C), security and ToS risk, cost rationale, v1 scope, locked decisions, open questions. |
+| [requirements-v2-usability.md](requirements-v2-usability.md) | **Shipped.** v2 Usability & Project Identity — every finding from a live UAT pass traced to the code that caused it, split into seven work packages with acceptance criteria. |
 | [ux-and-workflow.md](ux-and-workflow.md) | The intended end-to-end workflow (setup → dial-in → lock → automation), the cockpit layout, and the v1 build order. |
-| [requirements-v3-templates-and-repos.md](requirements-v3-templates-and-repos.md) | **Proposed, not started.** Splits Template out of Project (the artifact kind — character sheet / storyboard / infographic), and moves the source of truth onto disk in per-brand repos mirroring `video-projects/`. Includes worked samples for six brands. |
+| [requirements-v3-templates-and-repos.md](requirements-v3-templates-and-repos.md) | **WP1–WP3 shipped; WP4–WP5 not.** Splits Template out of Project (the artifact kind — character sheet / storyboard / infographic), and moves the source of truth onto disk in per-brand repos mirroring `video-projects/`. Includes worked samples for six brands. |
 | [two-clocks.md](two-clocks.md) | **How ImageDrip paces itself.** The Stall Budget (is it dead?) vs the Cadence (how long does a human pause?) — two timers, two questions, two statistics. Includes why the adaptive budget was briefly *worse* than the constant it replaced. **Read before touching either timer.** |
 
 ### Specifications
@@ -78,7 +82,7 @@ with an MCP proxy, a contained CLI and a human confirmation gate.
 |---|---|
 | [build-handover.md](build-handover.md) | The v1 build brief. **Historical** — v1 shipped — but its "critical gotchas" section is still the best list of the traps in this codebase. |
 | [working-rules.md](working-rules.md) | Standing rules for how work is done on this project (light theme, no "generating" state, refine-don't-replace, confirm before building). |
-| [kdd/](kdd/README.md) | **What we learned the expensive way.** Four learnings + one ADR. Read the frontend ones before touching the ChatGPT panel or any floating UI — both failures are silent and look like something else. |
+| [kdd/](kdd/README.md) | **What we learned the expensive way.** Read the frontend ones before touching the ChatGPT panel or any floating UI — both failures are silent and look like something else. |
 | [live-uat.md](live-uat.md) | The in-app judgment-capture layer: what gets flagged, the two records, the sidecar, and what is deliberately out of scope. |
 | [audit-2026-08-29-docs-vs-reality.md](audit-2026-08-29-docs-vs-reality.md) | **Part 1 of the 2026-08-29 audit.** Every doc claim checked against code and marked TRUE / FALSE / UNVERIFIABLE, with the cheaper fix named for each. Includes the forensic reading of `CLAUDE.md`'s gating paragraph. |
 | [audit-2026-08-29-north-star-alignment.md](audit-2026-08-29-north-star-alignment.md) | **Part 2.** Every shipped verb, panel, setting and surface scored against the North Star's own test, ranked by distance from it. Names the 31 surfaces that exist only because of the embedded ChatGPT panel. |
@@ -90,7 +94,7 @@ with an MCP proxy, a contained CLI and a human confirmation gate.
 
 | Artifact | What it is |
 |---|---|
-| `../overview.html` | Clickable index of every doc and design mockup. **Needs a local HTTP server** — start one with `npx serve .` from the repo root, then open `http://localhost:3000/overview.html`. |
+| `../overview.html` | Design-mockup index. ⚠️ **Stale since 2026-08-07** — links 13 of ~48 docs. **Needs a local HTTP server** — start one with `npx serve .` from the repo root, then open `http://localhost:3000/overview.html`. |
 | `../.mochaccino/designs-v2/pipeline-light.html` | The chosen cockpit design that the built UI implements. |
 | `../.mochaccino/designs/index.html` | The five earlier design directions that were explored. |
 
@@ -121,5 +125,6 @@ Brand.md      the fixed look — never edited mid-run
 - Every document carries YAML frontmatter with `status:` — check it before trusting a
   doc's currency.
 - One fact has one home. Documents link to each other rather than repeating content.
-- `imagedrip-plan.md` is canonical for *why*; the specs are canonical for *how*; the
-  user guide is canonical for *what an operator does*.
+- `north-star.md` is canonical for *why*; the specs are canonical for *how*; the
+  user guide is canonical for *what an operator does*. `imagedrip-plan.md` is the v1
+  architecture record, superseded as a statement of intent.

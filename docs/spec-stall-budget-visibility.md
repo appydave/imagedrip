@@ -1,7 +1,8 @@
 ---
 doc: spec
 project: imagedrip
-status: OPEN — small renderer + status-field change. Nothing built.
+status: SHIPPED 2026-08-29 in `c2c2624` — batch-runner, index, run-manifest, App.tsx, ipc,
+  and `test/stall-visibility.test.ts`. Kept as the rationale for why the field exists.
 created: 2026-08-29
 reported_by: Claude Code session "break-room", watching a live run
 ---

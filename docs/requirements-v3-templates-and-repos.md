@@ -1,14 +1,19 @@
 ---
 doc: requirements
 project: imagedrip
-status: approved — WP1–WP3 ready to build; WP4–WP5 follow-on
+status: SHIPPED (WP1–WP3) 2026-08-04 → 08-05; WP4 (`library.json`) and WP5 (scaffold a new brand
+  repo) remain unbuilt — the code says so at `main/repo-store.ts:30` and `:356`.
+last_verified: 2026-08-29
 created: 2026-08-04
 purpose: split Template out of Project, and move the source of truth onto disk in per-brand repos
 ---
 
 # v3 — Templates & Brand Repos
 
-**Status:** proposed. Nothing here is built.
+**Status: WP1–WP3 shipped.** Template is a first-class axis (`shared/domain.ts:90`, composed at
+`:289`), the brand repo on disk is the source of truth (`main/repo-store.ts`,
+`main/domain-store.ts`), and the nested-repo trap is fixed (`main/git-scope.ts:23`, called at
+`main/index.ts:370`). **WP4 and WP5 are still unbuilt.**
 **Predecessor:** [`requirements-v2-usability.md`](requirements-v2-usability.md) (WP1–WP5 built).
 
 ---

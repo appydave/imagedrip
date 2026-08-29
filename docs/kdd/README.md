@@ -27,6 +27,7 @@ reconcile before writing, never mint a duplicate — bump the existing entry ins
 | [Render real identity, not a derived guess](learnings/render-real-identity-not-a-derived-guess.md) | frontend | medium | A caption that re-derives a filename will drift from the file — and be believed over it. It manufactured four wrong bug reports. |
 | [Verify the legacy before porting it](learnings/verify-the-legacy-before-porting-it.md) | process | medium | A remembered "sophisticated pacing engine" was 12 lines and *less* capable than what it would have replaced. Read the source before scoping the port. |
 | [A blocked postinstall leaves a hollow package](learnings/blocked-postinstall-leaves-a-hollow-package.md) | infrastructure | high | pnpm 10+ refuses `postinstall` by default, and Electron's postinstall is what downloads Electron. The install reports success; the package is empty. Check for the binary, not in the stack trace. |
+| [A truncated probe reads as an absent flag](learnings/a-truncated-probe-reads-as-an-absent-flag.md) | infrastructure | high | Child-process stdout truncates in Electron's main process, so a capability probe read half of `claude -p --help` and reported a supported flag as missing. The chat then refused to start, correctly, for a wrong reason. |
 
 ## Decisions
 

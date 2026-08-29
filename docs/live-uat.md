@@ -1,7 +1,8 @@
 ---
 doc: requirement
 project: imagedrip
-status: requirement — not yet built
+status: BUILT 2026-08-03 (`bf44ee7`) — `main/live-uat-store.ts`, `shared/live-uat.ts`,
+  `renderer/src/FlagButton.tsx`, and the four `uat.*` verbs. See ADR-001.
 created: 2026-08-03
 purpose: a judgment-capture layer inside the cockpit, so friction and bad images are marked up at the moment they're seen
 ---

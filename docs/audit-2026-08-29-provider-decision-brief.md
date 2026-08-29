@@ -17,12 +17,18 @@ purpose: the evidence, blast radius, seam, costs and staged plan for retiring th
 
 **The premise, from David, taken as given and not re-argued:** the embedded ChatGPT panel is
 generating too many bugs, hosting a browser session inside the app is impractical, the direction is
-to deprecate it, move to a hosted image-generation API now, and move to Gemini later once a free
-image-generation account exists.
+to deprecate it, move to a hosted image-generation API now, and move to Gemini later once his paid
+Gemini access is in place.
 
 **This document does not re-open that decision.** It supplies what a ruling needs: the evidence,
-the checklist, the seam, the costs, and a staged plan. Where a stated premise turns out not to hold
-— and one does not — it is reported as a fact, not as an argument against the direction.
+the checklist, the seam, the costs, and a staged plan. Where a stated premise turns out not to hold,
+it is reported as a fact, not as an argument against the direction.
+
+> **Amended 2026-08-29.** An earlier draft read the Gemini step as *"once a **free** image-generation
+> account exists"* and spent a section establishing that no such free tier exists. David has
+> corrected that: he is **buying** Gemini access shortly, and that is why he would use it. §4.3 is
+> rewritten accordingly, and the correction improves the plan — stage 4's trigger is now a date he
+> controls rather than a vendor event that might never arrive.
 
 ---
 
@@ -555,25 +561,50 @@ rows. At $0.04 that is **$1.88 — total, for every run ever attempted.** A 100-
 you re-run it"* — is accurate and was always the real number; what changes is whether that is
 material against three plates finished by hand today.
 
-### 4.3 The "Gemini later, once a free account exists" premise does not currently hold
+### 4.3 Gemini — the trigger is David's paid access, not a free tier
 
-Checked against **Google's own pricing page**, not a brain and not a blog:
+**Corrected 2026-08-29 by David**, and this replaces an earlier reading in this brief:
 
-> **Gemini 3.1 Flash Image (Nano Banana 2) — Free Tier: NOT available.**
-> **Gemini 2.5 Flash Image (Nano Banana) — Free Tier: NOT available.**
-> "Image generation is not free-tier eligible for any currently listed models."
+> *"I'm not saying it's free. I'm saying I'm going to have Google Gemini paid for soon, and that is
+> why I would use it."*
 
-Third-party blogs claiming "500 free images/day" are contradicted by the vendor's own table. The
-free tier is real for *text* Flash models; it does not extend to image generation.
+So the trigger for stage 4 is **the moment David's paid Gemini access is in place** — a date he
+controls, not a vendor event that may never happen. That is a much better-conditioned plan than the
+one this brief originally analysed, and it removes the only open-ended dependency in the sequence.
 
-**What this means for the plan:** stage 3 ("move to Gemini once free") has **no trigger date, and
-may have no trigger at all.** It should be re-framed as *"move to Gemini direct if and when price,
-quota or latency justifies it"* — which the seam makes cheap either way. **This is a factual
-correction to a premise, not a recommendation to change the direction.**
+**One thing worth checking before relying on it, because it is the same shape of error as the free
+tier.** "Paid for" has two different meanings at Google, and only one of them generates images over
+an API:
 
-**What this did NOT establish:** whether Google offers free image generation through some other
-route — AI Studio's interactive UI, a promotional credit, or a Workspace/Cloud grant David already
-holds. Only the public Gemini API pricing page was checked.
+| What you buy | What it gives you | Image generation over the API? |
+|---|---|---|
+| **Google AI Pro / Ultra** (consumer subscription) | Gemini in the app, higher limits in the Gemini web/mobile UI | **No** — it is not an API entitlement |
+| **AI Studio API key with billing enabled**, or **Vertex AI** on a billed Cloud project | Metered API access, per-image charges | **Yes** — this is the one |
+
+If the plan is a consumer subscription, it buys a better *chat* Gemini, not an image endpoint —
+and ImageDrip would be back to driving a browser, which is the thing being retired. **One human
+minute in the Google Cloud / AI Studio billing console settles it.** Flagging it once, then
+dropping it.
+
+**Confirmed pricing, from Google's own docs** (this part stands unchanged):
+
+| Model | Standard | Batch |
+|---|---|---|
+| Gemini 3.1 Flash Image (Nano Banana 2) | **$0.067** / 1K image · $0.045 / 0.5K · $0.101 / 2K | half |
+| Gemini 2.5 Flash Image (Nano Banana) | **$0.039** / image | **$0.0195** |
+
+Neither is free-tier eligible — Google's table reads "Not available" for both — which is consistent
+with David's correction and is why the free route was never the plan.
+
+**The consequence for sequencing, which is the useful part.** Since kie.ai's `nano-banana-2` is
+Gemini 3.1 Flash Image resold at **~$0.040/1K** against Google's own **$0.067/1K** (§4.2), paid
+Gemini access does **not** automatically make "go direct" the cheaper option for the same model.
+Direct wins on quota, latency, batch pricing on the 2.5 model, and having one fewer party in the
+chain. **So stage 4 stays a real decision when the access lands, rather than a foregone one** — and
+the seam (§3) is what keeps it a config change either way.
+
+**What this did NOT establish:** which of the two Google purchase paths David means, what his
+expected volume is, or whether an existing Cloud project already has billing enabled.
 
 ### 4.4 Rate limits, and the one thing that genuinely gets worse
 
@@ -626,7 +657,9 @@ as late as possible.
    create an API key.
 2. Rule on the North Star (§4.1): does *"it costs nothing per image"* stand, get amended, or get
    struck? Everything downstream reads differently depending on the answer.
-3. Rule on stage 3's trigger (§4.3), now that "free Gemini image account" is known not to exist.
+3. Confirm which Google purchase path the coming Gemini access is (§4.3) — an AI Studio key with
+   billing enabled or a Vertex project generates images over an API; a consumer AI Pro/Ultra
+   subscription does not.
 
 **Gate:** without 1 and 2, stage 1 is building against an unratified goal.
 
@@ -680,11 +713,17 @@ harvest rate above some threshold David sets. Today's baseline for comparison is
 - `test/verb-policy.test.ts` will fail on the removed verbs. **That is the pinning test working.**
   Update it deliberately, one verb at a time.
 
-### Stage 4 — Optional: Gemini direct
+### Stage 4 — Gemini direct, when the paid access lands
 
-Only if §4.3's re-framed trigger fires. With the seam in place this is one new `ImageEngine`
-implementation and a config value. **The model is the same one (§0)**, so style should carry — which
-is the whole reason the seam is worth building in stage 1 rather than hard-wiring kie.ai.
+**Trigger: David's paid Gemini access is in place** (§4.3) — a date he controls. With the seam
+built in stage 1 this is one new `ImageEngine` implementation plus a config value. **The model is
+the same one either way (§0)** — kie.ai's `nano-banana-2` *is* Gemini 3.1 Flash Image — so the
+style should carry across, which is the whole reason the seam is worth building in stage 1 rather
+than hard-wiring kie.ai.
+
+It stays a real decision rather than a foregone one: direct wins on quota, latency and batch
+pricing; kie.ai currently wins on per-image price for the same model. Re-check both when the access
+lands.
 
 ---
 

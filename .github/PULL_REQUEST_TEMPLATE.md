@@ -41,11 +41,18 @@ If a box is unticked, say why here. **"Later" is not a reason.**
 > that needs a human looking at the screen, is **not externally reachable no
 > matter what the catalog says**.
 >
-> ImageDrip already has two of these — `project.choose-output-dir` and
-> `repo.choose-root` both call `dialog.showOpenDialog`. They are catalogued,
-> gated, and cannot succeed headlessly. Their descriptions say so, which is
-> honest and is still the wrong resolution: **don't warn about it, don't
-> catalogue it.** Do not add a third.
+> **The precedent, already settled.** `project.choose-output-dir` and
+> `repo.choose-root` both call `dialog.showOpenDialog` and cannot succeed
+> headlessly. They were once catalogued with honest descriptions saying so, and
+> that was the wrong resolution: **a verb list is a promise, and a promise with
+> a footnote saying it cannot be kept is still a broken promise.** Both are now
+> in `NEVER_EXPOSED` (`src/main/verb-policy.ts:176-177`) — the rule is not
+> "warn about it", it is **"do not catalogue it."** Do not add a third.
+>
+> Nothing was lost by unpublishing them: the capability an agent actually wants
+> is *set the output folder to this path*, which is `domain.save-project` with
+> an `outputDir`. The picker is a UI affordance for **obtaining** a path, not a
+> capability.
 >
 > The legitimate exception is a capability that needs the live ChatGPT view
 > (`run.*`). That is inherent, not a defect — declare it in
@@ -74,11 +81,18 @@ Unticked boxes need a reason. **"The agent won't do that" is not one.**
 > proxy holds no logic by design. Now ask the harder one: **if
 > `control-surface.ts` were deleted tomorrow, is it still protected?**
 >
-> Today, for the engine gate, the D1 human gate and `PANE_DENIED_VERBS`, the
-> answer is **no** — they live inside the adapter. That is sound only while
-> there is exactly one non-UI adapter. The second adapter is where it breaks,
-> and it breaks silently. If your PR adds a check, put it beneath every
-> adapter, not in the one you happen to be working in.
+> **Today the answer is yes, and it must stay yes.** The engine gate, the D1
+> human gate and `PANE_DENIED_VERBS` all live in `src/main/capability-guard.ts`,
+> beneath every adapter — moved there on 2026-08-11 (`3f274d3`) from
+> `control-surface.ts`, where they were sound only while exactly one non-UI
+> adapter existed. `control-surface.ts:273` now says `── Authorization — NOT
+> here ──`, and both the renderer and the HTTP surface call
+> `authorize(principal, capability, input)` on the way in.
+>
+> So the check on your PR is a regression check: **if it adds a check, does the
+> check sit in `capability-guard.ts`?** A check added to `control-surface.ts`,
+> to the MCP proxy, or to a tool description re-creates the exact shape that was
+> deleted, and it breaks silently at the second adapter.
 
 ---
 

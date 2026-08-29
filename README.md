@@ -37,13 +37,18 @@ That single constraint — **no API credits** — is what drives the entire arch
 session — primer posted, prompts dripped, images harvested and filed, no account
 trouble.
 
-Current work (**v2 — Usability & Project Identity**) is not new capability; it's making
-the cockpit comfortable to sit in for an hour. Projects with real output folders, run
-history, a genuine dial-in mode, and a run-entry choice that stops Auto from destroying
-your dial-in are built and awaiting an in-app acceptance pass. A wider/resizable ChatGPT
-panel, an account switcher and a design polish pass are next.
-See [`docs/requirements-v2-usability.md`](docs/requirements-v2-usability.md) and the
-[Known limits](docs/user-guide.md#known-limits).
+**Shipped since:** v2 (project identity, run history, dial-in), v3 (**Template** as a third axis —
+the artifact kind, separate from brand and subject — and brand repos on disk), v4 (a loopback
+**control surface** publishing every verb, an MCP proxy so agents drive the app directly, and an
+in-app chat operator behind a human confirmation gate), and v5 Phase 0–1.
+
+**Current work is not a version — it is a set of open decisions.**
+See [`docs/rulings-open.md`](docs/rulings-open.md).
+
+> **Under review, 2026-08-29.** Whether to retire the embedded ChatGPT panel in favour of a hosted
+> image-generation API. That would reverse the founding "no API credits" constraint below, so it is
+> David's call and it has not been made. The evidence, the blast radius and a staged plan are in
+> [`docs/audit-2026-08-29-provider-decision-brief.md`](docs/audit-2026-08-29-provider-decision-brief.md).
 
 Actively developed. Personal project — not accepting external contributions.
 
@@ -161,7 +166,7 @@ An [AppyTron](https://github.com/appydave) desktop app — Electron (`electron-v
 pressure-tests that scaffold; the ChatGPT-driver recipes it produced are contributed back.
 
 ```bash
-npm run typecheck    # both tsconfig projects
+npm run typecheck    # every tsconfig project
 npm test             # vitest
 npm run build        # production build
 ```

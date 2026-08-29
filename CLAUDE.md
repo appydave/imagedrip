@@ -45,11 +45,20 @@ never look like one that did.
 whichever repo you point at, stamped with the active brand. Do not un-gate it.
 
 **But "gated" means less than it sounds, and the difference matters.** The confirm is raised for the
-**in-app chat pane only** — where it is a hard denial, not a prompt. A human clicking in the UI is
-not gated (they have already confirmed), and **every other agent client — a terminal Claude Code
-session through `.mcp.json`, Codex through `.codex/config.toml`, or plain `curl` — gets no
-confirmation at all.** For those callers the only thing in the way is a CONFIRM-FIRST banner in the
-tool description, which is advisory text. This is true of every gated verb, `run.start` included.
-See `src/main/capability-guard.ts:217`.
+**in-app chat pane only** (`src/main/capability-guard.ts:217`). There it is a *prompt* for the eight
+gated verbs, and a *hard denial* for `repo.attach` alone — the one verb a yes/no confirm cannot
+describe honestly. A human clicking in the UI meets no confirm (they have already confirmed) but
+still meets the engine precondition, which applies to every principal. And **every other agent
+client — a terminal Claude Code session through `.mcp.json`, Codex through `.codex/config.toml`, or
+plain `curl` — gets no confirmation at all.** Past the loopback bearer token, the only thing in the
+way of `repo.attach` is a CONFIRM-FIRST banner in the tool description, which is advisory text.
+`run.start` and `run.resume` additionally require a signed-in engine, for every caller.
+
+**A second gap, and it is the sharper one.** `brand.delete`, `template.delete`, `project.delete` and
+`theme.rename` have **no preload bridge** — there is no delete affordance anywhere in the UI. So a
+terminal agent or `curl` can delete a project *and its entire prompt queue* with no confirmation and
+no undo, and the person at the window cannot delete it at all. That inverts the parity rule
+(*"every automated step is operable by hand"*) and is **not** a decision anyone recorded. It is
+awaiting a ruling — see `docs/audit-2026-08-29-docs-vs-reality.md` DD-017.
 
 `git log` carries the reasoning, not just the change.

@@ -1,7 +1,9 @@
 ---
 doc: spec
 project: imagedrip
-status: OPEN — defect report + proposed fix. Nothing built.
+status: SHIPPED 2026-08-29 in `6f7993a` — `IPC.domainChanged` (`shared/ipc.ts:48`), emitted at
+  `main/index.ts:145`, bridged at `preload/index.ts:50`, consumed in `renderer/src/store.ts`,
+  covered by `test/domain-push-channel.test.ts`. Kept as the defect record.
 created: 2026-08-29
 reported_by: Claude Code session "break-room", driving the control surface over HTTP
 ---
