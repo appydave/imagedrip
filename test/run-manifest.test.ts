@@ -110,13 +110,13 @@ describe('RunRecorder', () => {
 
     let m = JSON.parse(files.get(`${runId}/manifest.json`)!) as RunManifest;
     expect(m.primer).toBe('BRAND\n\nPROJECT');
-    expect(m.counts).toEqual({ total: 2, harvested: 0, refused: 0 });
+    expect(m.counts).toEqual({ total: 2, harvested: 0, refused: 0, failed: 0 });
     expect(m.prompts.every((p) => p.status === 'queued')).toBe(true);
     // v5 Phase 0.3 — open BEFORE anything is fed, so absence can only mean legacy.
     expect(m.outcome).toBe('open');
 
     await rec.harvest('kangaroo-1', 'kangaroo.png', 42000, 'https://img/1');
-    await rec.refusal('koala-2');
+    await rec.failure('koala-2', 'refused', 'the model declined');
     await rec.reprime(1);
     await rec.pause('rate limit');
     await rec.finish('complete');
@@ -128,7 +128,7 @@ describe('RunRecorder', () => {
       generationMs: 42000,
     });
     expect(m.prompts[1].status).toBe('refused');
-    expect(m.counts).toEqual({ total: 2, harvested: 1, refused: 1 });
+    expect(m.counts).toEqual({ total: 2, harvested: 1, refused: 1, failed: 0 });
     expect(m.reprimes).toEqual([1]);
     expect(m.pauses).toHaveLength(1);
     expect(m.pauses[0].reason).toBe('rate limit');
@@ -163,7 +163,7 @@ describe('RunRecorder', () => {
     expect(m.mode).toBe('dial-in');
     expect(m.prompts).toHaveLength(1);
     expect(m.prompts[0]).toMatchObject({ id: 'kangaroo-1', status: 'harvested' });
-    expect(m.counts).toEqual({ total: 1, harvested: 1, refused: 0 });
+    expect(m.counts).toEqual({ total: 1, harvested: 1, refused: 0, failed: 0 });
   });
 
   it('gives a second same-minute run of the same theme a distinct id', async () => {

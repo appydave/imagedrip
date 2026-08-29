@@ -18,6 +18,11 @@ an agent write it — the ruling matters, the format does not.
 
 **Ordered by what unblocks the most**, not by the order they were raised.
 
+**Added 2026-08-29 — R17 and R18 at the bottom**, from the three-part audit. They are here rather
+than only in those documents on purpose: dated analysis files accumulate, and a decision that lives
+in five places is a decision nobody can find. **This sheet is the one list.** Anything the audit
+raised that needs a ruling has a row here; the audit documents hold the evidence behind it.
+
 **Three of §8's questions are gone, not carried:**
 
 | Was | Why it is not here |
@@ -341,3 +346,67 @@ deliberate go-slow, not an oversight.
 
 **What would change it.** A second real agent client that finds the CRUD shape hard to drive. There
 is one client today.
+
+---
+
+## Added 2026-08-29 — from the three-part audit
+
+### R17 · Retire the embedded ChatGPT panel for a hosted image API?
+
+**Plain words.** You have already given the direction: the panel generates too many bugs, a browser
+session inside the app is impractical, move to kie.ai now and Gemini when your paid access lands.
+This row exists so the ruling is *recorded* here with the other sixteen rather than only in a brief.
+
+**Blocks.** R4 and R5 (both measure drift *inside a ChatGPT conversation* — under an API neither
+question exists), R12, and 11 of the 18 North-Star violations in Part 2, which are panel management.
+
+**Recommendation: rule it, and rule the Star with it.** The move contradicts three documents that
+say the opposite — `north-star.md` ("It costs nothing per image… the founding constraint"),
+`requirements-v4` §8, and `requirements-v5` §1.4 ("no image API exists anywhere in the codebase").
+Two of those are shipped records that take a supersession note. **`north-star.md` is yours** — it
+was interviewed from you, and an agent should not patch your own words.
+
+**The one reason.** Today, five runs, nine prompts, one image; you made the other three plates by
+hand and saved them into the folder the app built. The output repo's git log proves it — one
+`harvest` commit, four untracked PNGs.
+
+**What would change it.** Two selectors have been marked ⚠️ UNVERIFIED since 2026-07-19, and the
+app cannot tell a rotted selector from a slow page. **A day of re-pinning might restore the panel.**
+That does not contradict the decision — a mechanism needing re-pinning every few weeks against a
+page you do not control, with no test that can catch the rot, is impractical for exactly the reason
+you gave — but it means the evidence shows *the panel is not working*, not *the panel cannot work*.
+
+→ [audit-2026-08-29-provider-decision-brief.md](audit-2026-08-29-provider-decision-brief.md)
+
+---
+
+### R18 · The three destructive verbs are agent-only. Give the human the buttons, or record why not.
+
+**Plain words.** `brand.delete`, `template.delete`, `project.delete` and `theme.rename` have no
+preload bridge — **there is no delete affordance anywhere in the UI.** A terminal agent or `curl`
+can delete a project *and its entire prompt queue* with no confirmation and no undo. You cannot
+delete your own project from the app; a script can.
+
+**Blocks.** Nothing structural. It is a correctness and parity question, and it is independent of
+R17 — it stays true whichever engine generates the images.
+
+**Recommendation: bridge the three deletes to the UI.** They are already gated, already described,
+already tested at the guard; what is missing is the button.
+
+**The one reason.** Your own parity rule, 2026-08-10: *"every automated step is operable by hand,
+and every manual step is automatable… a step with no manual equivalent is a step nobody can check."*
+This is three automated steps with no manual equivalent, and they are the destructive ones.
+
+**What would change it.** If withholding deletes from the UI was deliberate — a guard against
+mis-clicks on irreversible work — then say so and it becomes a *recorded* decision instead of an
+apparent oversight. Nothing in the code, the commits or the docs currently explains it.
+
+→ `docs/audit-2026-08-29-docs-vs-reality.md` DD-017
+
+---
+
+## Closed since this sheet was written
+
+| Row | Outcome |
+|---|---|
+| **The queue cannot express failure** (Part 2 AF-2 — never had a row here) | **FIXED 2026-08-29.** `PromptStatus` gained `failed`; `RunPromptRecord` gained `attempts` and `failure`. `finish()` sweeps attempted-but-unresolved rows terminal. Provider-independent, so it holds whichever way R17 goes. Still open: a run PAUSED at quit never reaches `finish()` — see `spec-paused-run-manifest-never-closed.md` |

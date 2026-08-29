@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { Logger } from '@appydave/core';
 import { slugify, type Prompt } from '../shared/domain.js';
-import type { RunManifest, RunSummary } from '../shared/ipc.js';
+import type { PromptFailure, RunManifest, RunSummary } from '../shared/ipc.js';
 import { appendProvenance } from './image-harvest.js';
 import type { FileAuthor } from './file-author.js';
 
@@ -85,7 +85,7 @@ export class RunRecorder {
         text: p.text,
         status: 'queued',
       })),
-      counts: { total: info.prompts.length, harvested: 0, refused: 0 },
+      counts: { total: info.prompts.length, harvested: 0, refused: 0, failed: 0 },
       reprimes: [],
       pauses: [],
       // v5 Phase 0.3 — declare the run OPEN before anything is fed, so that from
@@ -134,12 +134,39 @@ export class RunRecorder {
     this.provenance += `${JSON.stringify(line)}\n`;
   }
 
-  async refusal(promptId: string): Promise<void> {
+  /**
+   * This prompt is being fed, now. Counted BEFORE the feed rather than after,
+   * because a feed that throws is exactly the case this exists to record — an
+   * attempt counted only on success would be blind to the failure it is for.
+   */
+  async attempt(promptId: string): Promise<void> {
     const m = this.manifest;
     if (!m) return;
     const entry = m.prompts.find((p) => p.id === promptId);
-    if (entry) entry.status = 'refused';
-    m.counts.refused += 1;
+    if (!entry) return;
+    entry.attempts = (entry.attempts ?? 0) + 1;
+    await this.flush();
+  }
+
+  /**
+   * This prompt did not deliver, and why.
+   *
+   * Only `refused` moves the row to a terminal status here, because only a
+   * refusal makes the runner SKIP the prompt. `stalled` and `feed-failed` pause
+   * the run with the prompt still current, so the row stays `queued` and may
+   * still be harvested on resume — `finish()` is what converts the ones that
+   * never came back into `failed`.
+   */
+  async failure(promptId: string, kind: PromptFailure['kind'], detail: string): Promise<void> {
+    const m = this.manifest;
+    if (!m) return;
+    const entry = m.prompts.find((p) => p.id === promptId);
+    if (!entry) return;
+    entry.failure = { kind, detail, at: Date.now() };
+    if (kind === 'refused') {
+      entry.status = 'refused';
+      m.counts.refused += 1;
+    }
     await this.flush();
   }
 
@@ -160,9 +187,33 @@ export class RunRecorder {
     if (!m) return;
     m.finishedAt = Date.now();
     m.outcome = outcome;
+
+    // ── The terminal sweep ──
+    // A row that was fed and never came back has sat at `queued` until now,
+    // which is the same value as "the run never reached it". Once the run is
+    // over that ambiguity is permanent, so this is the last honest moment to
+    // resolve it. Anything attempted and still unresolved is `failed`.
+    let failed = 0;
+    for (const p of m.prompts) {
+      if (p.status === 'queued' && (p.attempts ?? 0) > 0) {
+        p.status = 'failed';
+        failed += 1;
+        // A stall or feed-failure always records a `failure` first, so an
+        // absent one here means the run ended some other way mid-flight —
+        // stopped by the operator while awaiting, or quit. Say that, rather
+        // than leaving the row with no explanation at all.
+        p.failure ??= {
+          kind: 'stalled',
+          detail: `run ended (${outcome}) while this prompt was still awaiting an image`,
+          at: Date.now(),
+        };
+      }
+    }
+    m.counts.failed = failed;
+
     await this.flush();
     this.manifest = null;
-    this.logger?.info({ runId: m.runId, outcome }, 'run manifest closed');
+    this.logger?.info({ runId: m.runId, outcome, failed }, 'run manifest closed');
   }
 
   private async flush(): Promise<void> {

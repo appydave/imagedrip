@@ -2,7 +2,8 @@
 doc: audit
 project: imagedrip
 status: ACTED ON 2026-08-29 — the doc fixes below have been applied; see "What was fixed".
-  No source code was edited. DD-017 is a code finding and remains open, awaiting David.
+  One code fix followed separately (the queue's terminal failure state, Part 2 AF-2).
+  DD-017 remains open, awaiting David.
 created: 2026-08-29
 part: 1 of 3
 siblings:

@@ -29,13 +29,38 @@
  * reached yet, which is the failure this repo forbids.
  *
  * `refused` is now expressible in both. **Nothing writes it to the live queue
- * yet** — `RunRecorder.refusal()` still marks only the manifest entry, so a
- * refused prompt stays `queued` in `domain.json` and IS retried on the next
- * run. That retry behaviour is deliberate for now (refusals can be transient)
- * and changing it is a product decision, not a type fix — see
+ * yet** — `RunRecorder.failure()` marks only the manifest entry, so a refused
+ * prompt stays `queued` in `domain.json` and IS retried on the next run. That
+ * retry behaviour is deliberate for now (refusals can be transient) and
+ * changing it is a product decision, not a type fix — see
  * `docs/research-imagedrip-architecture.md §2.8`.
+ *
+ * ── `failed`, added 2026-08-29 ──
+ *
+ * The run record could previously say only `queued` or `harvested` in practice:
+ * across the 11 manifests on disk, 47 prompt rows resolved to 34 `queued` and
+ * 13 `harvested`, with `refused` never written. **A prompt that was fed,
+ * stalled for 390s and abandoned was recorded identically to one the operator
+ * never reached** — the repo's own "nothing may fail silently" rule failing in
+ * the data model rather than in the UI. It also made a harvest rate
+ * uncomputable, which blocks comparing one engine against another.
+ *
+ * `failed` means ATTEMPTED AND DID NOT DELIVER. It is written by
+ * `RunRecorder.finish()`, which sweeps any row still `queued` that has
+ * `attempts > 0`. Paired with `RunPromptRecord.attempts` and `.failure` it
+ * makes the three cases distinguishable at last:
+ *
+ *   queued,  attempts 0  → never reached (the run stopped before it)
+ *   failed,  attempts ≥1 → fed, no image; `failure.kind` says which way
+ *   harvested            → delivered
+ *
+ * **It is deliberately NOT written to the live queue.** `batch-runner.ts:185`
+ * feeds only `status === 'queued'`, so writing `failed` into `domain.json`
+ * would silently drop those prompts from every future run — the same class of
+ * bug this state was added to expose. Retrying a failed prompt is the current
+ * behaviour and stays the current behaviour until someone rules otherwise.
  */
-export type PromptStatus = 'queued' | 'harvested' | 'refused';
+export type PromptStatus = 'queued' | 'harvested' | 'refused' | 'failed';
 
 /** One image request. Short + standalone; style inherited from the primed chat. */
 export interface Prompt {

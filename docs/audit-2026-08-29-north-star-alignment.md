@@ -180,6 +180,27 @@ abandoned is recorded identically to one the operator never got to.
 UI.** It is also why no honest success rate can be computed from the manifests alone: the 34
 `queued` rows conflate *the operator stopped* with *the image never came*.
 
+> **✅ FIXED 2026-08-29.** `PromptStatus` gained `failed`, and `RunPromptRecord` gained `attempts`
+> and `failure` (`{kind: 'refused' | 'stalled' | 'feed-failed', detail, at}`). The runner now
+> records an attempt before every feed and a failure on all three paths; `RunRecorder.finish()`
+> sweeps any row still `queued` with `attempts > 0` into `failed`. From here on:
+> `queued`+0 attempts = never reached · `failed` = fed, no image · `harvested` = delivered, and
+> `total − harvested − refused − failed` is the never-reached count.
+>
+> **`failed` is deliberately NOT written to the live queue.** `batch-runner.ts:185` feeds only
+> `status === 'queued'`, so writing it into `domain.json` would silently drop those prompts from
+> every future run — the same bug class this state exists to expose. Retry-on-failure is unchanged.
+>
+> **What this does NOT fix:** a run that is PAUSED when the app quits still never reaches
+> `finish()`, so the sweep does not run and the rows stay `queued`. That is the separate open
+> defect in [spec-paused-run-manifest-never-closed.md](spec-paused-run-manifest-never-closed.md),
+> whose mechanism is explicitly not yet established — and it is the case **3 of the 11 manifests on
+> disk are actually in**. Until it is fixed, the ambiguity is closed for stopped and completed runs
+> and still open for abandoned ones.
+>
+> Covered by `test/prompt-failure.test.ts` (9 tests), each verified to fail when the behaviour is
+> removed.
+
 ### AF-3 · The most recent real work was finished by hand, inside the app's own output folder
 
 First-party, today, from the output project's own git history — the strongest single alignment

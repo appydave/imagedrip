@@ -1,7 +1,7 @@
 import type { Logger } from '@appydave/core';
 import type { Prompt } from '../shared/domain.js';
 import { renderPrompt, slugify } from '../shared/domain.js';
-import type { RunConfig, RunStatus } from '../shared/ipc.js';
+import type { PromptFailure, RunConfig, RunStatus } from '../shared/ipc.js';
 import { RateLimitGuard } from './rate-limit-guard.js';
 import { BOOTSTRAP_CADENCE, computeCadence } from './cadence.js';
 import { BOOTSTRAP_STALL_MS, computeStallMs } from './stall-budget.js';
@@ -31,7 +31,10 @@ export interface RunRecorderHooks {
   /** Register a prompt injected into an already-open (dial-in) run (WP4). */
   addPrompt(prompt: Prompt): Promise<void>;
   harvest(promptId: string, file: string, generationMs?: number, imageUrl?: string): Promise<void>;
-  refusal(promptId: string): Promise<void>;
+  /** This prompt is being fed now — the count that tells `queued` apart from unreached. */
+  attempt(promptId: string): Promise<void>;
+  /** This prompt did not deliver, and why. */
+  failure(promptId: string, kind: PromptFailure['kind'], detail: string): Promise<void>;
   reprime(afterHarvested: number): Promise<void>;
   pause(reason: string): Promise<void>;
   finish(outcome: 'complete' | 'stopped'): Promise<void>;
@@ -465,6 +468,8 @@ export class BatchRunner {
     this.emit();
 
     this.feeding = true;
+    // Before the await, so a feed that throws is still recorded as an attempt.
+    this.recordSafe((r) => r.attempt(prompt.id));
     try {
       await this.feedGuarded(renderPrompt(this.promptShape, prompt));
     } catch (err) {
@@ -482,6 +487,7 @@ export class BatchRunner {
       this.phase = 'paused';
       this.note = `feed failed — ${err instanceof Error ? err.message : String(err)}`;
       this.recordSafe((r) => r.pause(this.note ?? 'feed failed'));
+      this.recordSafe((r) => r.failure(prompt.id, 'feed-failed', this.note ?? 'feed failed'));
       this.emit();
       this.logger?.error({ err: String(err), subject: prompt.subject }, 'feed failed — pausing');
       return;
@@ -584,7 +590,7 @@ export class BatchRunner {
     const prompt = this.queue[this.idx];
     this.note = `refused: ${prompt?.subject ?? '?'} — skipped`;
     this.logger?.warn({ subject: prompt?.subject }, 'prompt refused — skipping');
-    if (prompt) this.recordSafe((r) => r.refusal(prompt.id));
+    if (prompt) this.recordSafe((r) => r.failure(prompt.id, 'refused', this.note ?? 'refused'));
     if (this.manual) {
       this.manual = false;
       this.stopped = true;
@@ -607,6 +613,10 @@ export class BatchRunner {
     this.phase = 'paused';
     this.note = `stalled — no image in ${Math.round(waitedMs / 1000)}s`;
     this.recordSafe((r) => r.pause(this.note ?? 'stall'));
+    // The row stays `queued` — the run is PAUSED, not past this prompt, and a
+    // resume can still harvest it. `finish()` is what makes it terminal.
+    const stalled = this.queue[this.idx];
+    if (stalled) this.recordSafe((r) => r.failure(stalled.id, 'stalled', this.note ?? 'stall'));
     this.emit();
     this.logger?.warn({ waitedMs }, 'stall — pausing');
   }

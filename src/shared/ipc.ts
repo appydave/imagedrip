@@ -306,6 +306,22 @@ export interface RunConfig {
 }
 
 /** One prompt as it ran — recorded in the run manifest (WP1). */
+/**
+ * Why a prompt did not deliver. One shape for all three ways a feed can end
+ * badly, so a reader never has to infer the cause from a run-level pause line.
+ *
+ * `stalled` and `feed-failed` PAUSE the run rather than skipping the prompt, so
+ * the same row can carry a failure and later be harvested on resume — which is
+ * why `attempts` is a count and this is only the LAST one.
+ */
+export interface PromptFailure {
+  /** `refused` the model declined · `stalled` no image inside the budget · `feed-failed` the prompt never reached the composer. */
+  kind: 'refused' | 'stalled' | 'feed-failed';
+  /** The operator-facing reason, verbatim — the same text the run status showed. */
+  detail: string;
+  at: number;
+}
+
 export interface RunPromptRecord {
   id: string;
   subject: string;
@@ -316,6 +332,14 @@ export interface RunPromptRecord {
   file?: string;
   /** Feed → image-done, ms. */
   generationMs?: number;
+  /**
+   * How many times this prompt was fed. **This is the field that disambiguates
+   * a `queued` row**: 0 means the run never reached it, ≥1 means it was tried.
+   * Absent on manifests written before 2026-08-29.
+   */
+  attempts?: number;
+  /** The most recent failure, if any. Survives a later successful retry as history. */
+  failure?: PromptFailure;
 }
 
 /**
@@ -357,7 +381,12 @@ export interface RunManifest {
   /** The exact composed primer text (brand body + project body as posted). */
   primer: string;
   prompts: RunPromptRecord[];
-  counts: { total: number; harvested: number; refused: number };
+  /**
+   * `failed` added 2026-08-29 and optional only so pre-existing manifests parse.
+   * `total - harvested - refused - failed` is the number never reached, which is
+   * the arithmetic that was impossible before.
+   */
+  counts: { total: number; harvested: number; refused: number; failed?: number };
   /** Harvested-counts at which a mid-run re-prime happened. */
   reprimes: number[];
   /** Rate-limit / stall pauses surfaced during the run. */

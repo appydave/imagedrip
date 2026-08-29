@@ -1474,12 +1474,23 @@ function RunHistoryView(props: {
                   title={p.text}
                 >
                   <span className="truncate">{p.subject}</span>
-                  <span className="ml-2 flex-shrink-0 font-mono text-[10px] text-muted">
+                  {/* `queued` alone used to mean BOTH "never reached" and "fed,
+                      nothing came back". `attempts` is what tells them apart —
+                      show it, or the manifest keeps the ambiguity it just
+                      learned how to express. */}
+                  <span
+                    className="ml-2 flex-shrink-0 font-mono text-[10px] text-muted"
+                    title={p.failure ? `${p.failure.kind} — ${p.failure.detail}` : undefined}
+                  >
                     {p.status === 'harvested'
                       ? `✓${p.generationMs ? ` ${(p.generationMs / 1000).toFixed(0)}s` : ''}`
                       : p.status === 'refused'
                         ? 'refused'
-                        : 'queued'}
+                        : p.status === 'failed'
+                          ? `✗ ${p.failure?.kind ?? 'failed'}`
+                          : (p.attempts ?? 0) > 0
+                            ? `queued · tried ${p.attempts}×`
+                            : 'not reached'}
                   </span>
                 </div>
               ))}

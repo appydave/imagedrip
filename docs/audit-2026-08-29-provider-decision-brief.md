@@ -135,11 +135,15 @@ use, without a single commit being counted.
 defines `indeterminate` as *"Probe timed out, page still loading, **or the selectors no longer
 match**"* — the app cannot tell a slow ChatGPT from a rotted selector, and this audit did not drive
 it to find out. (b) That the four untracked PNGs came from ChatGPT at all — only that ImageDrip did
-not write them. (c) That the 34 `queued` rows are failures: **a `queued` row means both "the
-operator stopped before we got here" and "we fed it and nothing came back"**, because
-`PromptStatus` has no terminal failure state (`src/shared/domain.ts:38`). The 28% figure is
-therefore a **floor on ambiguity, not a measured success rate** — and the fact that no honest
-success rate can be computed is itself a finding.
+not write them. (c) That the 34 `queued` rows are failures: **at the time these runs were recorded,
+a `queued` row meant both "the operator stopped before we got here" and "we fed it and nothing came
+back"**, because `PromptStatus` had no terminal failure state. The 28% figure is therefore a
+**floor on ambiguity, not a measured success rate.**
+
+> **Fixed 2026-08-29, going forward only.** `failed` + `attempts` + `failure` now separate the two
+> (Part 2, AF-2). **These 11 manifests are not retrospectively repairable** — the attempt counts
+> were never written, so the ambiguity in the evidence above is permanent. Every run from here on
+> is measurable, which is what the bake-off in §5 stage 1 depends on.
 
 ### 1.2 Two failure detectors have been marked UNVERIFIED since the first commit
 
@@ -673,9 +677,16 @@ as late as possible.
   `agent-office-s06-plates` prompts are ideal, since the panel scored 1/9 on them today — and run it
   through both. Compare with `probe/measure-drift.cjs`. This is the only way to answer §4.5.3, and
   it costs about **$0.50**.
-- Fix `PromptStatus` (§3.3 note 2 / Part 2 AF-2) here, while both engines exist: a terminal failure
-  state, written by both adapters. Doing it now means the migration is verifiable — **you cannot
-  compare two engines on a queue that cannot express failure.**
+- ~~Fix `PromptStatus` (§3.3 note 2 / Part 2 AF-2) here, while both engines exist.~~ **✅ DONE
+  2026-08-29, ahead of the seam.** `failed` + `attempts` + `failure{kind,detail,at}`, swept terminal
+  at `finish()`; `test/prompt-failure.test.ts`. It was pulled forward deliberately: **you cannot
+  compare two engines on a queue that cannot express failure**, so the bake-off needed it first, and
+  it is provider-independent so it pays off whichever way this brief is ruled. The `KieEngine`
+  adapter maps its HTTP errors onto the same three `kind`s — 429 and 5xx to `stalled`, a content
+  refusal to `refused`, a rejected submit to `feed-failed` — which is what makes the two engines
+  comparable on one scale.
+  **Still open:** a run PAUSED at quit never reaches `finish()`, so the sweep misses it
+  (`spec-paused-run-manifest-never-closed.md`) — and that is the state 3 of the 11 manifests are in.
 
 **Reversible in full.** Nothing deleted, one config key.
 
