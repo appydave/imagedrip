@@ -54,11 +54,49 @@ plain `curl` — gets no confirmation at all.** Past the loopback bearer token, 
 way of `repo.attach` is a CONFIRM-FIRST banner in the tool description, which is advisory text.
 `run.start` and `run.resume` additionally require a signed-in engine, for every caller.
 
-**A second gap, and it is the sharper one.** `brand.delete`, `template.delete`, `project.delete` and
-`theme.rename` have **no preload bridge** — there is no delete affordance anywhere in the UI. So a
+**A second gap, and it is the sharper one:** the three destructive verbs are reachable by an agent
+and by nobody at the window. Stated once, below, under "What is open" — item 2.
+
+## What is open, as of 2026-08-29
+
+**Read this before proposing work.** A three-part audit ran on 2026-08-29 and its findings are in
+`docs/audit-2026-08-29-*.md`; the open decisions are consolidated in `docs/rulings-open.md`, which is
+the one list. Four things are outstanding, in the order they are worth doing.
+
+**1 · `submit()` uses a mechanism this repo already disproved.** `webview-harness.ts:486` fires a
+synthesized Return, and `paste()` twenty lines above it (`:471`) carries a VERIFIED probe result
+saying a synthesized key is **a no-op into this composer**. `paste()` was fixed to use the real
+editing command; `submit()` was not. **This accounts for 6 of the 12 pauses ever recorded.** Cheapest
+high-value work in the repo, needs no ruling, and it changes what the provider decision is about.
+→ `docs/spec-submit-uses-a-mechanism-the-repo-disproved.md`. **Diagnosis, not a reproduction — nobody
+has run a fix.**
+
+**2 · Three destructive verbs are agent-only.** `brand.delete`, `template.delete`, `project.delete`
+and `theme.rename` have **no preload bridge** — there is no delete affordance anywhere in the UI. A
 terminal agent or `curl` can delete a project *and its entire prompt queue* with no confirmation and
-no undo, and the person at the window cannot delete it at all. That inverts the parity rule
-(*"every automated step is operable by hand"*) and is **not** a decision anyone recorded. It is
-awaiting a ruling — see `docs/audit-2026-08-29-docs-vs-reality.md` DD-017.
+no undo; the person at the window cannot delete it at all. That inverts the parity rule David ruled
+on 2026-08-10, and no document records it as deliberate. → `rulings-open.md` **R18**, audit DD-017.
+
+**3 · The engine decision.** Whether to retire the embedded ChatGPT panel for a hosted image API.
+Evidence, blast radius, seam and staged plan in
+`docs/audit-2026-08-29-provider-decision-brief.md`. **Do not start deprecation work — it is unruled.**
+Note §4.2a: kie.ai is 8× the price of an `OPENAI_API_KEY` David already holds, and local generation
+on the Mac fleet is the only option that keeps the Star's "costs nothing per image" literally true.
+
+**4 · The style axis.** `Brand` is carrying two different things — identity (`beauty-joy`, `appydave`)
+and visual style (`agent-office-retro-pixel`). Six styles over one identity means six fake brands
+today. → `docs/research-2026-08-29-brand-family-and-characters.md` §6, and the axes artefact.
+**Do not codify the domain model in Zod until this is ruled** — it would freeze a known hole.
+
+**Ruled and closed on 2026-08-29, so do not reopen:** parity wins when a control performs a step the
+app already performs (now in `docs/north-star.md`) · animation is not an axis, `Template` absorbs it ·
+do not adopt Storyline's shape, though consuming its prompt output is a real seam · no `Character`
+record — prose in `Project.body` covers it · no renames of `VIDEO.md` / `VERBAL-STYLE.md`.
+
+**One standing caution the audit earned:** every `status:` field in `docs/` is a promise that rots.
+Two specs shipped on 2026-08-29 still saying *"Nothing built"* about code in their own commit. Trust
+`git log` over a frontmatter line.
+
+---
 
 `git log` carries the reasoning, not just the change.

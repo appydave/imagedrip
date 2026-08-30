@@ -559,6 +559,53 @@ the drift Part 1 documents.
 for a 1K Nano Banana 2 versus Google's $0.067 for the identical Gemini 3.1 Flash Image. If that
 holds, "go direct to Gemini later" is a decision about latency, quota and control — **not price.**
 
+### 4.2a · The market, surveyed 2026-08-29 — and kie.ai is not the cheapest
+
+**Added after the brief was written.** The original §4.2 compared three options. A survey of eleven
+inference providers, NVIDIA, six aggregators and local generation found the field is much wider and
+much cheaper, and that **the cheapest viable option needs no new account at all.**
+
+| Option | $/image @1K | Status | Credential held? |
+|---|---|---|---|
+| **Local, on the Mac fleet** — SDXL / FLUX-schnell | **~$0** (electricity) | derived | n/a — hardware owned |
+| Segmind · FLUX.1-schnell | $0.0016 | confirmed | ✗ |
+| Together AI · FLUX.1-schnell | $0.0027 | confirmed | ✗ |
+| Replicate · FLUX.1-schnell | $0.003 | confirmed | ~ unverified |
+| **OpenAI · gpt-image-1-mini, low** | **$0.005** | **confirmed — OpenAI's own model page** | **✓ `OPENAI_API_KEY`** |
+| OpenAI · gpt-image-1-mini, medium | $0.011 | confirmed | ✓ |
+| Google · Gemini 2.5 Flash Image, **batch** | $0.0195 | confirmed | ✓ (key currently invalid) |
+| OpenAI · gpt-image-1-mini, high | $0.036 | confirmed | ✓ |
+| Google · Gemini 2.5 Flash Image | $0.039 | confirmed | ✓ (key invalid) |
+| **kie.ai · Nano Banana 2, 1K** | **$0.040** | **confirmed — kie.ai's own billing page, `1 credit ≈ $0.005 USD`** | ✗ — account needed |
+| Google · Gemini 3.1 Flash Image (= Nano Banana 2) | $0.067 ($0.034 batch) | confirmed | ✗ |
+
+**Three consequences for this brief.**
+
+1. **kie.ai is 8× the price of a key David already holds.** The 180-image style test is **$0.90 on
+   gpt-image-1-mini** versus **$7.20 on kie.ai**; the 24 currently-staged plates are **12 cents**.
+   §0's "one human step — open kie.ai and get a key" is no longer on the critical path: OpenAI can be
+   called this afternoon with no signup.
+2. **Local generation preserves the founding constraint.** It is the only option that keeps
+   `north-star.md`'s *"It costs nothing per image"* literally true — the cost becomes electricity and
+   wall-clock rather than dollars. It was absent from this brief entirely and should not have been.
+3. **The kie.ai figures from `~/dev/ad/brains/kie-ai/` are now CONFIRMED, not unverified.** §0's
+   403-fetch caveat is discharged: kie.ai's pages return 200 to a browser User-Agent, and their
+   billing page states the credit rate directly. The five-month-old brain figures were exactly right.
+
+**These are not the same quality tier, and the brief must not imply they are.** Nano Banana 2 is
+frontier-class; FLUX-schnell is markedly below it. So the honest recommendation splits by job:
+
+- **A 180-image throwaway style test** → gpt-image-1-mini at low, or local. Quality is not the
+  binding constraint when the output is a style comparison.
+- **Final client-facing assets** → frontier tier, and the bake-off in §5 stage 1 is what decides which.
+
+**What §4.2a did NOT establish:** no image was generated on any provider, so **every quality
+judgement here is from published Elo-style rankings, not from David's prompts**. Per-image figures
+for DeepInfra and gpt-image-2 are derived by arithmetic from confirmed rates, not read off a page.
+Free-tier terms for Together, DeepInfra, fal.ai and Replicate were not established. And the local
+option is costed as "hardware already owned" — generation *speed* on a 24GB M4 was not measured, and
+wall-clock may be the real price.
+
 **Worked cost, using the runs that exist:** the whole recorded history of this app is 47 prompt
 rows. At $0.04 that is **$1.88 — total, for every run ever attempted.** A 100-image catalogue costs
 **~$4**, and re-running it costs $4 again. The README's own framing — *"several dollars every time
