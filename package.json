@@ -10,7 +10,7 @@
   "author": "David Cruwys",
   "license": "MIT",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "ELECTRON_EXEC_PATH=\"$(node scripts/brand-launcher.mjs)\" electron-vite dev",
     "dev:watch": "electron-vite dev -w",
     "dev:stop": "node scripts/dev-stop.mjs",
     "dev:clean": "node scripts/dev-stop.mjs && npm run dev:watch",

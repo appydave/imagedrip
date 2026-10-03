@@ -6,6 +6,7 @@ import { useAppStore, type CtxTab } from './store';
 import { FlagButton, UatToggle, VerdictBar } from './FlagButton';
 import { Modal, Popover } from './Popover';
 import { Grabber, SizePresets, useResizable } from './useResizable';
+import appIcon from './brand/app-icon.png';
 
 /** Map a DOM element to the webview bounds (CSS px === DIP in Electron's content view). */
 function rectOf(el: HTMLElement): Rect {
@@ -208,8 +209,11 @@ export default function App(): JSX.Element {
         className="flex items-center gap-3 border-b border-edge bg-surface py-2.5 pr-4 [-webkit-app-region:drag]"
         style={{ paddingLeft: isMac ? 80 : 16 }}
       >
-        <span className="font-display text-lg font-bold tracking-wide">
-          IMAGE<span className="text-amber">DRIP</span>
+        <span className="flex items-center gap-2 font-display text-lg font-bold tracking-wide" data-testid="app-mark">
+          <img src={appIcon} alt="" className="h-6 w-6" />
+          <span>
+            IMAGE<span className="text-amber">DRIP</span>
+          </span>
         </span>
         <span className="flex items-center gap-1.5 rounded-full border border-edge bg-cream px-2.5 py-1 font-display text-[11px] tracking-wide text-muted">
           <span className="h-[7px] w-[7px] rounded-full bg-sage" />
