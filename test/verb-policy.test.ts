@@ -192,8 +192,11 @@ describe('toJsonSchema — a projection of the SAME Zod schema, never a second o
   });
 
   it('handles nullable, arrays and booleans', () => {
-    expect(toJsonSchema(z.string().nullable())).toEqual({
-      anyOf: [{ type: 'string' }, { type: 'null' }],
+    // Zod's own spelling of a bare nullable scalar — the same set of values as
+    // `anyOf: [{ type: 'string' }, { type: 'null' }]`.
+    expect(toJsonSchema(z.string().nullable())).toEqual({ type: ['string', 'null'] });
+    expect(toJsonSchema(z.string().min(1).nullable())).toEqual({
+      anyOf: [{ type: 'string', minLength: 1 }, { type: 'null' }],
     });
     expect(toJsonSchema(z.array(z.string()).min(1))).toEqual({
       type: 'array',
